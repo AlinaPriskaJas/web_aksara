@@ -4737,16 +4737,9 @@ button:focus-visible,
 }
 }
 
-html, body{
-    height:100%;
-    overflow:hidden;
-    overscroll-behavior:none;
-}
-
-.login-page.registration-page{
+body.registration-page{
     height:100vh;
     max-height:100vh;
     overflow-y:auto;
-    align-items:flex-start;
     overscroll-behavior-y: contain;
 }
