@@ -1,6 +1,6 @@
 <?php
-// client/notifikasi.php
-$page_title = "Kotak Notifikasi Layanan";
+// ahlik3/sertifikat_ahli.php
+$page_title = "Sertifikat Ahli K3";
 include "../includes/header.php";
 include "../includes/sidebar.php";
 include "../includes/navbar.php";
@@ -16,7 +16,7 @@ include "../includes/navbar.php";
                 Halaman ini memuat master layout yang konsisten untuk <strong>PT Aksara Riksa Perdana</strong>.
             </div>
         </div>
-        <p class="text-secondary mb-0">Silakan kembangkan fungsionalitas halaman ini di file <code>client/notifikasi.php</code> sesuai dengan kebutuhan modul.</p>
+        <p class="text-secondary mb-0">Silakan kembangkan fungsionalitas halaman ini di file <code>ahlik3/sertifikat_ahli.php</code> sesuai dengan kebutuhan modul.</p>
     </div>
 </main>
 

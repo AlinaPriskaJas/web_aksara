@@ -1,6 +1,6 @@
 <?php
-// client/digital.php
-$page_title = "Unduh Dokumen Digital";
+// admin/suket.php
+$page_title = "Suket K3";
 include "../includes/header.php";
 include "../includes/sidebar.php";
 include "../includes/navbar.php";
@@ -16,7 +16,7 @@ include "../includes/navbar.php";
                 Halaman ini memuat master layout yang konsisten untuk <strong>PT Aksara Riksa Perdana</strong>.
             </div>
         </div>
-        <p class="text-secondary mb-0">Silakan kembangkan fungsionalitas halaman ini di file <code>client/digital.php</code> sesuai dengan kebutuhan modul.</p>
+        <p class="text-secondary mb-0">Silakan kembangkan fungsionalitas halaman ini di file <code>admin/suket.php</code> sesuai dengan kebutuhan modul.</p>
     </div>
 </main>
 

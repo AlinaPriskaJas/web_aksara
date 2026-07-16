@@ -1,6 +1,6 @@
 <?php
-// admin/sertifikat.php
-$page_title = "Sertifikat";
+// direksi/approval.php
+$page_title = "Approval Direksi";
 include "../includes/header.php";
 include "../includes/sidebar.php";
 include "../includes/navbar.php";
@@ -16,7 +16,7 @@ include "../includes/navbar.php";
                 Halaman ini memuat master layout yang konsisten untuk <strong>PT Aksara Riksa Perdana</strong>.
             </div>
         </div>
-        <p class="text-secondary mb-0">Silakan kembangkan fungsionalitas halaman ini di file <code>admin/sertifikat.php</code> sesuai dengan kebutuhan modul.</p>
+        <p class="text-secondary mb-0">Silakan kembangkan fungsionalitas halaman ini di file <code>direksi/approval.php</code> sesuai dengan kebutuhan modul.</p>
     </div>
 </main>
 
