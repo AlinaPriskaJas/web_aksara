@@ -3,7 +3,7 @@
 $page_title = "Dashboard Keselamatan Kerja (K3)";
 include "../includes/header.php";
 include "../includes/sidebar.php";
-include "../includes/navbar.php";
+include "../includes/topbar.php";
 ?>
 
 <main class="main-content">
@@ -64,7 +64,7 @@ include "../includes/navbar.php";
         <div class="col-lg-8 col-12">
             <div class="card-box">
                 <h5 class="mb-4 fw-bold">Jadwal Inspeksi Proyek Mendatang</h5>
-                
+
                 <div class="table-responsive-custom">
                     <table class="table-custom">
                         <thead>
@@ -85,7 +85,8 @@ include "../includes/navbar.php";
                                 <td>Hendra K3</td>
                                 <td><span class="badge-warning">Dijadwalkan</span></td>
                                 <td style="text-align: center;">
-                                    <button class="btn-primary-custom" style="height:32px; padding: 0 12px; font-size:0.8rem;">Mulai</button>
+                                    <button class="btn-primary-custom"
+                                        style="height:32px; padding: 0 12px; font-size:0.8rem;">Mulai</button>
                                 </td>
                             </tr>
                             <tr>
@@ -95,7 +96,8 @@ include "../includes/navbar.php";
                                 <td>Hendra K3</td>
                                 <td><span class="badge-warning">Dijadwalkan</span></td>
                                 <td style="text-align: center;">
-                                    <button class="btn-primary-custom" style="height:32px; padding: 0 12px; font-size:0.8rem;">Mulai</button>
+                                    <button class="btn-primary-custom"
+                                        style="height:32px; padding: 0 12px; font-size:0.8rem;">Mulai</button>
                                 </td>
                             </tr>
                         </tbody>

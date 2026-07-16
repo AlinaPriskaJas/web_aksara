@@ -3,7 +3,7 @@
 $page_title = "Dashboard Direksi";
 include "../includes/header.php";
 include "../includes/sidebar.php";
-include "../includes/navbar.php";
+include "../includes/topbar.php";
 ?>
 
 <main class="main-content">
@@ -90,7 +90,8 @@ include "../includes/navbar.php";
                                 <td>Hendra K3</td>
                                 <td>Keselamatan Kerja</td>
                                 <td style="text-align: center;">
-                                    <button class="btn-secondary-custom" style="height:32px; padding: 0 12px; font-size:0.8rem;">Lihat PDF</button>
+                                    <button class="btn-secondary-custom"
+                                        style="height:32px; padding: 0 12px; font-size:0.8rem;">Lihat PDF</button>
                                 </td>
                             </tr>
                             <tr>
@@ -100,7 +101,8 @@ include "../includes/navbar.php";
                                 <td>Aditya Pratama</td>
                                 <td>SDM & Keuangan</td>
                                 <td style="text-align: center;">
-                                    <button class="btn-secondary-custom" style="height:32px; padding: 0 12px; font-size:0.8rem;">Lihat PDF</button>
+                                    <button class="btn-secondary-custom"
+                                        style="height:32px; padding: 0 12px; font-size:0.8rem;">Lihat PDF</button>
                                 </td>
                             </tr>
                             <tr>
@@ -110,7 +112,8 @@ include "../includes/navbar.php";
                                 <td>Budi Hartono</td>
                                 <td>Operasional</td>
                                 <td style="text-align: center;">
-                                    <button class="btn-secondary-custom" style="height:32px; padding: 0 12px; font-size:0.8rem;">Lihat PDF</button>
+                                    <button class="btn-secondary-custom"
+                                        style="height:32px; padding: 0 12px; font-size:0.8rem;">Lihat PDF</button>
                                 </td>
                             </tr>
                         </tbody>
@@ -123,8 +126,9 @@ include "../includes/navbar.php";
         <div class="col-lg-4 col-12">
             <div class="card-box">
                 <h5 class="mb-4 fw-bold">Persetujuan Cepat</h5>
-                <p class="text-muted fs-7">Berikut berkas penting yang memerlukan tanda tangan digital dari Anda hari ini:</p>
-                
+                <p class="text-muted fs-7">Berikut berkas penting yang memerlukan tanda tangan digital dari Anda hari
+                    ini:</p>
+
                 <div class="border rounded p-3 mb-3" style="background-color: var(--bg-body);">
                     <div class="d-flex justify-content-between align-items-start mb-2">
                         <span class="fw-bold fs-7">Rekomendasi Anggaran K3</span>
@@ -132,8 +136,10 @@ include "../includes/navbar.php";
                     </div>
                     <span class="text-secondary fs-7 d-block mb-3">Pengaju: Hendra K3 (14 Juli 2026)</span>
                     <div class="d-flex gap-2 justify-content-end">
-                        <button class="btn-danger-custom" style="height: 32px; padding: 0 12px; font-size: 0.8rem;">Tolak</button>
-                        <button class="btn-primary-custom" style="height: 32px; padding: 0 12px; font-size: 0.8rem;">Tanda Tangani</button>
+                        <button class="btn-danger-custom"
+                            style="height: 32px; padding: 0 12px; font-size: 0.8rem;">Tolak</button>
+                        <button class="btn-primary-custom"
+                            style="height: 32px; padding: 0 12px; font-size: 0.8rem;">Tanda Tangani</button>
                     </div>
                 </div>
             </div>

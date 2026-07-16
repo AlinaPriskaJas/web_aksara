@@ -3,7 +3,7 @@
 $page_title = "Dashboard IT Support";
 include "../includes/header.php";
 include "../includes/sidebar.php";
-include "../includes/navbar.php";
+include "../includes/topbar.php";
 ?>
 
 <main class="main-content">
@@ -64,7 +64,7 @@ include "../includes/navbar.php";
         <div class="col-lg-8 col-12">
             <div class="card-box">
                 <h5 class="mb-4 fw-bold">Log Aktivitas Sistem Terbaru</h5>
-                
+
                 <div class="table-responsive-custom">
                     <table class="table-custom">
                         <thead>
@@ -112,7 +112,7 @@ include "../includes/navbar.php";
         <div class="col-lg-4 col-12">
             <div class="card-box">
                 <h5 class="mb-4 fw-bold">Backup Database Otomatis</h5>
-                
+
                 <div class="border rounded p-3 mb-3 bg-white">
                     <div class="d-flex align-items-center justify-content-between mb-2">
                         <span class="fw-bold fs-7">Backup Harian Cloud</span>

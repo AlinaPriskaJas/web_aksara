@@ -3,7 +3,7 @@
 $page_title = "Dashboard Portal Mitra";
 include "../includes/header.php";
 include "../includes/sidebar.php";
-include "../includes/navbar.php";
+include "../includes/topbar.php";
 ?>
 
 <main class="main-content">
@@ -64,7 +64,7 @@ include "../includes/navbar.php";
         <div class="col-lg-8 col-12">
             <div class="card-box">
                 <h5 class="mb-4 fw-bold">Riwayat Pengajuan & Layanan K3</h5>
-                
+
                 <div class="table-responsive-custom">
                     <table class="table-custom">
                         <thead>
@@ -85,7 +85,9 @@ include "../includes/navbar.php";
                                 <td>REG-2026-0912</td>
                                 <td><span class="badge-success">Terbit</span></td>
                                 <td style="text-align: center;">
-                                    <button class="btn-primary-custom" style="height:32px; padding: 0 12px; font-size:0.8rem;"><i class="bi bi-download"></i> PDF</button>
+                                    <button class="btn-primary-custom"
+                                        style="height:32px; padding: 0 12px; font-size:0.8rem;"><i
+                                            class="bi bi-download"></i> PDF</button>
                                 </td>
                             </tr>
                             <tr>
@@ -108,7 +110,8 @@ include "../includes/navbar.php";
         <div class="col-lg-4 col-12">
             <div class="card-box">
                 <h5 class="mb-4 fw-bold">Hubungi Support Aksara</h5>
-                <p class="text-muted fs-7">Membutuhkan bantuan teknis atau informasi mengenai pengajuan layanan sertifikasi?</p>
+                <p class="text-muted fs-7">Membutuhkan bantuan teknis atau informasi mengenai pengajuan layanan
+                    sertifikasi?</p>
                 <button class="btn-primary-custom w-100">
                     <i class="bi bi-chat-right-text-fill"></i> Buka Chat Support
                 </button>

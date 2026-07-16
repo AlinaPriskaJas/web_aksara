@@ -3,7 +3,7 @@
 $page_title = "Security Audit Log";
 include "../includes/header.php";
 include "../includes/sidebar.php";
-include "../includes/navbar.php";
+include "../includes/topbar.php";
 ?>
 
 <main class="main-content">
@@ -16,7 +16,8 @@ include "../includes/navbar.php";
                 Halaman ini memuat master layout yang konsisten untuk <strong>PT Aksara Riksa Perdana</strong>.
             </div>
         </div>
-        <p class="text-secondary mb-0">Silakan kembangkan fungsionalitas halaman ini di file <code>it/keamanan.php</code> sesuai dengan kebutuhan modul.</p>
+        <p class="text-secondary mb-0">Silakan kembangkan fungsionalitas halaman ini di file
+            <code>it/keamanan.php</code> sesuai dengan kebutuhan modul.</p>
     </div>
 </main>
 
