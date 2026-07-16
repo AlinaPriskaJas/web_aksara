@@ -1,0 +1,60 @@
+/* assets/css/variables.css */
+
+:root {
+    /* Color Palette */
+    --primary: #1b63c4;
+    --primary-hover: #134fa5;
+    --secondary: #64748b;
+    --secondary-hover: #475569;
+    --success: #2ecc71;
+    --success-hover: #27ae60;
+    --danger: #e74c3c;
+    --danger-hover: #c0392b;
+    --warning: #f1c40f;
+    --warning-hover: #d68910;
+    
+    /* Layout Backgrounds & Borders */
+    --bg-body: #f8fafc;
+    --card-bg: #ffffff;
+    --border-color: #e2e8f0;
+    
+    /* Typography Colors */
+    --text-primary: #1e293b;
+    --text-secondary: #64748b;
+    --text-light: #94a3b8;
+    
+    /* Sidebar Specific (Dark Theme) */
+    --sidebar-bg: #1A6B3C;
+    --sidebar-color: #FFFFFF;
+    --sidebar-hover-bg: rgba(255, 255, 255, 0.08);
+    --sidebar-hover-color: #f8fafc;
+    --sidebar-active-color: #FFFFFF; /* Warna hijau terang untuk menu aktif */
+    --sidebar-active-bg: rgba(46, 204, 113, 0.1); /* Background transparan hijau terang */
+    --sidebar-border: #1e293b;
+
+    /* Header / Topbar Specific */
+    --header-bg: #ffffff;
+    --header-color: #1e293b;
+    --header-border: #f1f5f9;
+    
+    /* Hover Effects */
+    --hover-overlay: rgba(0, 0, 0, 0.02);
+    
+    /* Dimensions & Spacing */
+    --radius: 12px;
+    --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+    --spacing: 20px;
+    --margin: 20px;
+    --padding: 20px;
+    --btn-height: 42px;
+    --input-height: 42px;
+    --header-height: 70px;
+    --sidebar-width: 280px;
+    --sidebar-width-tablet: 240px;
+    
+    /* Animation Speed */
+    --transition: 0.2s ease;
+    
+    /* Typography Font (Must be Arial ONLY) */
+    --font-family: Arial, Helvetica, sans-serif;
+}

@@ -1,0 +1,388 @@
+/* assets/css/components.css */
+
+/* Reusable Card */
+.card-box {
+    background-color: var(--card-bg);
+    border-radius: var(--radius);
+    padding: var(--padding);
+    box-shadow: var(--shadow);
+    border: 1px solid var(--border-color);
+    margin-bottom: var(--margin);
+    transition: transform var(--transition), box-shadow var(--transition);
+}
+
+.card-box:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+/* Stat Card */
+.stat-card {
+    background-color: var(--card-bg);
+    border-radius: var(--radius);
+    padding: 24px;
+    box-shadow: var(--shadow);
+    border: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    transition: transform var(--transition), box-shadow var(--transition);
+    height: 110px;
+}
+
+.stat-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+.stat-card-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.stat-card-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+}
+
+.stat-card-value {
+    font-size: 1.75rem;
+    font-weight: bold;
+    color: var(--text-primary);
+    line-height: 1;
+}
+
+.stat-card-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    background-color: rgba(27, 99, 196, 0.1);
+    color: var(--primary);
+}
+
+.stat-card-icon.success {
+    background-color: rgba(46, 204, 113, 0.1);
+    color: var(--success);
+}
+
+.stat-card-icon.danger {
+    background-color: rgba(231, 76, 60, 0.1);
+    color: var(--danger);
+}
+
+.stat-card-icon.warning {
+    background-color: rgba(241, 196, 15, 0.1);
+    color: var(--warning);
+}
+
+/* Custom Buttons */
+.btn-primary-custom, 
+.btn-secondary-custom, 
+.btn-danger-custom {
+    height: var(--btn-height);
+    padding: 0 20px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    border-radius: var(--radius);
+    border: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: all var(--transition);
+    text-decoration: none !important;
+}
+
+.btn-primary-custom {
+    background-color: var(--primary);
+    color: #ffffff;
+}
+
+.btn-primary-custom:hover {
+    background-color: var(--primary-hover);
+    color: #ffffff;
+    transform: translateY(-1px);
+}
+
+.btn-secondary-custom {
+    background-color: var(--secondary);
+    color: #ffffff;
+}
+
+.btn-secondary-custom:hover {
+    background-color: var(--secondary-hover);
+    color: #ffffff;
+    transform: translateY(-1px);
+}
+
+.btn-danger-custom {
+    background-color: var(--danger);
+    color: #ffffff;
+}
+
+.btn-danger-custom:hover {
+    background-color: var(--danger-hover);
+    color: #ffffff;
+    transform: translateY(-1px);
+}
+
+/* Custom Forms */
+.form-control-custom,
+.select-custom,
+.textarea-custom {
+    width: 100%;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    padding: 0 16px;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    background-color: #ffffff;
+    outline: none;
+    transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+.form-control-custom,
+.select-custom {
+    height: var(--input-height);
+}
+
+.textarea-custom {
+    padding: 12px 16px;
+    min-height: 100px;
+    resize: vertical;
+}
+
+.form-control-custom:focus,
+.select-custom:focus,
+.textarea-custom:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(27, 99, 196, 0.15);
+}
+
+/* Custom Search Box */
+.search-box-container {
+    position: relative;
+    width: 100%;
+}
+
+.search-box-container i {
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-light);
+    font-size: 1rem;
+    pointer-events: none;
+}
+
+.search-box {
+    width: 100%;
+    height: var(--input-height);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    padding-left: 40px;
+    padding-right: 16px;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    background-color: #ffffff;
+    outline: none;
+    transition: all var(--transition);
+}
+
+.search-box:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(27, 99, 196, 0.15);
+}
+
+/* Custom Badges */
+.badge-success,
+.badge-danger,
+.badge-warning {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border-radius: 20px;
+    text-transform: capitalize;
+}
+
+.badge-success {
+    background-color: rgba(46, 204, 113, 0.15);
+    color: var(--success);
+}
+
+.badge-danger {
+    background-color: rgba(231, 76, 60, 0.15);
+    color: var(--danger);
+}
+
+.badge-warning {
+    background-color: rgba(241, 196, 15, 0.15);
+    color: var(--warning);
+}
+
+/* Custom Alerts */
+.alert-success-custom,
+.alert-danger-custom {
+    padding: 16px 20px;
+    border-radius: var(--radius);
+    margin-bottom: var(--margin);
+    border: 1px solid transparent;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    font-size: 0.9rem;
+}
+
+.alert-success-custom {
+    background-color: rgba(46, 204, 113, 0.1);
+    border-color: rgba(46, 204, 113, 0.2);
+    color: #27ae60;
+}
+
+.alert-danger-custom {
+    background-color: rgba(231, 76, 60, 0.1);
+    border-color: rgba(231, 76, 60, 0.2);
+    color: #c0392b;
+}
+
+/* Custom Tables */
+.table-responsive-custom {
+    width: 100%;
+    overflow-x: auto;
+    border-radius: var(--radius);
+    border: 1px solid var(--border-color);
+    background-color: var(--card-bg);
+}
+
+.table-custom {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 0;
+    font-size: 0.9rem;
+}
+
+.table-custom th {
+    background-color: #f1f5f9;
+    color: var(--text-primary);
+    font-weight: 600;
+    padding: 14px 18px;
+    text-align: left;
+    white-space: nowrap;
+    border-bottom: 2px solid var(--border-color);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.table-custom td {
+    padding: 14px 18px;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border-color);
+    vertical-align: middle;
+}
+
+/* Hover Row */
+.table-custom tbody tr:hover td {
+    background-color: #f8fafc;
+    color: var(--text-primary);
+    transition: background-color var(--transition);
+}
+
+/* Zebra Row style */
+.table-custom tbody tr:nth-of-type(even) td {
+    background-color: rgba(241, 245, 249, 0.3);
+}
+
+.table-custom tbody tr:nth-of-type(even):hover td {
+    background-color: #f8fafc;
+}
+
+/* Rounded corners for table */
+.table-responsive-custom .table-custom tr:last-child td {
+    border-bottom: none;
+}
+
+/* Custom Pagination */
+.pagination-custom {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--padding) 0;
+}
+
+.pagination-pages {
+    display: flex;
+    gap: 6px;
+    list-style: none;
+    margin-bottom: 0;
+}
+
+.pagination-item a, 
+.pagination-item span {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 38px;
+    height: 38px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-weight: 500;
+    font-size: 0.85rem;
+    transition: all var(--transition);
+}
+
+.pagination-item a:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+    background-color: rgba(27, 99, 196, 0.05);
+}
+
+.pagination-item.active span {
+    background-color: var(--primary);
+    color: #ffffff;
+    border-color: var(--primary);
+}
+
+.pagination-item.disabled span {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Modal Custom styling */
+.modal-custom .modal-content {
+    border-radius: var(--radius);
+    border: none;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+.modal-custom .modal-header {
+    border-bottom: 1px solid var(--border-color);
+    padding: 20px;
+}
+
+.modal-custom .modal-title {
+    font-weight: bold;
+    color: var(--text-primary);
+}
+
+.modal-custom .modal-body {
+    padding: 24px;
+}
+
+.modal-custom .modal-footer {
+    border-top: 1px solid var(--border-color);
+    padding: 16px 20px;
+}
