@@ -4311,7 +4311,7 @@ button:focus-visible,
 }
 
 .login-bg-blobs{
-    position:absolute;
+    position:fixed;
     inset:-15%;
     z-index:0;
     filter:blur(70px);
@@ -4593,8 +4593,10 @@ button:focus-visible,
 =========================================*/
 
 .login-page.registration-page{
-    overflow-y: auto;
-    align-items: flex-start;
+    min-height:100vh;
+    height:auto;
+    overflow-y:visible;   
+    align-items:flex-start;
 }
 
 .login-wrapper.registration-wrapper {
@@ -4737,9 +4739,3 @@ button:focus-visible,
 }
 }
 
-body.registration-page{
-    height:100vh;
-    max-height:100vh;
-    overflow-y:auto;
-    overscroll-behavior-y: contain;
-}
