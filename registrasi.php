@@ -1,3 +1,80 @@
+<?php
+session_start();
+require_once "config/koneksi.php";
+
+$error = "";
+
+// Simpan input lama supaya form tidak kosong ulang kalau validasi gagal
+$old_role         = $_POST['role'] ?? '';
+$old_nama_lengkap = $_POST['nama_lengkap'] ?? '';
+$old_email        = $_POST['email'] ?? '';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+
+    $role                = trim($_POST['role'] ?? '');
+    $nama_lengkap        = trim($_POST['nama_lengkap'] ?? '');
+    $email               = trim($_POST['email'] ?? '');
+    $password            = $_POST['password'] ?? '';
+    $konfirmasi_password = $_POST['konfirmasi_password'] ?? '';
+
+    $roles_valid = ['admin', 'it', 'client', 'ahli_k3', 'direksi'];
+
+    if ($role === '' || $nama_lengkap === '' || $email === '' || $password === '' || $konfirmasi_password === '') {
+
+        $error = "Semua field wajib diisi.";
+
+    } elseif (!in_array($role, $roles_valid, true)) {
+
+        $error = "Peran akun tidak valid.";
+
+    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+
+        $error = "Format email tidak valid.";
+
+    } elseif ($password !== $konfirmasi_password) {
+
+        $error = "Konfirmasi password tidak sama.";
+
+    } else {
+
+        // ========== CEK EMAIL ==========
+        $stmt = $conn->prepare("SELECT id FROM Users WHERE email = ?");
+        $stmt->execute([$email]);
+
+        if ($stmt->rowCount() > 0) {
+
+            $error = "Email sudah terdaftar.";
+
+        } else {
+
+            // ========== INSERT DATABASE ==========
+            $password_hash = password_hash($password, PASSWORD_DEFAULT);
+
+            try {
+
+                $stmt = $conn->prepare("
+                    INSERT INTO Users
+                    (nama_lengkap, email, password, role)
+                    VALUES (?, ?, ?, ?)
+                ");
+
+                $stmt->execute([
+                    $nama_lengkap,
+                    $email,
+                    $password_hash,
+                    $role
+                ]);
+
+                header("Location: login.php?registrasi=sukses");
+                exit;
+
+            } catch (PDOException $e) {
+                $error = "Registrasi gagal, silakan coba lagi.";
+            }
+        }
+    }
+}
+?>
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -29,82 +106,38 @@
         </div>
 
         <div class="login-card">
-            <form action="proses_registrasi.php" method="POST">
 
-                <!-- PERAN AKUN -->
-                <div class="role-selection-group">
+            <?php if ($error !== ""): ?>
+                <div class="alert alert-danger py-2 px-3 mb-3" role="alert" style="font-size: 0.9rem;">
+                    <?= htmlspecialchars($error) ?>
+                </div>
+            <?php endif; ?>
+
+            <form action="registrasi.php" method="POST">
+
+          <!-- PERAN AKUN -->
+                <div class="form-field-group">
                     <label class="input-label">Peran Akun</label>
-                    <div class="role-options-grid">
 
-                        <label class="role-option">
-                            <input type="checkbox" name="roles[]" value="Ahli K3">
-                            <span class="role-box">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" viewBox="0 0 16 16" class="checked-icon">
-                                    <path d="M14 1a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h12zM2 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2H2z"/>
-                                    <path d="M10.97 4.97a.75.75 0 0 1 1.071 1.05l-3.992 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l2.094 2.093 3.473-4.425a.267.267 0 0 1 .02-.022z"/>
-                                </svg>
-                                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" viewBox="0 0 16 16" class="unchecked-icon">
-                                    <path d="M14 1a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h12zM2 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2H2z"/>
-                                </svg>
-                                <span>Ahli K3</span>
-                            </span>
-                        </label>
+                    <div class="input-group-custom">
 
-                        <label class="role-option">
-                            <input type="checkbox" name="roles[]" value="IT">
-                            <span class="role-box">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" viewBox="0 0 16 16" class="checked-icon">
-                                    <path d="M14 1a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h12zM2 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2H2z"/>
-                                    <path d="M10.97 4.97a.75.75 0 0 1 1.071 1.05l-3.992 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l2.094 2.093 3.473-4.425a.267.267 0 0 1 .02-.022z"/>
-                                </svg>
-                                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" viewBox="0 0 16 16" class="unchecked-icon">
-                                    <path d="M14 1a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h12zM2 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2H2z"/>
-                                </svg>
-                                <span>IT</span>
-                            </span>
-                        </label>
+                        <span>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+                                fill="currentColor" viewBox="0 0 16 16">
+                                <path d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm2 1H6a4 4 0 0 0-4
+                                4v1a1 1 0 0 0 1 1h10a1 1 0 0 0
+                                1-1v-1a4 4 0 0 0-4-4z"/>
+                            </svg>
+                        </span>
 
-                        <label class="role-option">
-                            <input type="checkbox" name="roles[]" value="Client">
-                            <span class="role-box">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" viewBox="0 0 16 16" class="checked-icon">
-                                    <path d="M14 1a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h12zM2 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2H2z"/>
-                                    <path d="M10.97 4.97a.75.75 0 0 1 1.071 1.05l-3.992 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l2.094 2.093 3.473-4.425a.267.267 0 0 1 .02-.022z"/>
-                                </svg>
-                                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" viewBox="0 0 16 16" class="unchecked-icon">
-                                    <path d="M14 1a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h12zM2 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2H2z"/>
-                                </svg>
-                                <span>Client</span>
-                            </span>
-                        </label>
-
-                        <label class="role-option">
-                            <input type="checkbox" name="roles[]" value="Direksi">
-                            <span class="role-box">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" viewBox="0 0 16 16" class="checked-icon">
-                                    <path d="M14 1a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h12zM2 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2H2z"/>
-                                    <path d="M10.97 4.97a.75.75 0 0 1 1.071 1.05l-3.992 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l2.094 2.093 3.473-4.425a.267.267 0 0 1 .02-.022z"/>
-                                </svg>
-                                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" viewBox="0 0 16 16" class="unchecked-icon">
-                                    <path d="M14 1a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h12zM2 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2H2z"/>
-                                </svg>
-                                <span>Direksi</span>
-                            </span>
-                        </label>
-
-                        <label class="role-option">
-                            <input type="checkbox" name="roles[]" value="Admin">
-                            <span class="role-box">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" viewBox="0 0 16 16" class="checked-icon">
-                                    <path d="M14 1a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h12zM2 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2H2z"/>
-                                    <path d="M10.97 4.97a.75.75 0 0 1 1.071 1.05l-3.992 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l2.094 2.093 3.473-4.425a.267.267 0 0 1 .02-.022z"/>
-                                </svg>
-                                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" viewBox="0 0 16 16" class="unchecked-icon">
-                                    <path d="M14 1a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h12zM2 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2H2z"/>
-                                </svg>
-                                <span>Admin</span>
-                            </span>
-                        </label>
+                        <select name="role" required>
+                            <option value="" disabled <?= $old_role === '' ? 'selected' : '' ?>>Pilih Peran Akun</option>
+                            <option value="admin" <?= $old_role === 'admin' ? 'selected' : '' ?>>Admin</option>
+                            <option value="it" <?= $old_role === 'it' ? 'selected' : '' ?>>IT</option>
+                            <option value="client" <?= $old_role === 'client' ? 'selected' : '' ?>>Client</option>
+                            <option value="ahli_k3" <?= $old_role === 'ahli_k3' ? 'selected' : '' ?>>Ahli K3</option>
+                            <option value="direksi" <?= $old_role === 'direksi' ? 'selected' : '' ?>>Direksi</option>
+                        </select>
 
                     </div>
                 </div>
@@ -118,7 +151,8 @@
                                 <path d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm2 1H6a4 4 0 0 0-4 4v1a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-1a4 4 0 0 0-4-4z"/>
                             </svg>
                         </span>
-                        <input type="text" name="nama_lengkap" placeholder="Masukkan nama lengkap" required>
+                        <input type="text" name="nama_lengkap" placeholder="Masukkan nama lengkap" required
+                            value="<?= htmlspecialchars($old_nama_lengkap) ?>">
                     </div>
                 </div>
 
@@ -131,7 +165,8 @@
                                 <path d="M0 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V4zm2-1a1 1 0 0 0-1 1v.217l7 4.2 7-4.2V4a1 1 0 0 0-1-1H2zm13 2.383-4.708 2.825L15 11.105V5.383zm-.034 6.876-5.64-3.471L8 9.583l-1.326-.795-5.64 3.47A1 1 0 0 0 2 13h12a1 1 0 0 0 .966-.741zM1 11.105l4.708-2.897L1 5.383v5.722z"/>
                             </svg>
                         </span>
-                        <input type="email" name="email" placeholder="Masukkan email karyawan" required>
+                        <input type="email" name="email" placeholder="Masukkan email karyawan" required
+                            value="<?= htmlspecialchars($old_email) ?>">
                     </div>
                 </div>
 

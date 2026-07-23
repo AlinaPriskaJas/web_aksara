@@ -1,6 +1,15 @@
 <?php
 // includes/topbar.php
+require_once __DIR__ . '/avatar_helper.php';
+
+$topbar_nama = ($_SESSION['role'] ?? '') === 'client' && !empty($_SESSION['nama_perusahaan'])
+    ? $_SESSION['nama_perusahaan']
+    : ($_SESSION['nama_lengkap'] ?? 'Pengguna');
+
+$topbar_foto = $_SESSION['foto_profil'] ?? null;
+$topbar_base = $base_url ?? './';
 ?>
+
 <!-- Main Wrapper for Content and Header -->
 <div id="main-wrapper">
 <!-- Topbar Header -->
@@ -40,7 +49,7 @@
 
         <!-- User Avatar -->
         <a href="profile.php">
-            <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=256&auto=format&fit=crop" alt="Avatar" class="topbar-avatar">
+            <?= arp_avatar_html($topbar_nama, $topbar_foto, $topbar_base, 40, 'topbar-avatar') ?>
         </a>
     </div>
 </header>

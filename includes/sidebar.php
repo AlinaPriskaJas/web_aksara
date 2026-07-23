@@ -13,7 +13,6 @@ switch ($current_role) {
         $menus = [
             ['label' => 'Dashboard', 'url' => 'dashboard.php', 'icon' => 'bi-speedometer2'],
             ['label' => 'Approval', 'url' => 'approval.php', 'icon' => 'bi-check-circle'],
-            ['label' => 'Database', 'url' => 'database.php', 'icon' => 'bi-database'],
             ['label' => 'Data Klien', 'url' => 'data_klien.php', 'icon' => 'bi-people'],
             ['label' => 'Digital Sign', 'url' => 'digital.php', 'icon' => 'bi-pencil-square'],
             ['label' => 'Print Center', 'url' => 'print.php', 'icon' => 'bi-printer'],
@@ -31,21 +30,20 @@ switch ($current_role) {
         ];
         break;
 
-    case 'direksi':
-        $role_display_name = "Direktur Utama";
-        $menus = [
-            ['label' => 'Dashboard', 'url' => 'dashboard.php', 'icon' => 'bi-speedometer2'],
-            ['label' => 'Approval Center', 'url' => 'approval.php', 'icon' => 'bi-check-circle'],
-            ['label' => 'Monitoring', 'url' => 'monitoring.php', 'icon' => 'bi-tv'],
-            ['label' => 'Laporan', 'url' => 'laporan.php', 'icon' => 'bi-file-earmark-bar-graph'],
-            ['label' => 'Insiden', 'url' => 'insiden.php', 'icon' => 'bi-exclamation-triangle'],
-            ['label' => 'Dokumen Digital', 'url' => 'digital.php', 'icon' => 'bi-file-pdf'],
-            ['label' => 'Print Center', 'url' => 'print.php', 'icon' => 'bi-printer'],
-            ['label' => 'Surat', 'url' => 'surat.php', 'icon' => 'bi-envelope'],
-            ['label' => 'Reimburse', 'url' => 'reimburse.php', 'icon' => 'bi-cash-coin'],
-            ['label' => 'Absensi', 'url' => 'absensi.php', 'icon' => 'bi-calendar-check'],
-            ['label' => 'Cuti', 'url' => 'cuti.php', 'icon' => 'bi-calendar-x'],
-            ['label' => 'Profile', 'url' => 'profile.php', 'icon' => 'bi-person']
+        case 'direksi':
+            $role_display_name = "Direktur Utama";
+            $menus = [
+                ['label' => 'Dashboard', 'url' => 'dashboard.php', 'icon' => 'bi-speedometer2'],
+                ['label' => 'Approval Center', 'url' => 'approval.php', 'icon' => 'bi-check-circle'],
+                ['label' => 'Monitoring', 'url' => 'monitoring.php', 'icon' => 'bi-tv'],
+                ['label' => 'Absensi', 'url' => 'absensi.php', 'icon' => 'bi-calendar-check'],
+                ['label' => 'Laporan', 'url' => 'laporan.php', 'icon' => 'bi-file-earmark-bar-graph'],
+                ['label' => 'Dokumen Digital', 'url' => 'digital.php', 'icon' => 'bi-file-pdf'],
+                ['label' => 'Print Center', 'url' => 'print.php', 'icon' => 'bi-printer'],
+                ['label' => 'Surat', 'url' => 'surat.php', 'icon' => 'bi-envelope'],
+                ['label' => 'Cuti', 'url' => 'cuti.php', 'icon' => 'bi-calendar-x'],
+                ['label' => 'Insiden', 'url' => 'insiden.php', 'icon' => 'bi-exclamation-triangle'],
+                ['label' => 'Profile', 'url' => 'profile.php', 'icon' => 'bi-person']
         ];
         break;
 
@@ -88,17 +86,17 @@ switch ($current_role) {
         break;
 
 
-    case 'client':
-        $role_display_name = "Corporate Client";
-        $menus = [
-            ['label' => 'Dashboard', 'url' => 'dashboard.php', 'icon' => 'bi-speedometer2'],
-            ['label' => 'Pengajuan Pemeriksaan', 'url' => 'pengajuan.php', 'icon' => 'bi-file-earmark-plus'],
-            ['label' => 'Status Pemeriksaan', 'url' => 'status.php', 'icon' => 'bi-hourglass-split'],
-            ['label' => 'Riwayat Pemeriksaan', 'url' => 'riwayat.php', 'icon' => 'bi-clock-history'],
-            ['label' => 'Suket K3', 'url' => 'suket.php', 'icon' => 'bi-file-earmark-text'],
-            ['label' => 'Profile', 'url' => 'profile.php', 'icon' => 'bi-person']
-        ];
-        break;
+        case 'client':
+            $role_display_name = "Corporate Client";
+            $menus = [
+                ['label' => 'Dashboard', 'url' => 'dashboard.php', 'icon' => 'bi-speedometer2'],
+                ['label' => 'Pengajuan Pemeriksaan', 'url' => 'pengajuan.php', 'icon' => 'bi-file-earmark-plus'],
+                ['label' => 'Status Pemeriksaan', 'url' => 'status.php', 'icon' => 'bi-hourglass-split'],
+                ['label' => 'Riwayat Pemeriksaan', 'url' => 'riwayat.php', 'icon' => 'bi-clock-history'],
+                ['label' => 'Suket K3', 'url' => 'suket.php', 'icon' => 'bi-file-earmark-text'],
+                ['label' => 'Profile', 'url' => 'profile.php', 'icon' => 'bi-person']
+            ];
+            break;
 
     default:
         $role_display_name = "Guest User";
@@ -108,18 +106,10 @@ switch ($current_role) {
         break;
 }
 
-// User Info Mockups
-$user_name = "Budi Hartono";
-if ($current_role == 'admin')
-    $user_name = "Aditya Pratama";
-if ($current_role == 'direksi')
-    $user_name = "Rian Aksara";
-if ($current_role == 'it')
-    $user_name = "Daffa IT Tech";
-if ($current_role == 'ahlik3')
-    $user_name = "Hendra K3";
-if ($current_role == 'client')
-    $user_name = "PT Mitra Sejahtera";
+
+// Nama user: ambil dari session hasil login (sama seperti yang di-set proses_login.php).
+// Fallback ke nama contoh hanya untuk jaga-jaga kalau sidebar ke-load tanpa session aktif.
+$user_name = $_SESSION['nama_lengkap'] ?? "Budi Hartono";
 ?>
 <!-- Sidebar -->
 <aside id="sidebar">
@@ -150,8 +140,8 @@ if ($current_role == 'client')
     <!-- Sidebar User Footer -->
     <div class="sidebar-user">
         <div class="sidebar-user-info">
-            <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=256&auto=format&fit=crop"
-                alt="User Avatar" class="sidebar-user-avatar">
+           <!-- Navigation Menu  <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=256&auto=format&fit=crop"
+                alt="User Avatar" class="sidebar-user-avatar"> !-- Navigation Menu -->
             <div class="sidebar-user-detail">
                 <div class="sidebar-user-name" title="<?php echo htmlspecialchars($user_name); ?>">
                     <?php echo htmlspecialchars($user_name); ?>

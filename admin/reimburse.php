@@ -18,6 +18,7 @@ include "../includes/topbar.php";
 $current_user_id = $_SESSION['user_id'];
 $success_msg = "";
 $error_msg = "";
+$active_tab = 'tabPanelReimburseSaya';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
@@ -69,6 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // ===== Aksi: Proses Pengajuan Karyawan (Setujui/Tolak/Bayarkan) =====
     } elseif (isset($_POST['action']) && $_POST['action'] === 'process') {
+        $active_tab = 'tabPanelReimburseKaryawan';
         $reimburse_id = $_POST['reimburse_id'];
         $status = $_POST['status']; // Disetujui, Ditolak, Dibayarkan
 
@@ -202,8 +204,25 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
         </div>
     </div>
 
-    <!-- Card 1: Riwayat Pengajuan Reimbursement Anda -->
-    <div class="card-box mb-4">
+    <!-- Tab Navigation -->
+    <div class="arp-tab-group">
+        <div class="arp-tab-nav">
+            <button type="button" class="arp-tab-btn<?= $active_tab === 'tabPanelReimburseSaya' ? ' active' : '' ?>"
+                data-tab-target="tabPanelReimburseSaya" onclick="switchTab('tabPanelReimburseSaya', this)">
+                <i class="bi bi-receipt me-1"></i> Reimbursement Pribadi
+            </button>
+            <button type="button"
+                class="arp-tab-btn<?= $active_tab === 'tabPanelReimburseKaryawan' ? ' active' : '' ?>"
+                data-tab-target="tabPanelReimburseKaryawan" onclick="switchTab('tabPanelReimburseKaryawan', this)">
+                <i class="bi bi-people me-1"></i> Reimburse Karyawan
+            </button>
+        </div>
+
+    <div class="row g-4">
+        <!-- Card 1: Riwayat Pengajuan Reimbursement Anda -->
+        <div class="col-12 arp-tab-panel" id="tabPanelReimburseSaya"
+            <?= $active_tab === 'tabPanelReimburseSaya' ? '' : 'style="display:none;"' ?>>
+        <div class="card-box mb-4">
         <div class="table-toolbar">
             <h5 class="table-toolbar-title fw-bold">Riwayat Pengajuan Reimbursment Anda</h5>
             <div class="table-toolbar-actions">
@@ -275,11 +294,12 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
             </table>
         </div>
         <div class="pagination-custom" id="pagination-tabelReimburseSaya"></div>
-    </div>
+        </div>
+        </div>
 
-    <!-- Card 2: Daftar Pengajuan Reimburse Karyawan -->
-    <div class="row g-4">
-        <div class="col-12">
+        <!-- Card 2: Daftar Pengajuan Reimburse Karyawan -->
+        <div class="col-12 arp-tab-panel" id="tabPanelReimburseKaryawan"
+            <?= $active_tab === 'tabPanelReimburseKaryawan' ? '' : 'style="display:none;"' ?>>
             <div class="card-box">
                 <div class="table-toolbar">
                     <h5 class="table-toolbar-title fw-bold">Daftar Pengajuan Reimburse Karyawan</h5>
@@ -385,6 +405,7 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
                 <div class="pagination-custom" id="pagination-tabelReimburse"></div>
             </div>
         </div>
+    </div>
     </div>
 </main>
 

@@ -1,24 +1,470 @@
 <?php
 // admin/data_klien.php
+session_start();
+require_once "../config/koneksi.php";
+
+// TODO: ganti dengan user_id dari sesi login sebenarnya (proses_login.php belum tersambung penuh).
+$admin_id = $_SESSION['user_id'] ?? 1;
+
 $page_title = "Data Klien";
+$flash = null;
+
+// ================== PROSES: TAUTKAN KE DATA_KLIEN YANG SUDAH ADA ==================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['aksi'] === 'tautkan_existing') {
+    $user_id  = (int) ($_POST['user_id'] ?? 0);
+    $klien_id = (int) ($_POST['klien_id'] ?? 0);
+
+    if (!$user_id || !$klien_id) {
+        $flash = ['type' => 'danger', 'message' => 'Pilih perusahaan yang ingin ditautkan.'];
+    } else {
+        try {
+            // Guard: hanya tautkan kalau baris Data_Klien itu memang belum ditautkan ke user manapun
+            $stmt = $conn->prepare("UPDATE Data_Klien SET user_id = :user_id WHERE id = :klien_id AND user_id IS NULL");
+            $stmt->execute([':user_id' => $user_id, ':klien_id' => $klien_id]);
+
+            if ($stmt->rowCount() > 0) {
+                $flash = ['type' => 'success', 'message' => 'Akun client berhasil ditautkan ke data perusahaan.'];
+            } else {
+                $flash = ['type' => 'danger', 'message' => 'Data perusahaan tersebut sudah ditautkan ke akun lain. Pilih perusahaan lain atau buat baru.'];
+            }
+        } catch (PDOException $e) {
+            $flash = ['type' => 'danger', 'message' => 'Gagal menautkan: ' . $e->getMessage()];
+        }
+    }
+    $_SESSION['data_klien_flash'] = $flash;
+    header("Location: data_klien.php");
+    exit;
+}
+
+// ================== PROSES: BUAT DATA_KLIEN BARU SEKALIGUS TAUTKAN ==================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['aksi'] === 'tautkan_baru') {
+    $user_id         = (int) ($_POST['user_id'] ?? 0);
+    $nama_perusahaan = trim($_POST['nama_perusahaan'] ?? '');
+    $alamat          = trim($_POST['alamat'] ?? '');
+    $pic_nama        = trim($_POST['pic_nama'] ?? '');
+    $pic_whatsapp    = trim($_POST['pic_whatsapp'] ?? '');
+    $pic_email       = trim($_POST['pic_email'] ?? '');
+
+    if (!$user_id || $nama_perusahaan === '') {
+        $flash = ['type' => 'danger', 'message' => 'Nama perusahaan wajib diisi.'];
+    } else {
+        try {
+            $conn->beginTransaction();
+
+            // Generate kode_klien otomatis: KLN-0001, KLN-0002, dst.
+            $stmt = $conn->query("SELECT COUNT(*) FROM Data_Klien");
+            $urutan = (int) $stmt->fetchColumn() + 1;
+            $kode_klien = 'KLN-' . str_pad((string) $urutan, 4, '0', STR_PAD_LEFT);
+
+            // Pastikan kode_klien belum terpakai (jaga-jaga kalau ada penghapusan data sebelumnya)
+            $cekKode = $conn->prepare("SELECT COUNT(*) FROM Data_Klien WHERE kode_klien = :kode");
+            $cekKode->execute([':kode' => $kode_klien]);
+            while ((int) $cekKode->fetchColumn() > 0) {
+                $urutan++;
+                $kode_klien = 'KLN-' . str_pad((string) $urutan, 4, '0', STR_PAD_LEFT);
+                $cekKode->execute([':kode' => $kode_klien]);
+            }
+
+            $stmt = $conn->prepare("
+                INSERT INTO Data_Klien (kode_klien, nama_perusahaan, alamat, status, pic_nama, pic_whatsapp, pic_email, user_id)
+                VALUES (:kode_klien, :nama_perusahaan, :alamat, 'Aktif', :pic_nama, :pic_whatsapp, :pic_email, :user_id)
+            ");
+            $stmt->execute([
+                ':kode_klien'      => $kode_klien,
+                ':nama_perusahaan' => $nama_perusahaan,
+                ':alamat'          => $alamat,
+                ':pic_nama'        => $pic_nama,
+                ':pic_whatsapp'    => $pic_whatsapp,
+                ':pic_email'       => $pic_email,
+                ':user_id'         => $user_id,
+            ]);
+
+            $conn->commit();
+            $flash = ['type' => 'success', 'message' => "Data perusahaan baru ($kode_klien) berhasil dibuat dan ditautkan ke akun client."];
+        } catch (PDOException $e) {
+            $conn->rollBack();
+            $flash = ['type' => 'danger', 'message' => 'Gagal membuat data perusahaan: ' . $e->getMessage()];
+        }
+    }
+    $_SESSION['data_klien_flash'] = $flash;
+    header("Location: data_klien.php");
+    exit;
+}
+
+// ================== PROSES: EDIT DATA PERUSAHAAN YANG SUDAH DITAUTKAN ==================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['aksi'] === 'edit_klien') {
+    $klien_id        = (int) ($_POST['klien_id'] ?? 0);
+    $nama_perusahaan = trim($_POST['nama_perusahaan'] ?? '');
+    $alamat          = trim($_POST['alamat'] ?? '');
+    $status          = $_POST['status'] ?? 'Aktif';
+    $pic_nama        = trim($_POST['pic_nama'] ?? '');
+    $pic_whatsapp    = trim($_POST['pic_whatsapp'] ?? '');
+    $pic_email       = trim($_POST['pic_email'] ?? '');
+
+    if (!$klien_id || $nama_perusahaan === '' || !in_array($status, ['Aktif', 'Non-aktif'], true)) {
+        $flash = ['type' => 'danger', 'message' => 'Data tidak valid.'];
+    } else {
+        try {
+            $stmt = $conn->prepare("
+                UPDATE Data_Klien
+                SET nama_perusahaan = :nama_perusahaan, alamat = :alamat, status = :status,
+                    pic_nama = :pic_nama, pic_whatsapp = :pic_whatsapp, pic_email = :pic_email
+                WHERE id = :id
+            ");
+            $stmt->execute([
+                ':nama_perusahaan' => $nama_perusahaan,
+                ':alamat'          => $alamat,
+                ':status'          => $status,
+                ':pic_nama'        => $pic_nama,
+                ':pic_whatsapp'    => $pic_whatsapp,
+                ':pic_email'       => $pic_email,
+                ':id'              => $klien_id,
+            ]);
+            $flash = ['type' => 'success', 'message' => 'Data perusahaan berhasil diperbarui.'];
+        } catch (PDOException $e) {
+            $flash = ['type' => 'danger', 'message' => 'Gagal memperbarui data: ' . $e->getMessage()];
+        }
+    }
+    $_SESSION['data_klien_flash'] = $flash;
+    header("Location: data_klien.php");
+    exit;
+}
+
+$flash = $_SESSION['data_klien_flash'] ?? $flash;
+unset($_SESSION['data_klien_flash']);
+
+// ================== DAFTAR SEMUA AKUN CLIENT (Users role='client') + STATUS TAUTAN ==================
+$daftar_client = [];
+try {
+    $stmt = $conn->query("
+        SELECT u.id AS user_id, u.nama_lengkap, u.email, u.created_at AS tgl_registrasi,
+               dk.id AS klien_id, dk.kode_klien, dk.nama_perusahaan, dk.alamat, dk.status,
+               dk.pic_nama, dk.pic_whatsapp, dk.pic_email
+        FROM Users u
+        LEFT JOIN Data_Klien dk ON dk.user_id = u.id
+        WHERE u.role = 'client'
+        ORDER BY u.created_at DESC
+    ");
+    $daftar_client = $stmt->fetchAll();
+} catch (PDOException $e) {
+    $daftar_client = [];
+}
+
+$total_client   = count($daftar_client);
+$sudah_tertaut  = 0;
+$belum_tertaut  = 0;
+foreach ($daftar_client as $c) {
+    if ($c['klien_id']) {
+        $sudah_tertaut++;
+    } else {
+        $belum_tertaut++;
+    }
+}
+
+// ================== DAFTAR DATA_KLIEN YANG BELUM PUNYA user_id (untuk opsi "tautkan ke existing") ==================
+$klien_belum_tertaut = [];
+try {
+    $stmt = $conn->query("SELECT id, kode_klien, nama_perusahaan FROM Data_Klien WHERE user_id IS NULL ORDER BY nama_perusahaan ASC");
+    $klien_belum_tertaut = $stmt->fetchAll();
+} catch (PDOException $e) {
+    $klien_belum_tertaut = [];
+}
+
 include "../includes/header.php";
 include "../includes/sidebar.php";
 include "../includes/topbar.php";
 ?>
 
 <main class="main-content">
-    <div class="card-box">
-        <h5 class="fw-bold mb-3"><?= htmlspecialchars($page_title) ?></h5>
-        <div class="alert alert-success-custom mb-3">
-            <i class="bi bi-info-circle-fill fs-5"></i>
-            <div>
-                <strong>Modul Aktif</strong><br>
-                Halaman ini memuat master layout yang konsisten untuk <strong>PT Aksara Riksa Perdana</strong>.
+
+    <?php if ($flash): ?>
+        <div class="alert alert-<?= $flash['type'] === 'success' ? 'success' : 'danger' ?>-custom mb-3">
+            <i class="bi <?= $flash['type'] === 'success' ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill' ?> fs-5"></i>
+            <div><?= htmlspecialchars($flash['message']) ?></div>
+        </div>
+    <?php endif; ?>
+
+    <!-- Ringkasan -->
+    <div class="row g-4 mb-4">
+        <div class="col-xl-4 col-md-6 col-12">
+            <div class="stat-card">
+                <div class="stat-card-info">
+                    <span class="stat-card-title">Total Client Terdaftar</span>
+                    <span class="stat-card-value"><?= $total_client ?></span>
+                </div>
+                <div class="stat-card-icon"><i class="bi bi-people-fill"></i></div>
             </div>
         </div>
-        <p class="text-secondary mb-0">Silakan kembangkan fungsionalitas halaman ini di file <code>admin/data_klien.php</code> sesuai dengan kebutuhan modul.</p>
+        <div class="col-xl-4 col-md-6 col-12">
+            <div class="stat-card">
+                <div class="stat-card-info">
+                    <span class="stat-card-title">Sudah Ditautkan</span>
+                    <span class="stat-card-value"><?= $sudah_tertaut ?></span>
+                </div>
+                <div class="stat-card-icon success"><i class="bi bi-link-45deg"></i></div>
+            </div>
+        </div>
+        <div class="col-xl-4 col-md-6 col-12">
+            <div class="stat-card">
+                <div class="stat-card-info">
+                    <span class="stat-card-title">Belum Ditautkan</span>
+                    <span class="stat-card-value"><?= $belum_tertaut ?></span>
+                </div>
+                <div class="stat-card-icon warning"><i class="bi bi-exclamation-triangle-fill"></i></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabel -->
+    <div class="card-box">
+        <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-3">
+            <h5 class="mb-0 fw-bold">Akun Client Terdaftar</h5>
+        </div>
+
+        <div class="table-responsive-custom">
+            <table class="table-custom">
+                <thead>
+                    <tr>
+                        <th>No</th>
+                        <th>Nama Akun</th>
+                        <th>Email Login</th>
+                        <th>Tgl. Registrasi</th>
+                        <th>Nama Perusahaan</th>
+                        <th>Status Tautan</th>
+                        <th style="text-align: center;">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if (empty($daftar_client)): ?>
+                        <tr>
+                            <td colspan="7" class="text-center text-muted py-4">Belum ada akun client yang registrasi.</td>
+                        </tr>
+                    <?php else: ?>
+                        <?php foreach ($daftar_client as $i => $c): ?>
+                            <tr>
+                                <td><?= $i + 1 ?></td>
+                                <td><?= htmlspecialchars($c['nama_lengkap']) ?></td>
+                                <td><?= htmlspecialchars($c['email']) ?></td>
+                                <td><?= date('d M Y', strtotime($c['tgl_registrasi'])) ?></td>
+                                <td>
+                                    <?php if ($c['klien_id']): ?>
+                                        <?= htmlspecialchars($c['nama_perusahaan']) ?>
+                                        <div class="fs-7 text-muted"><?= htmlspecialchars($c['kode_klien']) ?></div>
+                                    <?php else: ?>
+                                        <span class="text-muted fs-7">-</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <?php if ($c['klien_id']): ?>
+                                        <span class="badge-success">Sudah Ditautkan</span>
+                                    <?php else: ?>
+                                        <span class="badge-warning">Belum Ditautkan</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td style="text-align: center;">
+                                    <?php if ($c['klien_id']): ?>
+                                        <button type="button" class="btn-secondary-custom" style="height:32px; padding:0 12px; font-size:0.8rem;"
+                                            onclick='openEditModal(<?= json_encode([
+                                                "klien_id" => $c["klien_id"],
+                                                "nama_perusahaan" => $c["nama_perusahaan"],
+                                                "alamat" => $c["alamat"],
+                                                "status" => $c["status"],
+                                                "pic_nama" => $c["pic_nama"],
+                                                "pic_whatsapp" => $c["pic_whatsapp"],
+                                                "pic_email" => $c["pic_email"],
+                                            ]) ?>)'>
+                                            <i class="bi bi-pencil-square"></i> Edit
+                                        </button>
+                                    <?php else: ?>
+                                        <button type="button" class="btn-primary-custom" style="height:32px; padding:0 12px; font-size:0.8rem;"
+                                            onclick="openTautkanModal(<?= (int) $c['user_id'] ?>, '<?= htmlspecialchars(addslashes($c['nama_lengkap'])) ?>')">
+                                            <i class="bi bi-link-45deg"></i> Tautkan
+                                        </button>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
     </div>
 </main>
+
+<!-- ===== MODAL: Tautkan Akun Client ===== -->
+<div class="modal fade modal-custom" id="modalTautkan" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Tautkan Akun Client: <span id="tautkanNamaAkun">-</span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <ul class="nav nav-tabs mb-3" id="tabTautkan">
+                    <li class="nav-item">
+                        <button class="nav-link active" type="button" onclick="gantiTabTautkan('existing')" id="btnTabExisting">Pilih Perusahaan yang Sudah Ada</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" type="button" onclick="gantiTabTautkan('baru')" id="btnTabBaru">Buat Perusahaan Baru</button>
+                    </li>
+                </ul>
+
+                <!-- Tab: Tautkan ke Data_Klien existing -->
+                <form action="data_klien.php" method="POST" id="formTautkanExisting">
+                    <input type="hidden" name="aksi" value="tautkan_existing">
+                    <input type="hidden" name="user_id" id="tautkanExistingUserId" value="">
+
+                    <label class="form-label fw-semibold fs-7 mb-2">Pilih Perusahaan</label>
+                    <select class="select-custom mb-3" name="klien_id" required>
+                        <option value="">-- Pilih Perusahaan --</option>
+                        <?php foreach ($klien_belum_tertaut as $k): ?>
+                            <option value="<?= (int) $k['id'] ?>">
+                                <?= htmlspecialchars($k['nama_perusahaan']) ?> (<?= htmlspecialchars($k['kode_klien']) ?>)
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <?php if (empty($klien_belum_tertaut)): ?>
+                        <p class="text-muted fs-7">Tidak ada data perusahaan yang belum ditautkan. Gunakan tab "Buat Perusahaan Baru".</p>
+                    <?php endif; ?>
+
+                    <div class="d-flex gap-2 mt-3">
+                        <button type="button" class="btn-secondary-custom flex-grow-1" data-bs-dismiss="modal">Batal</button>
+                        <button type="submit" class="btn-primary-custom flex-grow-1" <?= empty($klien_belum_tertaut) ? 'disabled' : '' ?>>
+                            <i class="bi bi-link-45deg me-1"></i> Tautkan
+                        </button>
+                    </div>
+                </form>
+
+                <!-- Tab: Buat Data_Klien baru -->
+                <form action="data_klien.php" method="POST" id="formTautkanBaru" style="display:none;">
+                    <input type="hidden" name="aksi" value="tautkan_baru">
+                    <input type="hidden" name="user_id" id="tautkanBaruUserId" value="">
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold fs-7 mb-2">Nama Perusahaan *</label>
+                        <input type="text" name="nama_perusahaan" class="form-control-custom" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold fs-7 mb-2">Alamat</label>
+                        <textarea class="textarea-custom" name="alamat"></textarea>
+                    </div>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold fs-7 mb-2">Nama PIC</label>
+                            <input type="text" name="pic_nama" class="form-control-custom">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold fs-7 mb-2">WhatsApp PIC</label>
+                            <input type="text" name="pic_whatsapp" class="form-control-custom">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold fs-7 mb-2">Email PIC</label>
+                            <input type="email" name="pic_email" class="form-control-custom">
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-2 mt-3">
+                        <button type="button" class="btn-secondary-custom flex-grow-1" data-bs-dismiss="modal">Batal</button>
+                        <button type="submit" class="btn-primary-custom flex-grow-1">
+                            <i class="bi bi-plus-lg me-1"></i> Buat &amp; Tautkan
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== MODAL: Edit Data Perusahaan ===== -->
+<div class="modal fade modal-custom" id="modalEditKlien" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form action="data_klien.php" method="POST">
+                <input type="hidden" name="aksi" value="edit_klien">
+                <input type="hidden" name="klien_id" id="editKlienId" value="">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Data Perusahaan</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold fs-7 mb-2">Nama Perusahaan *</label>
+                        <input type="text" name="nama_perusahaan" id="editNamaPerusahaan" class="form-control-custom" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold fs-7 mb-2">Alamat</label>
+                        <textarea class="textarea-custom" name="alamat" id="editAlamat"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold fs-7 mb-2">Status</label>
+                        <select class="select-custom" name="status" id="editStatus">
+                            <option value="Aktif">Aktif</option>
+                            <option value="Non-aktif">Non-aktif</option>
+                        </select>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold fs-7 mb-2">Nama PIC</label>
+                            <input type="text" name="pic_nama" id="editPicNama" class="form-control-custom">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold fs-7 mb-2">WhatsApp PIC</label>
+                            <input type="text" name="pic_whatsapp" id="editPicWhatsapp" class="form-control-custom">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold fs-7 mb-2">Email PIC</label>
+                            <input type="email" name="pic_email" id="editPicEmail" class="form-control-custom">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary-custom" data-bs-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn-primary-custom">Simpan Perubahan</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function openTautkanModal(userId, namaAkun) {
+    document.getElementById('tautkanNamaAkun').textContent = namaAkun;
+    document.getElementById('tautkanExistingUserId').value = userId;
+    document.getElementById('tautkanBaruUserId').value = userId;
+    gantiTabTautkan('existing');
+    new bootstrap.Modal(document.getElementById('modalTautkan')).show();
+}
+
+function gantiTabTautkan(tab) {
+    const btnExisting = document.getElementById('btnTabExisting');
+    const btnBaru = document.getElementById('btnTabBaru');
+    const formExisting = document.getElementById('formTautkanExisting');
+    const formBaru = document.getElementById('formTautkanBaru');
+
+    if (tab === 'existing') {
+        btnExisting.classList.add('active');
+        btnBaru.classList.remove('active');
+        formExisting.style.display = 'block';
+        formBaru.style.display = 'none';
+    } else {
+        btnBaru.classList.add('active');
+        btnExisting.classList.remove('active');
+        formBaru.style.display = 'block';
+        formExisting.style.display = 'none';
+    }
+}
+
+function openEditModal(data) {
+    document.getElementById('editKlienId').value = data.klien_id;
+    document.getElementById('editNamaPerusahaan').value = data.nama_perusahaan || '';
+    document.getElementById('editAlamat').value = data.alamat || '';
+    document.getElementById('editStatus').value = data.status || 'Aktif';
+    document.getElementById('editPicNama').value = data.pic_nama || '';
+    document.getElementById('editPicWhatsapp').value = data.pic_whatsapp || '';
+    document.getElementById('editPicEmail').value = data.pic_email || '';
+    new bootstrap.Modal(document.getElementById('modalEditKlien')).show();
+}
+</script>
 
 <?php
 include "../includes/footer.php";

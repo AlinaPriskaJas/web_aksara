@@ -1,6 +1,8 @@
 <?php
 // includes/header.php
-
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 // Dynamic Base URL calculation to support deep folder pages (e.g. admin/dashboard.php)
 $current_script = $_SERVER['SCRIPT_NAME'];
 $is_sub = (

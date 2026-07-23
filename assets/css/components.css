@@ -804,4 +804,283 @@
     overflow-x: auto;
 }
 
+.avatar-initial {
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  user-select: none;
+  border: 2px solid var(--border-color);
+  cursor: pointer;
+  flex-shrink: 0;
+  line-height: 1;
+}
 
+.avatar-img {
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--border-color);
+  cursor: pointer;
+  transition: border-color var(--transition);
+  flex-shrink: 0;
+}
+
+.avatar-img:hover {
+  border-color: var(--primary);
+}
+
+.profile-avatar-wrap {
+  position: relative;
+  width: 110px;
+  height: 110px;
+  margin: 0 auto 1rem;
+}
+
+.profile-avatar-wrap .avatar-img,
+.profile-avatar-wrap .avatar-initial {
+  width: 110px !important;
+  height: 110px !important;
+  font-size: 2.2rem !important;
+  cursor: default;
+}
+
+.avatar-camera-btn {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  border: 3px solid var(--card-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 0.95rem;
+  transition: background var(--transition);
+}
+
+.avatar-camera-btn:hover {
+  background: var(--primary-hover);
+}
+
+.avatar-remove-link {
+  display: inline-block;
+  margin-top: 0.25rem;
+  font-size: 0.78rem;
+  color: var(--danger);
+  cursor: pointer;
+  text-decoration: underline;
+  background: none;
+  border: none;
+}
+
+/* Extra Badge Variants */
+.badge-info,
+.badge-secondary {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border-radius: 20px;
+    text-transform: capitalize;
+}
+
+.badge-info {
+    background-color: rgba(27, 99, 196, 0.12);
+    color: var(--primary);
+}
+
+.badge-secondary {
+    background-color: rgba(100, 116, 139, 0.12);
+    color: var(--secondary);
+}
+
+/* Upload Dropzone */
+.upload-dropzone {
+  width: 100%;
+  border: 2px dashed var(--border-color);
+  border-radius: var(--radius);
+  background-color: #f8fafc;
+  padding: 28px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 10px;
+  transition: all var(--transition);
+  cursor: pointer;
+}
+
+.upload-dropzone:hover,
+.upload-dropzone.dragover {
+  border-color: var(--primary);
+  background-color: rgba(27, 99, 196, 0.04);
+}
+
+.upload-dropzone-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background-color: #eef2f7;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+}
+
+.upload-dropzone-filelist {
+  width: 100%;
+  text-align: left;
+  margin-top: 4px;
+}
+
+.upload-dropzone-filelist .file-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background-color: #ffffff;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 0.82rem;
+  color: var(--text-primary);
+  margin-top: 8px;
+}
+
+/* Status Summary List (dot + label + count) */
+.status-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.status-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.88rem;
+}
+
+.status-list-item .status-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.status-list-item .status-value {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+.status-dot.dot-warning { background-color: var(--warning); }
+.status-dot.dot-info { background-color: var(--primary); }
+.status-dot.dot-primary { background-color: #f1c40f; }
+.status-dot.dot-success { background-color: var(--success); }
+.status-dot.dot-danger { background-color: var(--danger); }
+
+/* Simple Document / Activity List */
+.doc-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 4px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.doc-list-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.doc-list-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background-color: rgba(27, 99, 196, 0.1);
+  color: var(--primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.doc-list-info {
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.doc-list-title {
+  font-weight: 600;
+  font-size: 0.88rem;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.doc-list-subtitle {
+  font-size: 0.78rem;
+  color: var(--text-light);
+}
+
+/* Illustration Box (used in "nearest schedule" style cards) */
+.illustration-box {
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius);
+  background-color: rgba(241, 196, 15, 0.15);
+  color: var(--warning-hover);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.8rem;
+  flex-shrink: 0;
+}
+
+/* Date input icon wrapper */
+.date-input-wrapper {
+  position: relative;
+}
+
+.date-input-wrapper i {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-light);
+  pointer-events: none;
+}
+
+.date-input-wrapper input[type="date"] {
+  padding-left: 42px;
+}
+
+/* Readonly / disabled form fields */
+.form-control-custom[readonly],
+.form-control-custom:disabled,
+.select-custom:disabled {
+    background-color: #f1f5f9;
+    color: var(--text-secondary);
+    cursor: not-allowed;
+}

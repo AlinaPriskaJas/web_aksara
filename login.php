@@ -1,3 +1,73 @@
+<?php
+session_start();
+require_once "config/koneksi.php";
+
+$error = "";
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+
+    $email    = trim($_POST['email'] ?? '');
+    $password = $_POST['password'] ?? '';
+
+    if ($email === '' || $password === '') {
+
+        $error = "Email dan password wajib diisi.";
+
+    } else {
+
+        $stmt = $conn->prepare("SELECT * FROM Users WHERE email = ?");
+        $stmt->execute([$email]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($user && password_verify($password, $user['password'])) {
+
+            // ========== SIMPAN SESSION ==========
+            $_SESSION['login']        = true;
+            $_SESSION['user_id']      = $user['id'];
+            $_SESSION['nama_lengkap'] = $user['nama_lengkap'];
+            $_SESSION['email']        = $user['email'];
+            $_SESSION['role']         = $user['role'];
+            $_SESSION['foto_profil']  = $user['foto_profil'] ?? null;
+            // Kalau role client, ambil nama perusahaan untuk dipakai sebagai inisial avatar
+            $_SESSION['nama_perusahaan'] = null;
+            if ($user['role'] === 'client') {
+                $klienStmt = $conn->prepare("SELECT nama_perusahaan FROM Data_Klien WHERE user_id = :uid LIMIT 1");
+                $klienStmt->execute(['uid' => $user['id']]);
+                $klienRow = $klienStmt->fetch();
+                $_SESSION['nama_perusahaan'] = $klienRow['nama_perusahaan'] ?? null;
+            } 
+
+            // ========== REDIRECT BERDASARKAN ROLE ==========
+            switch ($user['role']) {
+                case 'admin':
+                    header("Location: admin/dashboard.php");
+                    exit;
+                case 'it':
+                    header("Location: it/dashboard.php");
+                    exit;
+                case 'client':
+                    header("Location: client/dashboard.php");
+                    exit;
+                case 'ahli_k3':
+                    header("Location: ahlik3/dashboard.php");
+                    exit;
+                case 'direksi':
+                    header("Location: direksi/dashboard.php");
+                    exit;
+                default:
+                    session_destroy();
+                    $error = "Role tidak dikenali.";
+                    break;
+            }
+
+        } elseif ($user) {
+            $error = "Password salah.";
+        } else {
+            $error = "Email tidak ditemukan.";
+        }
+    }
+}
+?>
 <!DOCTYPE html>
 <html lang="id">
 
@@ -44,11 +114,18 @@
 
         <div class="login-card">
 
-            <form action="proses_login.php" method="POST">
+            <?php if ($error !== ""): ?>
+                <div class="alert alert-danger py-2 px-3 mb-3" role="alert" style="font-size: 0.9rem;">
+                    <?= htmlspecialchars($error) ?>
+                </div>
+            <?php endif; ?>
+
+            <form action="login.php" method="POST">
 
                 <div class="input-group-custom">
                     <span><i class="fa-solid fa-envelope"></i></span>
-                    <input type="email" name="email" placeholder="Email ID" required>
+                    <input type="email" name="email" placeholder="Email ID" required
+                        value="<?= htmlspecialchars($_POST['email'] ?? '') ?>">
                 </div>
 
                 <div class="input-group-custom">

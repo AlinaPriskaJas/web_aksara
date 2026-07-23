@@ -1,5 +1,5 @@
 <?php
-// it/transportasi.php
+// admin/transportasi.php
 $page_title = "Manajemen Transportasi";
 include "../includes/header.php";
 include "../includes/sidebar.php";
@@ -14,6 +14,7 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
 
 $success_msg = "";
 $error_msg = "";
+$active_tab = 'tabPanelKendaraan';
 
 // Handle Add/Edit/Status Update
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -40,6 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     } elseif (isset($_POST['action']) && $_POST['action'] === 'approve_loan') {
+        $active_tab = 'tabPanelPeminjaman';
         $loan_id = $_POST['loan_id'];
         $status = $_POST['status'];
 
@@ -97,9 +99,22 @@ $loans = $conn->query("
         </div>
     <?php endif; ?>
 
+    <!-- Tab Navigation -->
+    <div class="arp-tab-group">
+        <div class="arp-tab-nav">
+            <button type="button" class="arp-tab-btn<?= $active_tab === 'tabPanelKendaraan' ? ' active' : '' ?>"
+                data-tab-target="tabPanelKendaraan" onclick="switchTab('tabPanelKendaraan', this)">
+                <i class="bi bi-truck me-1"></i> Daftar Kendaraan
+            </button>
+            <button type="button" class="arp-tab-btn<?= $active_tab === 'tabPanelPeminjaman' ? ' active' : '' ?>"
+                data-tab-target="tabPanelPeminjaman" onclick="switchTab('tabPanelPeminjaman', this)">
+                <i class="bi bi-journal-text me-1"></i> Pengajuan Peminjaman
+            </button>
+        </div>
+
     <div class="row g-4">
         <!-- Daftar Kendaraan -->
-        <div class="col-12">
+        <div class="col-12 arp-tab-panel" id="tabPanelKendaraan" <?= $active_tab === 'tabPanelKendaraan' ? '' : 'style="display:none;"' ?>>
             <div class="card-box">
                 <div class="table-toolbar">
                     <h5 class="table-toolbar-title fw-bold">Daftar Kendaraan Operasional</h5>
@@ -158,7 +173,7 @@ $loans = $conn->query("
         </div>
 
         <!-- Pengajuan & Peminjaman -->
-        <div class="col-12">
+        <div class="col-12 arp-tab-panel" id="tabPanelPeminjaman" <?= $active_tab === 'tabPanelPeminjaman' ? '' : 'style="display:none;"' ?>>
             <div class="card-box">
                 <div class="table-toolbar">
                     <h5 class="table-toolbar-title fw-bold">Daftar Pengajuan Peminjaman Kendaraan</h5>
@@ -250,6 +265,7 @@ $loans = $conn->query("
                 <div class="pagination-custom" id="pagination-tabelPeminjaman"></div>
             </div>
         </div>
+    </div>
     </div>
 
     <!-- Modal: Tambah / Update Kendaraan -->

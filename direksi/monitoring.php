@@ -1,23 +1,255 @@
 <?php
 // direksi/monitoring.php
+session_start();
+require_once "../config/koneksi.php";
+
 $page_title = "Monitoring Operasional";
+
+function safe_count(PDO $conn, string $sql, array $params = []): int
+{
+    try {
+        $stmt = $conn->prepare($sql);
+        $stmt->execute($params);
+        return (int) $stmt->fetchColumn();
+    } catch (PDOException $e) {
+        return 0;
+    }
+}
+function safe_query(PDO $conn, string $sql, array $params = []): array
+{
+    try {
+        $stmt = $conn->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    } catch (PDOException $e) {
+        return [];
+    }
+}
+
+// ================== STAT CARDS ==================
+$hadir_hari_ini    = safe_count($conn, "SELECT COUNT(*) FROM Absensi WHERE tanggal = CURDATE()");
+$total_karyawan    = safe_count($conn, "SELECT COUNT(*) FROM Users WHERE role NOT IN ('client')");
+$jadwal_berjalan   = safe_count($conn, "SELECT COUNT(*) FROM Jadwal_Pemeriksaan WHERE status IN ('Terjadwal','Berlangsung') AND tanggal >= CURDATE()");
+$kendaraan_dipakai = safe_count($conn, "SELECT COUNT(*) FROM Kendaraan WHERE status_kendaraan = 'Dipakai'");
+
+// ================== ABSENSI HARI INI ==================
+$absensi_hari_ini = safe_query($conn, "
+    SELECT a.status_kehadiran, u.nama_lengkap, a.jam_masuk, a.lokasi_masuk
+    FROM Absensi a LEFT JOIN Users u ON a.user_id = u.id
+    WHERE a.tanggal = CURDATE()
+    ORDER BY a.jam_masuk DESC
+    LIMIT 8
+");
+
+// ================== JADWAL PEMERIKSAAN TERDEKAT ==================
+$jadwal_terdekat = safe_query($conn, "
+    SELECT j.tanggal, j.jam_mulai, j.lokasi, j.status, dk.nama_perusahaan, sa.nama_lengkap AS nama_ahli
+    FROM Jadwal_Pemeriksaan j
+    LEFT JOIN Data_Klien dk ON j.klien_id = dk.id
+    LEFT JOIN Sertifikat_Ahli sa ON j.ahli_k3_id = sa.id
+    WHERE j.tanggal >= CURDATE() AND j.status IN ('Terjadwal','Reschedule','Berlangsung')
+    ORDER BY j.tanggal ASC, j.jam_mulai ASC
+    LIMIT 8
+");
+
+// ================== KENDARAAN OPERASIONAL ==================
+$daftar_kendaraan = safe_query($conn, "SELECT nama_kendaraan, plat_nomor, status_kendaraan FROM Kendaraan ORDER BY status_kendaraan DESC, nama_kendaraan ASC");
+
+// ================== STOK GUDANG MENIPIS ==================
+$stok_menipis = safe_query($conn, "
+    SELECT nama_barang, stok_sistem, stok_minimum, satuan
+    FROM Gudang_Stok
+    WHERE stok_minimum IS NOT NULL AND stok_sistem <= stok_minimum
+    ORDER BY stok_sistem ASC
+    LIMIT 6
+");
+
+// ================== SERTIFIKAT AHLI SEGERA EXPIRE ==================
+$sertifikat_kritis = safe_query($conn, "
+    SELECT nama_lengkap, bidang_keahlian, tanggal_kedaluwarsa, status_realtime
+    FROM v_sertifikat_ahli_status
+    WHERE status_realtime IN ('Peringatan Awal','Kritis-Expired')
+    ORDER BY tanggal_kedaluwarsa ASC
+    LIMIT 6
+");
+
+function badge_kehadiran(string $status): string
+{
+    switch ($status) {
+        case 'WFO - Kantor Utama':          return 'badge-success';
+        case 'Dinas Luar / Survey Site':     return 'badge-info';
+        case 'WFH / Kerja Remote':           return 'badge-warning';
+        default:                             return 'badge-secondary';
+    }
+}
+function badge_kendaraan(string $status): string
+{
+    switch ($status) {
+        case 'Tersedia':    return 'badge-success';
+        case 'Dipakai':     return 'badge-warning';
+        case 'Maintenance': return 'badge-danger';
+        default:            return 'badge-secondary';
+    }
+}
+
 include "../includes/header.php";
 include "../includes/sidebar.php";
 include "../includes/topbar.php";
 ?>
 
 <main class="main-content">
-    <div class="card-box">
-        <h5 class="fw-bold mb-3"><?= htmlspecialchars($page_title) ?></h5>
-        <div class="alert alert-success-custom mb-3">
-            <i class="bi bi-info-circle-fill fs-5"></i>
-            <div>
-                <strong>Modul Aktif</strong><br>
-                Halaman ini memuat master layout yang konsisten untuk <strong>PT Aksara Riksa Perdana</strong>.
+    <div class="mb-4">
+        <h4 class="fw-bold mb-1">Monitoring Operasional</h4>
+        <p class="text-secondary mb-0">Pantauan kondisi lapangan &amp; sumber daya perusahaan secara real time</p>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <div class="col-xl-3 col-md-6 col-12">
+            <div class="stat-card">
+                <div class="stat-card-info">
+                    <span class="stat-card-title">Hadir Hari Ini</span>
+                    <span class="stat-card-value"><?= $hadir_hari_ini ?> / <?= $total_karyawan ?></span>
+                </div>
+                <div class="stat-card-icon success"><i class="bi bi-person-check-fill"></i></div>
             </div>
         </div>
-        <p class="text-secondary mb-0">Silakan kembangkan fungsionalitas halaman ini di file
-            <code>direksi/monitoring.php</code> sesuai dengan kebutuhan modul.</p>
+        <div class="col-xl-3 col-md-6 col-12">
+            <div class="stat-card">
+                <div class="stat-card-info">
+                    <span class="stat-card-title">Jadwal Berjalan</span>
+                    <span class="stat-card-value"><?= $jadwal_berjalan ?></span>
+                </div>
+                <div class="stat-card-icon"><i class="bi bi-calendar-event"></i></div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 col-12">
+            <div class="stat-card">
+                <div class="stat-card-info">
+                    <span class="stat-card-title">Kendaraan Dipakai</span>
+                    <span class="stat-card-value"><?= $kendaraan_dipakai ?></span>
+                </div>
+                <div class="stat-card-icon warning"><i class="bi bi-truck"></i></div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 col-12">
+            <div class="stat-card">
+                <div class="stat-card-info">
+                    <span class="stat-card-title">Stok Menipis</span>
+                    <span class="stat-card-value"><?= count($stok_menipis) ?></span>
+                </div>
+                <div class="stat-card-icon danger"><i class="bi bi-box-seam"></i></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <div class="col-lg-6 col-12">
+            <div class="card-box h-100">
+                <h5 class="fw-bold mb-3">Absensi Hari Ini</h5>
+                <?php if (empty($absensi_hari_ini)): ?>
+                    <p class="text-secondary fs-7 mb-0">Belum ada data absensi hari ini.</p>
+                <?php else: ?>
+                    <div class="table-responsive-custom">
+                        <table class="table-custom">
+                            <thead><tr><th>Nama</th><th>Jam Masuk</th><th>Status</th></tr></thead>
+                            <tbody>
+                                <?php foreach ($absensi_hari_ini as $a): ?>
+                                    <tr>
+                                        <td><?= htmlspecialchars($a['nama_lengkap'] ?? '-') ?></td>
+                                        <td><?= htmlspecialchars(substr($a['jam_masuk'], 0, 5)) ?></td>
+                                        <td><span class="<?= badge_kehadiran($a['status_kehadiran']) ?> fs-7"><?= htmlspecialchars($a['status_kehadiran']) ?></span></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php endif; ?>
+                <a href="absensi.php" class="fs-7 fw-semibold text-decoration-none d-inline-block mt-2">Lihat rekap absensi &rarr;</a>
+            </div>
+        </div>
+
+        <div class="col-lg-6 col-12">
+            <div class="card-box h-100">
+                <h5 class="fw-bold mb-3">Jadwal Pemeriksaan Terdekat</h5>
+                <?php if (empty($jadwal_terdekat)): ?>
+                    <p class="text-secondary fs-7 mb-0">Tidak ada jadwal pemeriksaan mendatang.</p>
+                <?php else: ?>
+                    <ul class="list-unstyled mb-0">
+                        <?php foreach ($jadwal_terdekat as $j): ?>
+                            <li class="d-flex justify-content-between align-items-start mb-3 pb-2" style="border-bottom:1px solid var(--border-color, #eee);">
+                                <div>
+                                    <div class="fw-semibold fs-7"><?= htmlspecialchars($j['nama_perusahaan'] ?? '-') ?></div>
+                                    <div class="fs-7 text-muted"><?= htmlspecialchars($j['lokasi'] ?? '-') ?> &middot; <?= htmlspecialchars($j['nama_ahli'] ?? 'Belum ditugaskan') ?></div>
+                                </div>
+                                <div class="text-end fs-7">
+                                    <div class="fw-semibold"><?= date('d M', strtotime($j['tanggal'])) ?></div>
+                                    <div class="text-muted"><?= substr($j['jam_mulai'], 0, 5) ?></div>
+                                </div>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
+                <?php endif; ?>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-4 col-12">
+            <div class="card-box h-100">
+                <h5 class="fw-bold mb-3">Status Kendaraan</h5>
+                <?php if (empty($daftar_kendaraan)): ?>
+                    <p class="text-secondary fs-7 mb-0">Belum ada data kendaraan.</p>
+                <?php else: ?>
+                    <ul class="list-unstyled mb-0">
+                        <?php foreach ($daftar_kendaraan as $k): ?>
+                            <li class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="fs-7"><?= htmlspecialchars($k['nama_kendaraan']) ?> <span class="text-muted">(<?= htmlspecialchars($k['plat_nomor']) ?>)</span></span>
+                                <span class="<?= badge_kendaraan($k['status_kendaraan']) ?> fs-7"><?= htmlspecialchars($k['status_kendaraan']) ?></span>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
+                <?php endif; ?>
+            </div>
+        </div>
+
+        <div class="col-lg-4 col-12">
+            <div class="card-box h-100">
+                <h5 class="fw-bold mb-3">Stok Gudang Menipis</h5>
+                <?php if (empty($stok_menipis)): ?>
+                    <p class="text-secondary fs-7 mb-0">Semua stok dalam batas aman.</p>
+                <?php else: ?>
+                    <ul class="list-unstyled mb-0">
+                        <?php foreach ($stok_menipis as $s): ?>
+                            <li class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="fs-7"><?= htmlspecialchars($s['nama_barang']) ?></span>
+                                <span class="badge-danger fs-7"><?= (int) $s['stok_sistem'] ?> <?= htmlspecialchars($s['satuan']) ?></span>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
+                <?php endif; ?>
+            </div>
+        </div>
+
+        <div class="col-lg-4 col-12">
+            <div class="card-box h-100">
+                <h5 class="fw-bold mb-3">Sertifikat Ahli Perlu Perhatian</h5>
+                <?php if (empty($sertifikat_kritis)): ?>
+                    <p class="text-secondary fs-7 mb-0">Semua sertifikat masih aktif.</p>
+                <?php else: ?>
+                    <ul class="list-unstyled mb-0">
+                        <?php foreach ($sertifikat_kritis as $s): ?>
+                            <li class="d-flex justify-content-between align-items-center mb-2">
+                                <div>
+                                    <div class="fs-7 fw-semibold"><?= htmlspecialchars($s['nama_lengkap']) ?></div>
+                                    <div class="fs-7 text-muted">exp. <?= date('d M Y', strtotime($s['tanggal_kedaluwarsa'])) ?></div>
+                                </div>
+                                <span class="<?= $s['status_realtime'] === 'Kritis-Expired' ? 'badge-danger' : 'badge-warning' ?> fs-7"><?= htmlspecialchars($s['status_realtime']) ?></span>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
+                <?php endif; ?>
+            </div>
+        </div>
     </div>
 </main>
 
