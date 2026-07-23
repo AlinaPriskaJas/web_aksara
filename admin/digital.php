@@ -440,7 +440,14 @@ include "../includes/topbar.php";
                                 <td><?= htmlspecialchars(date('d M Y', strtotime($d['created_at']))) ?></td>
                                 <td style="text-align: center;">
                                     <div class="d-flex gap-2 justify-content-center">
-                                        <a href="../<?= htmlspecialchars($d['file_path']) ?>" target="_blank" class="btn-secondary-custom" style="height:32px; padding:0 10px; font-size:0.8rem;" title="Lihat / Unduh">
+                                        <button type="button" class="btn-secondary-custom" style="height:32px; padding:0 10px; font-size:0.8rem;" title="Lihat Dokumen"
+                                            onclick='openPreviewModal(<?= json_encode([
+                                                "nama_dokumen" => $d["nama_dokumen"],
+                                                "file_path"    => $d["file_path"],
+                                            ]) ?>)'>
+                                            <i class="bi bi-eye-fill"></i>
+                                        </button>
+                                        <a href="../<?= htmlspecialchars($d['file_path']) ?>" target="_blank" download class="btn-secondary-custom" style="height:32px; padding:0 10px; font-size:0.8rem;" title="Unduh">
                                             <i class="bi bi-download"></i>
                                         </a>
                                         <button type="button" class="btn-secondary-custom" style="height:32px; padding:0 10px; font-size:0.8rem;" title="Edit"
@@ -602,6 +609,27 @@ include "../includes/topbar.php";
     </div>
 </div>
 
+<!-- ===== MODAL: Lihat Dokumen ===== -->
+<div class="modal fade modal-custom" id="modalPreview" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="previewNamaDokumen">Lihat Dokumen</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body text-center" id="previewBody" style="min-height:200px;">
+                <!-- konten preview di-render lewat JS -->
+            </div>
+            <div class="modal-footer">
+                <a href="#" id="previewDownloadLink" target="_blank" download class="btn-secondary-custom">
+                    <i class="bi bi-download me-1"></i> Unduh File
+                </a>
+                <button type="button" class="btn-primary-custom" data-bs-dismiss="modal">Tutup</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- ===== MODAL: Konfirmasi Hapus ===== -->
 <div class="modal fade modal-custom" id="modalHapus" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
@@ -686,6 +714,43 @@ function openEditModal(data) {
     document.getElementById('editFileLamaLink').href = '../' + data.file_path;
     document.getElementById('fileListEdit').innerHTML = '';
     new bootstrap.Modal(document.getElementById('modalEdit')).show();
+}
+
+function openPreviewModal(data) {
+    const filePath = '../' + data.file_path;
+    const ext = (data.file_path.split('.').pop() || '').toLowerCase();
+    const body = document.getElementById('previewBody');
+    const imageExt = ['jpg', 'jpeg', 'png'];
+
+    document.getElementById('previewNamaDokumen').textContent = data.nama_dokumen || 'Lihat Dokumen';
+    document.getElementById('previewDownloadLink').href = filePath;
+    body.innerHTML = '';
+
+    if (imageExt.includes(ext)) {
+        const img = document.createElement('img');
+        img.src = filePath;
+        img.style.maxWidth = '100%';
+        img.style.maxHeight = '70vh';
+        img.alt = data.nama_dokumen || 'Preview dokumen';
+        img.onerror = function () {
+            body.innerHTML =
+                '<div class="alert alert-danger-custom mb-0 text-start">' +
+                '<i class="bi bi-exclamation-triangle-fill fs-5"></i>' +
+                '<div>File gambar ini tidak dapat ditampilkan. Kemungkinan file rusak, kosong, atau lokasi file di server tidak sesuai dengan data di database. Silakan cek langsung di server atau minta dokumen diunggah ulang.</div>' +
+                '</div>';
+        };
+        body.appendChild(img);
+    } else if (ext === 'pdf') {
+        body.innerHTML = '<iframe src="' + filePath + '" style="width:100%; height:70vh; border:0;"></iframe>';
+    } else {
+        body.innerHTML =
+            '<div class="alert alert-secondary mb-0 text-start">' +
+            '<i class="bi bi-info-circle-fill fs-5"></i>' +
+            '<div>Preview langsung belum didukung untuk format file ini (' + ext.toUpperCase() + '). Silakan gunakan tombol "Unduh File" di bawah untuk membukanya.</div>' +
+            '</div>';
+    }
+
+    new bootstrap.Modal(document.getElementById('modalPreview')).show();
 }
 
 function openHapusModal(id, namaDokumen) {

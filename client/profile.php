@@ -97,6 +97,68 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $error_msg = "Gagal menghapus foto profil.";
             }
         }
+    } elseif ($action === 'edit_klien') {
+        $nama_perusahaan = trim($_POST['nama_perusahaan'] ?? '');
+        $alamat          = trim($_POST['alamat'] ?? '');
+        $pic_nama        = trim($_POST['pic_nama'] ?? '');
+        $pic_whatsapp    = trim($_POST['pic_whatsapp'] ?? '');
+        $pic_email       = trim($_POST['pic_email'] ?? '');
+
+        if ($nama_perusahaan === '') {
+            $error_msg = "Nama perusahaan tidak boleh kosong!";
+        } elseif ($pic_email !== '' && !filter_var($pic_email, FILTER_VALIDATE_EMAIL)) {
+            $error_msg = "Format email PIC tidak valid!";
+        } elseif (!$data_klien) {
+            $error_msg = "Data perusahaan belum tertaut ke akun ini. Hubungi admin.";
+        } else {
+            try {
+                $upd = $conn->prepare("
+                    UPDATE Data_Klien
+                    SET nama_perusahaan = :nama_perusahaan, alamat = :alamat,
+                        pic_nama = :pic_nama, pic_whatsapp = :pic_whatsapp, pic_email = :pic_email
+                    WHERE user_id = :uid
+                ");
+                $upd->execute([
+                    'nama_perusahaan' => $nama_perusahaan,
+                    'alamat'          => $alamat,
+                    'pic_nama'        => $pic_nama,
+                    'pic_whatsapp'    => $pic_whatsapp,
+                    'pic_email'       => $pic_email,
+                    'uid'             => $current_user_id,
+                ]);
+                $success_msg = "Data perusahaan berhasil diperbarui!";
+                $stmtKlien->execute(['uid' => $current_user_id]);
+                $data_klien = $stmtKlien->fetch();
+                $nama_untuk_avatar = $data_klien['nama_perusahaan'] ?? ($user['nama_lengkap'] ?? 'Klien');
+            } catch (PDOException $e) {
+                $error_msg = "Gagal menyimpan perubahan: " . $e->getMessage();
+            }
+        }
+    } elseif ($action === 'ganti_password') {
+        $password_lama       = $_POST['password_lama'] ?? '';
+        $password_baru       = $_POST['password_baru'] ?? '';
+        $password_konfirmasi = $_POST['password_konfirmasi'] ?? '';
+
+        if (empty($password_lama) || empty($password_baru) || empty($password_konfirmasi)) {
+            $error_msg = "Semua kolom kata sandi wajib diisi!";
+        } elseif (strlen($password_baru) < 6) {
+            $error_msg = "Kata sandi baru minimal 6 karakter!";
+        } elseif ($password_baru !== $password_konfirmasi) {
+            $error_msg = "Konfirmasi kata sandi baru tidak cocok!";
+        } elseif (!$user || !password_verify($password_lama, $user['password'])) {
+            $error_msg = "Kata sandi lama salah!";
+        } else {
+            try {
+                $hash = password_hash($password_baru, PASSWORD_BCRYPT);
+                $upd = $conn->prepare("UPDATE Users SET password = :pwd WHERE id = :id");
+                $upd->execute(['pwd' => $hash, 'id' => $current_user_id]);
+                $success_msg = "Kata sandi berhasil diperbarui!";
+                $stmtUser->execute(['id' => $current_user_id]);
+                $user = $stmtUser->fetch();
+            } catch (PDOException $e) {
+                $error_msg = "Gagal memperbarui kata sandi: " . $e->getMessage();
+            }
+        }
     }
 }
 
@@ -152,7 +214,8 @@ include "../includes/topbar.php";
                     <h5 class="fw-bold mb-0">Data Perusahaan</h5>
                 </div>
 
-                <form action="profile_proses.php" method="POST">
+                <form action="profile.php" method="POST">
+                    <input type="hidden" name="action" value="edit_klien">
                     <div class="row g-4">
                         <div class="col-md-6 col-12">
                             <label class="form-label fw-semibold fs-7 mb-2">Kode Klien</label>
@@ -188,7 +251,8 @@ include "../includes/topbar.php";
 
             <div class="card-box mt-4">
                 <h5 class="fw-bold mb-4">Ubah Kata Sandi</h5>
-                <form action="ubah_password.php" method="POST">
+                <form action="profile.php" method="POST">
+                    <input type="hidden" name="action" value="ganti_password">
                     <div class="row g-3">
                         <div class="col-md-4 col-12">
                             <label class="form-label fw-semibold fs-7 mb-2">Kata Sandi Lama</label>
