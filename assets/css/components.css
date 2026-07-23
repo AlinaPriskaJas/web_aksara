@@ -1,388 +1,807 @@
-/* assets/css/components.css */
-
 /* Reusable Card */
 .card-box {
-    background-color: var(--card-bg);
-    border-radius: var(--radius);
-    padding: var(--padding);
-    box-shadow: var(--shadow);
-    border: 1px solid var(--border-color);
-    margin-bottom: var(--margin);
-    transition: transform var(--transition), box-shadow var(--transition);
+  background-color: var(--card-bg);
+  border-radius: var(--radius);
+  padding: var(--padding);
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border-color);
+  margin-bottom: var(--margin);
+  transition:
+    transform var(--transition),
+    box-shadow var(--transition);
 }
 
 .card-box:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  transform: translateY(-2px);
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -1px rgba(0, 0, 0, 0.06);
 }
 
 /* Stat Card */
 .stat-card {
-    background-color: var(--card-bg);
-    border-radius: var(--radius);
-    padding: 24px;
-    box-shadow: var(--shadow);
-    border: 1px solid var(--border-color);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    transition: transform var(--transition), box-shadow var(--transition);
-    height: 110px;
+  background-color: var(--card-bg);
+  border-radius: var(--radius);
+  padding: 24px;
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition:
+    transform var(--transition),
+    box-shadow var(--transition);
+  height: 110px;
 }
 
 .stat-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  transform: translateY(-4px);
+  box-shadow:
+    0 10px 15px -3px rgba(0, 0, 0, 0.05),
+    0 4px 6px -2px rgba(0, 0, 0, 0.05);
 }
 
 .stat-card-info {
-    display: flex;
-    flex-direction: column;
+  display: flex;
+  flex-direction: column;
 }
 
 .stat-card-title {
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
 }
 
 .stat-card-value {
-    font-size: 1.75rem;
-    font-weight: bold;
-    color: var(--text-primary);
-    line-height: 1;
+  font-size: 1.75rem;
+  font-weight: bold;
+  color: var(--text-primary);
+  line-height: 1;
 }
 
 .stat-card-icon {
-    width: 48px;
-    height: 48px;
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.5rem;
-    background-color: rgba(27, 99, 196, 0.1);
-    color: var(--primary);
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  background-color: rgba(27, 99, 196, 0.1);
+  color: var(--primary);
 }
 
 .stat-card-icon.success {
-    background-color: rgba(46, 204, 113, 0.1);
-    color: var(--success);
+  background-color: rgba(46, 204, 113, 0.1);
+  color: var(--success);
 }
 
 .stat-card-icon.danger {
-    background-color: rgba(231, 76, 60, 0.1);
-    color: var(--danger);
+  background-color: rgba(231, 76, 60, 0.1);
+  color: var(--danger);
 }
 
 .stat-card-icon.warning {
-    background-color: rgba(241, 196, 15, 0.1);
-    color: var(--warning);
+  background-color: rgba(241, 196, 15, 0.1);
+  color: var(--warning);
 }
 
 /* Custom Buttons */
-.btn-primary-custom, 
-.btn-secondary-custom, 
+.btn-primary-custom,
+.btn-secondary-custom,
 .btn-danger-custom {
-    height: var(--btn-height);
-    padding: 0 20px;
-    font-size: 0.9rem;
-    font-weight: 600;
-    border-radius: var(--radius);
-    border: none;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    cursor: pointer;
-    transition: all var(--transition);
-    text-decoration: none !important;
+  height: var(--btn-height);
+  padding: 0 20px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  border-radius: var(--radius);
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all var(--transition);
+  text-decoration: none !important;
 }
 
 .btn-primary-custom {
-    background-color: var(--primary);
-    color: #ffffff;
+  background-color: var(--primary);
+  color: #ffffff;
 }
 
 .btn-primary-custom:hover {
-    background-color: var(--primary-hover);
-    color: #ffffff;
-    transform: translateY(-1px);
+  background-color: var(--primary-hover);
+  color: #ffffff;
+  transform: translateY(-1px);
 }
 
 .btn-secondary-custom {
-    background-color: var(--secondary);
-    color: #ffffff;
+  background-color: var(--secondary);
+  color: #ffffff;
 }
 
 .btn-secondary-custom:hover {
-    background-color: var(--secondary-hover);
-    color: #ffffff;
-    transform: translateY(-1px);
+  background-color: var(--secondary-hover);
+  color: #ffffff;
+  transform: translateY(-1px);
 }
 
 .btn-danger-custom {
-    background-color: var(--danger);
-    color: #ffffff;
+  background-color: var(--danger);
+  color: #ffffff;
 }
 
 .btn-danger-custom:hover {
-    background-color: var(--danger-hover);
-    color: #ffffff;
-    transform: translateY(-1px);
+  background-color: var(--danger-hover);
+  color: #ffffff;
+  transform: translateY(-1px);
 }
 
 /* Custom Forms */
 .form-control-custom,
 .select-custom,
 .textarea-custom {
-    width: 100%;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius);
-    padding: 0 16px;
-    font-size: 0.9rem;
-    color: var(--text-primary);
-    background-color: #ffffff;
-    outline: none;
-    transition: border-color var(--transition), box-shadow var(--transition);
+  width: 100%;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding: 0 16px;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  background-color: #ffffff;
+  outline: none;
+  transition:
+    border-color var(--transition),
+    box-shadow var(--transition);
 }
 
 .form-control-custom,
 .select-custom {
-    height: var(--input-height);
+  height: var(--input-height);
 }
 
 .textarea-custom {
-    padding: 12px 16px;
-    min-height: 100px;
-    resize: vertical;
+  padding: 12px 16px;
+  min-height: 100px;
+  resize: vertical;
 }
 
 .form-control-custom:focus,
 .select-custom:focus,
 .textarea-custom:focus {
-    border-color: var(--primary);
-    box-shadow: 0 0 0 3px rgba(27, 99, 196, 0.15);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(27, 99, 196, 0.15);
 }
 
 /* Custom Search Box */
 .search-box-container {
-    position: relative;
-    width: 100%;
+  position: relative;
+  width: 100%;
 }
 
 .search-box-container i {
-    position: absolute;
-    left: 14px;
-    top: 50%;
-    transform: translateY(-50%);
-    color: var(--text-light);
-    font-size: 1rem;
-    pointer-events: none;
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-light);
+  font-size: 1rem;
+  pointer-events: none;
 }
 
 .search-box {
-    width: 100%;
-    height: var(--input-height);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius);
-    padding-left: 40px;
-    padding-right: 16px;
-    font-size: 0.9rem;
-    color: var(--text-primary);
-    background-color: #ffffff;
-    outline: none;
-    transition: all var(--transition);
+  width: 100%;
+  height: var(--input-height);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding-left: 40px;
+  padding-right: 16px;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  background-color: #ffffff;
+  outline: none;
+  transition: all var(--transition);
 }
 
 .search-box:focus {
-    border-color: var(--primary);
-    box-shadow: 0 0 0 3px rgba(27, 99, 196, 0.15);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(27, 99, 196, 0.15);
 }
 
 /* Custom Badges */
 .badge-success,
 .badge-danger,
-.badge-warning {
-    display: inline-flex;
-    align-items: center;
-    padding: 6px 12px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    border-radius: 20px;
-    text-transform: capitalize;
+.badge-warning,
+.badge-secondary {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 20px;
+  text-transform: capitalize;
 }
 
 .badge-success {
-    background-color: rgba(46, 204, 113, 0.15);
-    color: var(--success);
+  background-color: rgba(46, 204, 113, 0.15);
+  color: var(--success);
 }
 
 .badge-danger {
-    background-color: rgba(231, 76, 60, 0.15);
-    color: var(--danger);
+  background-color: rgba(231, 76, 60, 0.15);
+  color: var(--danger);
 }
 
 .badge-warning {
-    background-color: rgba(241, 196, 15, 0.15);
-    color: var(--warning);
+  background-color: rgba(241, 196, 15, 0.15);
+  color: var(--warning);
+}
+
+.badge-secondary {
+  background-color: rgba(100, 116, 139, 0.15);
+  color: #475569;
 }
 
 /* Custom Alerts */
 .alert-success-custom,
 .alert-danger-custom {
-    padding: 16px 20px;
-    border-radius: var(--radius);
-    margin-bottom: var(--margin);
-    border: 1px solid transparent;
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
-    font-size: 0.9rem;
+  padding: 16px 20px;
+  border-radius: var(--radius);
+  margin-bottom: var(--margin);
+  border: 1px solid transparent;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 0.9rem;
 }
 
 .alert-success-custom {
-    background-color: rgba(46, 204, 113, 0.1);
-    border-color: rgba(46, 204, 113, 0.2);
-    color: #27ae60;
+  background-color: rgba(46, 204, 113, 0.1);
+  border-color: rgba(46, 204, 113, 0.2);
+  color: #27ae60;
 }
 
 .alert-danger-custom {
-    background-color: rgba(231, 76, 60, 0.1);
-    border-color: rgba(231, 76, 60, 0.2);
-    color: #c0392b;
+  background-color: rgba(231, 76, 60, 0.1);
+  border-color: rgba(231, 76, 60, 0.2);
+  color: #c0392b;
 }
 
 /* Custom Tables */
 .table-responsive-custom {
-    width: 100%;
-    overflow-x: auto;
-    border-radius: var(--radius);
-    border: 1px solid var(--border-color);
-    background-color: var(--card-bg);
+  width: 100%;
+  overflow-x: auto;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-color);
+  background-color: var(--card-bg);
+  -webkit-overflow-scrolling: touch;   /* ← baru: scroll halus di HP */
+  scrollbar-width: thin;               /* ← baru: scrollbar tipis (Firefox) */
+  scrollbar-color: #cbd5e1 #f1f5f9;    /* ← baru */
+}
+
+/* Styled thin horizontal scrollbar (consistent everywhere .table-responsive-custom is used) */
+.table-responsive-custom {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 #f1f5f9;
+}
+
+.table-responsive-custom::-webkit-scrollbar {
+  height: 8px;
+}
+
+.table-responsive-custom::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+.table-responsive-custom::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 8px;
+}
+
+.table-responsive-custom::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
 
 .table-custom {
-    width: 100%;
-    border-collapse: collapse;
-    margin-bottom: 0;
-    font-size: 0.9rem;
+  width: 100%;
+  min-width: max-content;
+  border-collapse: collapse;
+  margin-bottom: 0;
+  font-size: 0.9rem;
 }
 
 .table-custom th {
-    background-color: #f1f5f9;
-    color: var(--text-primary);
-    font-weight: 600;
-    padding: 14px 18px;
-    text-align: left;
-    white-space: nowrap;
-    border-bottom: 2px solid var(--border-color);
-    position: sticky;
-    top: 0;
-    z-index: 10;
+  background-color: #f1f5f9;
+  color: var(--text-primary);
+  font-weight: 600;
+  padding: 14px 18px;
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 2px solid var(--border-color);
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
 .table-custom td {
-    padding: 14px 18px;
-    color: var(--text-secondary);
-    border-bottom: 1px solid var(--border-color);
-    vertical-align: middle;
+  padding: 14px 18px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-color);
+  vertical-align: middle;
 }
 
 /* Hover Row */
 .table-custom tbody tr:hover td {
-    background-color: #f8fafc;
-    color: var(--text-primary);
-    transition: background-color var(--transition);
+  background-color: #f8fafc;
+  color: var(--text-primary);
+  transition: background-color var(--transition);
 }
 
 /* Zebra Row style */
 .table-custom tbody tr:nth-of-type(even) td {
-    background-color: rgba(241, 245, 249, 0.3);
+  background-color: rgba(241, 245, 249, 0.3);
 }
 
 .table-custom tbody tr:nth-of-type(even):hover td {
-    background-color: #f8fafc;
+  background-color: #f8fafc;
 }
 
 /* Rounded corners for table */
 .table-responsive-custom .table-custom tr:last-child td {
-    border-bottom: none;
+  border-bottom: none;
+}
+
+/* ============================================================
+   TABLE ROW ACTIONS — reusable pattern (apply anywhere)
+   Keeps view/download/delete/edit buttons in one horizontal row
+   and NEVER lets them stack vertically. Works together with
+   .table-responsive-custom (overflow-x:auto) + .table-custom
+   (min-width:max-content) above: if a row genuinely needs more
+   space than the screen, the whole TABLE scrolls sideways instead
+   of squeezing/wrapping any single column.
+
+   Usage:
+     <th class="col-aksi">Aksi</th>
+     ...
+     <td class="col-aksi">
+         <div class="table-actions">
+             <a class="btn btn-outline-secondary btn-sm py-1">...</a>
+             <form class="d-inline">...</form>
+         </div>
+     </td>
+   ============================================================ */
+.col-aksi {
+  white-space: nowrap;
+}
+
+.table-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+.table-actions form {
+  display: inline-flex;
 }
 
 /* Custom Pagination */
 .pagination-custom {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: var(--padding) 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--padding) 0;
 }
 
 .pagination-pages {
-    display: flex;
-    gap: 6px;
-    list-style: none;
-    margin-bottom: 0;
+  display: flex;
+  gap: 6px;
+  list-style: none;
+  margin-bottom: 0;
 }
 
-.pagination-item a, 
+.pagination-item a,
 .pagination-item span {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 38px;
-    height: 38px;
-    border-radius: 8px;
-    border: 1px solid var(--border-color);
-    color: var(--text-secondary);
-    text-decoration: none;
-    font-weight: 500;
-    font-size: 0.85rem;
-    transition: all var(--transition);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-weight: 500;
+  font-size: 0.85rem;
+  transition: all var(--transition);
 }
 
 .pagination-item a:hover {
-    border-color: var(--primary);
-    color: var(--primary);
-    background-color: rgba(27, 99, 196, 0.05);
+  border-color: var(--primary);
+  color: var(--primary);
+  background-color: rgba(27, 99, 196, 0.05);
 }
 
 .pagination-item.active span {
-    background-color: var(--primary);
-    color: #ffffff;
-    border-color: var(--primary);
+  background-color: var(--primary);
+  color: #ffffff;
+  border-color: var(--primary);
 }
 
 .pagination-item.disabled span {
-    opacity: 0.5;
-    cursor: not-allowed;
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* Modal Custom styling */
 .modal-custom .modal-content {
-    border-radius: var(--radius);
-    border: none;
-    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  border-radius: var(--radius);
+  border: none;
+  box-shadow:
+    0 20px 25px -5px rgba(0, 0, 0, 0.1),
+    0 10px 10px -5px rgba(0, 0, 0, 0.04);
 }
 
 .modal-custom .modal-header {
-    border-bottom: 1px solid var(--border-color);
-    padding: 20px;
+  border-bottom: 1px solid var(--border-color);
+  padding: 20px;
 }
 
 .modal-custom .modal-title {
-    font-weight: bold;
-    color: var(--text-primary);
+  font-weight: bold;
+  color: var(--text-primary);
 }
 
 .modal-custom .modal-body {
-    padding: 24px;
+  padding: 24px;
 }
 
 .modal-custom .modal-footer {
-    border-top: 1px solid var(--border-color);
-    padding: 16px 20px;
+  border-top: 1px solid var(--border-color);
+  padding: 16px 20px;
 }
+
+/* Tailwind-style mapping utilities for Brand Logo styling */
+.w-10 {
+  width: 40px;
+}
+.h-10 {
+  height: 40px;
+}
+.w-6 {
+  width: 24px;
+}
+.h-6 {
+  height: 24px;
+}
+.bg-brand-yellow {
+  background-color: var(--brand-yellow) !important;
+}
+.text-brand-green-dark {
+  color: var(--brand-green-dark) !important;
+}
+.rounded-xl {
+  border-radius: var(--radius) !important;
+}
+
+/* === Modal Overlay & Box === */
+.arp-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 1050;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.3s ease,
+    visibility 0.3s ease;
+  backdrop-filter: blur(2px);
+  padding: 1rem;
+}
+
+.arp-modal-overlay.show {
+  opacity: 1;
+  visibility: visible;
+}
+
+.arp-modal-box {
+  background-color: var(--card-bg, #ffffff);
+  width: 100%;
+  max-width: 500px;
+  border-radius: var(--radius, 12px);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  transform: scale(0.95) translateY(-10px);
+  transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  display: flex;
+  flex-direction: column;
+  max-height: 90vh;
+}
+
+.arp-modal-overlay.show .arp-modal-box {
+  transform: scale(1) translateY(0);
+}
+
+.arp-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 20px;
+  border-bottom: 1px solid var(--border-color, #e2e8f0);
+}
+
+.arp-modal-close {
+  background: transparent;
+  border: none;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: var(--text-light, #94a3b8);
+  cursor: pointer;
+  transition: color 0.2s ease;
+  padding: 0;
+  margin-top: -4px;
+}
+
+.arp-modal-close:hover {
+  color: var(--danger, #e74c3c);
+}
+
+.arp-modal-body {
+  padding: 20px;
+  overflow-y: auto;
+}
+
+/* Table Card Toolbar (Title + Search + Action Button) */
+.table-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 1.25rem;
+}
+
+.table-toolbar .table-toolbar-title {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.table-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.table-toolbar-actions .search-box-container {
+  width: 240px;
+  max-width: 100%;
+}
+
+/* ==========================================================================
+   Tab Navigation (Reusable)
+   Struktur HTML:
+   <div class="arp-tab-group">
+       <div class="arp-tab-nav">
+           <button type="button" class="arp-tab-btn active" data-tab-target="panelA" onclick="switchTab('panelA', this)">Tab A</button>
+           <button type="button" class="arp-tab-btn" data-tab-target="panelB" onclick="switchTab('panelB', this)">Tab B</button>
+       </div>
+       <div class="row g-4">
+           <div class="col-12 arp-tab-panel" id="panelA">...</div>
+           <div class="col-12 arp-tab-panel" id="panelB" style="display:none;">...</div>
+       </div>
+   </div>
+   ========================================================================== */
+.arp-tab-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    border-bottom: 2px solid var(--border-color);
+    margin-bottom: var(--spacing, 20px);
+    overflow-x: visible;
+}
+
+/* Tombol icon "Bukti" di dalam tabel absensi (buka preview foto) */
+.btn-icon-bukti {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color, #e2e8f0);
+    background: var(--bg-glass, #f1f5f9);
+    color: var(--primary, #3b82f6);
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease;
+}
+
+.btn-icon-bukti:hover {
+    background: var(--primary, #3b82f6);
+    color: #fff;
+}
+
+/* Gambar bukti foto di dalam modal preview */
+.arp-bukti-foto-preview {
+    max-width: 100%;
+    max-height: 60vh;
+    border-radius: 10px;
+    border: 1px solid var(--border-color, #e2e8f0);
+}
+
+.arp-tab-btn {
+    display: flex;
+    align-items: center;
+    background: transparent;
+    border: none;
+    padding: 12px 20px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+    white-space: nowrap;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+    transition: color var(--transition, 0.2s ease), border-color var(--transition, 0.2s ease);
+}
+
+.arp-tab-btn:hover {
+    color: var(--primary);
+}
+
+.arp-tab-btn.active {
+    color: var(--primary);
+    border-bottom-color: var(--primary);
+}
+
+@media (max-width: 576px) {
+    .arp-tab-btn {
+        padding: 10px 14px;
+    }
+}
+/* ==========================================================================
+   Buat Surat — 2 Kolom Grid (Reusable)
+   Dipakai di admin/surat.php, ahlik3/surat.php, it/surat.php pada tab
+   "Buat Surat" (form di kiri, Pratinjau Data ke Template Word di kanan).
+
+   Struktur HTML:
+   <div class="buat-surat-grid">
+       <section class="card-box">...form buat surat...</section>
+       <section class="card-box">...pratinjau data ke template...</section>
+   </div>
+
+   Catatan: "min-width: 0" pada child WAJIB ada — tanpa ini, konten lebar
+   di kolom kiri (mis. tabel Rincian Item) akan memaksa track grid melebar
+   melebihi jatah 1.4fr-nya dan mendorong kolom kanan (Pratinjau) sampai
+   keluar/tidak terlihat.
+   ========================================================================== */
+.buat-surat-grid {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 1.25rem;
+    align-items: start;
+}
+
+.buat-surat-grid > section {
+    min-width: 0;
+}
+
+@media (max-width: 992px) {
+    .buat-surat-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ==========================================================================
+   BUAT SURAT — Field readonly, blok list berulang, preview data, ringkasan
+   total. Dipakai di admin/surat.php, ahlik3/surat.php, it/surat.php pada
+   tab "Buat Surat".
+   ========================================================================== */
+.field-readonly {
+    background: var(--bg-glass);
+    color: var(--text-secondary);
+    cursor: not-allowed;
+}
+
+.blok-box {
+    border: 1px solid var(--border-color, #e5e7eb);
+    border-radius: .5rem;
+    padding: .9rem;
+}
+
+.blok-baris {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+    align-items: center;
+    margin-bottom: .5rem;
+}
+
+.blok-baris .form-control-custom {
+    flex: 1 1 160px;
+    min-width: 0;
+}
+
+.preview-kv td {
+    padding: .45rem .1rem;
+    border-bottom: 1px solid #f3f4f6;
+    vertical-align: top;
+    font-size: .85rem;
+}
+
+.preview-kv td:first-child {
+    color: var(--text-secondary);
+    font-weight: 600;
+    width: 42%;
+}
+
+.ringkasan-total-row {
+    display: flex;
+    justify-content: space-between;
+    padding: .35rem 0;
+    font-size: .85rem;
+}
+
+.ringkasan-total-row.total-bayar {
+    border-top: 1px solid #e5e7eb;
+    margin-top: .25rem;
+    padding-top: .55rem;
+    font-weight: 700;
+    color: var(--success);
+}
+
+.text-xs {
+    font-size: .78rem;
+}
+
+/* ==========================================================================
+   NOMOR SURAT GROUP — kotak "No Urut" (bisa diedit) + suffix otomatis
+   "/KODE/ARP/BULAN/TAHUN" (readonly), disejajarkan jadi satu baris input.
+
+   Dipakai di admin/surat.php, ahlik3/surat.php, it/surat.php pada form
+   "Buat Surat", tab No Urut Surat.
+
+   Struktur HTML:
+   <div class="nomor-surat-group">
+       <input type="text" name="no_urut_manual" class="form-control-custom nomor-surat-input">
+       <div class="form-control-custom nomor-surat-suffix">/KODE/ARP/BULAN/TAHUN</div>
+   </div>
+
+   Catatan: suffix WAJIB pakai <div> (bukan <span>) karena
+   .form-control-custom mengandalkan height & width:100% yang cuma
+   berlaku benar pada elemen block/flex, bukan elemen inline seperti
+   <span> — itu sebabnya dulu kotaknya terlihat tidak sejajar.
+   ========================================================================== */
+.nomor-surat-group {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+}
+
+.nomor-surat-input {
+    flex: 0 0 auto;
+    width: 110px;
+    font-family: monospace;
+}
+
+.nomor-surat-suffix {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    font-family: monospace;
+    white-space: nowrap;
+    overflow-x: auto;
+}
+
+

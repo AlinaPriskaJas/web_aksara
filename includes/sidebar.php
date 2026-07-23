@@ -53,16 +53,15 @@ switch ($current_role) {
         $role_display_name = "IT Administrator";
         $menus = [
             ['label' => 'Dashboard', 'url' => 'dashboard.php', 'icon' => 'bi-speedometer2'],
-            ['label' => 'Database IT', 'url' => 'database.php', 'icon' => 'bi-database-fill-gear'],
-            ['label' => 'Digital Assets', 'url' => 'digital.php', 'icon' => 'bi-hdd-network'],
-            ['label' => 'User Management', 'url' => 'user.php', 'icon' => 'bi-people'],
-            ['label' => 'Keamanan', 'url' => 'keamanan.php', 'icon' => 'bi-shield-lock'],
-            ['label' => 'Backup Data', 'url' => 'backup.php', 'icon' => 'bi-cloud-arrow-up'],
-            ['label' => 'System Audit', 'url' => 'audit.php', 'icon' => 'bi-shield-check'],
+            ['label' => 'Stock Gudang', 'url' => 'stock.php', 'icon' => 'bi-box-seam'],
+            ['label' => 'Transportasi', 'url' => 'transportasi.php', 'icon' => 'bi-truck'],
             ['label' => 'Surat', 'url' => 'surat.php', 'icon' => 'bi-envelope'],
             ['label' => 'Reimburse', 'url' => 'reimburse.php', 'icon' => 'bi-cash-coin'],
             ['label' => 'Absensi', 'url' => 'absensi.php', 'icon' => 'bi-calendar-check'],
             ['label' => 'Cuti', 'url' => 'cuti.php', 'icon' => 'bi-calendar-x'],
+            ['label' => 'Digital Assets', 'url' => 'digital.php', 'icon' => 'bi-hdd-network'],
+            ['label' => 'User Management', 'url' => 'user.php', 'icon' => 'bi-people'],
+            ['label' => 'System Audit', 'url' => 'audit.php', 'icon' => 'bi-shield-check'],
             ['label' => 'Pengaturan', 'url' => 'pengaturan.php', 'icon' => 'bi-gear'],
             ['label' => 'Profile', 'url' => 'profile.php', 'icon' => 'bi-person']
         ];
@@ -79,6 +78,7 @@ switch ($current_role) {
             ['label' => 'Laporan Insiden', 'url' => 'insiden.php', 'icon' => 'bi-cone-striped'],
             ['label' => 'Sertifikat Ahli K3', 'url' => 'sertifikat_ahli.php', 'icon' => 'bi-award'],
             ['label' => 'Riwayat K3', 'url' => 'riwayat.php', 'icon' => 'bi-journal-text'],
+            ['label' => 'Transportasi', 'url' => 'transportasi.php', 'icon' => 'bi-truck'],
             ['label' => 'Surat', 'url' => 'surat.php', 'icon' => 'bi-envelope'],
             ['label' => 'Reimburse', 'url' => 'reimburse.php', 'icon' => 'bi-cash-coin'],
             ['label' => 'Absensi', 'url' => 'absensi.php', 'icon' => 'bi-calendar-check'],
@@ -86,6 +86,7 @@ switch ($current_role) {
             ['label' => 'Profile', 'url' => 'profile.php', 'icon' => 'bi-person']
         ];
         break;
+
 
     case 'client':
         $role_display_name = "Corporate Client";

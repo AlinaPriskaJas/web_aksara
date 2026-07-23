@@ -1,25 +1,2961 @@
 <?php
-// admin/persuratan.php
-$page_title = "Persuratan";
+// admin/surat.php — Modul Persuratan (Manajemen Surat)
+require_once "../config/koneksi.php";
+
+if (session_status() === PHP_SESSION_NONE)
+    session_start();
+
+if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
+    header("Location: ../login.php");
+    exit;
+}
+
+// Alias supaya kode di bawah (hasil adaptasi) tetap konsisten memakai $pdo.
+$pdo = $conn;
+
+if (!defined('BASE_PATH')) {
+    define('BASE_PATH', dirname(__DIR__));
+}
+require_once "../includes/functions.php";
+
+$page_title = "Manajemen Surat";
+$current_user_id = $_SESSION['user_id'];
+
+// ==========================================
+// [AJAX] Cek apakah kode surat sudah ada di database.
+// ==========================================
+if (($_GET['ajax'] ?? '') === 'cek_kode') {
+    header('Content-Type: application/json');
+    $kodeCek = strtoupper(trim($_GET['kode'] ?? ''));
+    $namaCek = trim($_GET['nama'] ?? '');
+    // kode_exists  = kode ini sudah dipakai jenis surat lain (boleh, akan jadi baris baru)
+    // combo_exists = kombinasi kode+nama PERSIS sama sudah ada (akan dipakai ulang, bukan baris baru)
+    $hasil = ['kode_exists' => false, 'combo_exists' => false, 'daftar_nama_lain' => []];
+    if ($kodeCek !== '') {
+        $stmtSemua = $pdo->prepare("SELECT nama FROM kode_surat WHERE kode = ?");
+        $stmtSemua->execute([$kodeCek]);
+        $semuaNama = $stmtSemua->fetchAll(PDO::FETCH_COLUMN);
+        if (!empty($semuaNama)) {
+            $hasil['kode_exists'] = true;
+            foreach ($semuaNama as $n) {
+                if ($namaCek !== '' && strcasecmp($n, $namaCek) === 0) {
+                    $hasil['combo_exists'] = true;
+                } else {
+                    $hasil['daftar_nama_lain'][] = $n;
+                }
+            }
+        }
+    }
+    echo json_encode($hasil);
+    exit;
+}
+
+// ==========================================
+// [AJAX] Ambil detail template + daftar kode yang terhubung, untuk modal Edit Template
+// ==========================================
+if (($_GET['ajax'] ?? '') === 'get_template') {
+    header('Content-Type: application/json');
+    $templateId = (int) ($_GET['id'] ?? 0);
+
+    $stmt = $pdo->prepare("SELECT * FROM template_master WHERE id = ?");
+    $stmt->execute([$templateId]);
+    $tpl = $stmt->fetch();
+
+    if (!$tpl) {
+        echo json_encode(['error' => 'Template tidak ditemukan.']);
+        exit;
+    }
+
+    $stmtKode = $pdo->prepare("
+        SELECT k.id AS kode_id, k.kode, k.nama AS nama_kode, kt.id AS kode_template_id, kt.is_default
+        FROM kode_template kt
+        JOIN kode_surat k ON k.id = kt.kode_id
+        WHERE kt.template_id = ?
+        ORDER BY kt.is_default DESC, k.kode ASC
+    ");
+    $stmtKode->execute([$templateId]);
+    $daftarKodeTerhubung = $stmtKode->fetchAll();
+
+    $decoded = $tpl['fields_json'] ? (json_decode($tpl['fields_json'], true) ?: []) : [];
+
+    echo json_encode([
+        'template' => [
+            'id' => (int) $tpl['id'],
+            'nama' => $tpl['nama'],
+            'deskripsi' => $tpl['deskripsi'],
+            'format' => $tpl['format'],
+            'file_path' => $tpl['file_path'],
+        ],
+        'kode_terhubung' => $daftarKodeTerhubung,
+        'fields' => $decoded['fields'] ?? [],
+        'table_fields' => $decoded['table_fields'] ?? [],
+        'blocks' => $decoded['blocks'] ?? [],
+    ]);
+    exit;
+}
+
+// ==========================================
+// Helper: ubah "Nama Template" isian user jadi nama file yang aman & rapi
+// ==========================================
+if (!function_exists('slugifyNamaTemplate')) {
+    function slugifyNamaTemplate(string $nama): string
+    {
+        $nama = trim($nama);
+        if (function_exists('iconv')) {
+            $hasil = @iconv('UTF-8', 'ASCII//TRANSLIT', $nama);
+            if ($hasil !== false) {
+                $nama = $hasil;
+            }
+        }
+        $nama = strtolower($nama);
+        $nama = preg_replace('/[^a-z0-9]+/', '-', $nama);
+        $nama = trim($nama, '-');
+        return $nama !== '' ? $nama : 'template';
+    }
+}
+
+if (!function_exists('isKolomHarga')) {
+    function isKolomHarga(string $namaKolom): bool
+    {
+        return (bool) preg_match('/harga/i', $namaKolom);
+    }
+}
+if (!function_exists('isKolomQty')) {
+    function isKolomQty(string $namaKolom): bool
+    {
+        return (bool) preg_match('/qty|jumlah/i', $namaKolom);
+    }
+}
+
+const STATUS_OPSI_KELUAR = ['Draft', 'Menunggu Persetujuan', 'Disetujui', 'Ditolak', 'Terkirim', 'Diarsipkan'];
+const STATUS_OPSI_MASUK = ['Baru', 'Diproses', 'Didisposisi', 'Selesai', 'Diarsipkan'];
+
+// Tab aktif (dipetakan ke id panel arp-tab-panel)
+$tabMap = [
+    'surat_keluar' => 'tabPanelSuratKeluar',
+    'surat_masuk' => 'tabPanelSuratMasuk',
+    'buat' => 'tabPanelBuatSurat',
+    'template' => 'tabPanelTemplate',
+];
+$tabGet = $_GET['tab'] ?? 'surat_keluar';
+$active_tab = $tabMap[$tabGet] ?? 'tabPanelSuratKeluar';
+
+$flash = $_SESSION['flash'] ?? null;
+unset($_SESSION['flash']);
+
+function suratRedirect(string $tab, array $extraQuery = []): void
+{
+    $query = array_merge(['tab' => $tab], $extraQuery);
+    header('Location: surat.php?' . http_build_query($query));
+    exit;
+}
+
+// ==========================================
+// [TAB: UPLOAD TEMPLATE] UPLOAD TEMPLATE MASTER + TENTUKAN KODE SURAT
+// ==========================================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'upload_template') {
+    try {
+        $pdo->beginTransaction();
+
+        $filePathAsli = uploadTemplateFile($_FILES['file_template']);
+        $format = pathinfo($filePathAsli, PATHINFO_EXTENSION) === 'docx' ? 'word_pdf' : 'pdf_only';
+
+        $namaTemplateInput = trim($_POST['nama_template'] ?? '');
+        $ekstensiFile = pathinfo($filePathAsli, PATHINFO_EXTENSION);
+        $slugNamaTemplate = slugifyNamaTemplate($namaTemplateInput);
+
+        $direktoriRelatif = dirname($filePathAsli);
+        $namaFileBaru = $slugNamaTemplate . '.' . $ekstensiFile;
+        $urutan = 1;
+        while (is_file(BASE_PATH . '/' . $direktoriRelatif . '/' . $namaFileBaru)) {
+            $urutan++;
+            $namaFileBaru = $slugNamaTemplate . '-' . $urutan . '.' . $ekstensiFile;
+        }
+
+        $filePathBaru = ($direktoriRelatif === '.' ? '' : $direktoriRelatif . '/') . $namaFileBaru;
+        $filePath = rename(BASE_PATH . '/' . $filePathAsli, BASE_PATH . '/' . $filePathBaru)
+            ? $filePathBaru
+            : $filePathAsli;
+
+        $hasilScan = ['fields' => [], 'table_fields' => [], 'blocks' => []];
+        $fieldsJson = null;
+        if ($format === 'word_pdf') {
+            $hasilScan = scanPlaceholdersFromDocx(BASE_PATH . '/' . $filePath);
+            $fieldsJson = json_encode(buildFieldsWithDefaultLabels($hasilScan), JSON_UNESCAPED_UNICODE);
+        }
+
+        $deskripsiTemplateInput = trim($_POST['deskripsi'] ?? '');
+
+        $stmt = $pdo->prepare("INSERT INTO template_master (nama, deskripsi, file_path, format, fields_json, diupload_oleh) VALUES (?, ?, ?, ?, ?, ?)");
+        $stmt->execute([
+            $namaTemplateInput,
+            $deskripsiTemplateInput !== '' ? $deskripsiTemplateInput : null,
+            $filePath,
+            $format,
+            $fieldsJson,
+            $current_user_id
+        ]);
+        $templateId = (int) $pdo->lastInsertId();
+
+        $kodeInput = strtoupper(trim($_POST['kode'] ?? ''));
+        if ($kodeInput === '') {
+            throw new RuntimeException("Kode surat wajib diisi.");
+        }
+        $namaKodeInput = trim($_POST['nama_kode'] ?? '');
+        $namaKodeFinal = $namaKodeInput !== '' ? $namaKodeInput : $kodeInput;
+
+        // Dicocokkan berdasarkan KOMBINASI kode + nama jenis surat, bukan kode
+        // saja. Dengan begini satu kode surat (mis. S-PEN) boleh dipakai untuk
+        // beberapa jenis surat berbeda (mis. Invoice & Penawaran) sebagai baris
+        // kode_surat terpisah, masing-masing dengan penomoran sendiri.
+        $stmtCekKode = $pdo->prepare("SELECT id FROM kode_surat WHERE kode = ? AND nama = ?");
+        $stmtCekKode->execute([$kodeInput, $namaKodeFinal]);
+        $kodeId = (int) $stmtCekKode->fetchColumn();
+
+        if (!$kodeId) {
+            $stmtKode = $pdo->prepare("INSERT INTO kode_surat (kode, nama) VALUES (?, ?)");
+            $stmtKode->execute([$kodeInput, $namaKodeFinal]);
+            $kodeId = (int) $pdo->lastInsertId();
+        }
+
+        $cek = $pdo->prepare("SELECT COUNT(*) FROM kode_template WHERE kode_id = ?");
+        $cek->execute([$kodeId]);
+        $jadikanDefault = ((int) $cek->fetchColumn() === 0) ? 1 : 0;
+
+        $stmtHubung = $pdo->prepare("INSERT INTO kode_template (kode_id, template_id, is_default) VALUES (?, ?, ?)");
+        $stmtHubung->execute([$kodeId, $templateId, $jadikanDefault]);
+
+        $pdo->commit();
+
+        $ringkasanField = [];
+        if (!empty($hasilScan['fields'])) {
+            $ringkasanField[] = count($hasilScan['fields']) . ' field: ' . implode(', ', $hasilScan['fields']);
+        }
+        if (!empty($hasilScan['table_fields'])) {
+            $ringkasanField[] = 'tabel item dengan kolom: ' . implode(', ', $hasilScan['table_fields']);
+        }
+        if (!empty($hasilScan['blocks'])) {
+            $ringkasanField[] = 'blok list berulang: ' . implode(', ', array_keys($hasilScan['blocks']));
+        }
+        $pesanField = $ringkasanField ? implode(' | ', $ringkasanField) : 'Tidak ada placeholder ${...} yang terdeteksi.';
+
+        $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Template berhasil diupload dan langsung dihubungkan ke kode surat. ' . $pesanField];
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction())
+            $pdo->rollBack();
+        $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Gagal menyimpan template: ' . $e->getMessage()];
+    }
+    suratRedirect('template');
+}
+
+// ==========================================
+// [TAB: UPLOAD TEMPLATE] HAPUS TEMPLATE MASTER
+// ==========================================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'hapus_template') {
+    try {
+        $templateId = (int) $_POST['template_id'];
+
+        $stmt = $pdo->prepare("SELECT * FROM template_master WHERE id = ?");
+        $stmt->execute([$templateId]);
+        $tpl = $stmt->fetch();
+        if (!$tpl) {
+            throw new RuntimeException("Template tidak ditemukan.");
+        }
+
+        $cekDipakai = $pdo->prepare("SELECT COUNT(*) FROM surat WHERE template_id = ?");
+        $cekDipakai->execute([$templateId]);
+        if ((int) $cekDipakai->fetchColumn() > 0) {
+            throw new RuntimeException("Template \"{$tpl['nama']}\" sudah pernah dipakai untuk membuat surat, tidak bisa dihapus.");
+        }
+
+        $pdo->beginTransaction();
+        $pdo->prepare("DELETE FROM kode_template WHERE template_id = ?")->execute([$templateId]);
+        $pdo->prepare("DELETE FROM template_master WHERE id = ?")->execute([$templateId]);
+        $pdo->commit();
+
+        $fullPath = BASE_PATH . '/' . $tpl['file_path'];
+        if (is_file($fullPath)) {
+            @unlink($fullPath);
+        }
+
+        $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Template "' . $tpl['nama'] . '" beserta file & koneksinya berhasil dihapus.'];
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction())
+            $pdo->rollBack();
+        $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Gagal menghapus template: ' . $e->getMessage()];
+    }
+    suratRedirect('template');
+}
+
+// ==========================================
+// [TAB: UPLOAD TEMPLATE] EDIT TEMPLATE — ubah metadata (nama, kode, nama
+// jenis surat, deskripsi) + rename placeholder ${...} di dalam file .docx.
+// ==========================================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'edit_template') {
+    try {
+        $templateId = (int) ($_POST['template_id'] ?? 0);
+        $pdo->beginTransaction();
+
+        $stmt = $pdo->prepare("SELECT * FROM template_master WHERE id = ?");
+        $stmt->execute([$templateId]);
+        $tpl = $stmt->fetch();
+        if (!$tpl) {
+            throw new RuntimeException("Template tidak ditemukan.");
+        }
+
+        // ----- 1) Update metadata nama & deskripsi template -----
+        $namaTemplateBaru = trim($_POST['nama_template'] ?? '');
+        if ($namaTemplateBaru === '') {
+            throw new RuntimeException("Nama template wajib diisi.");
+        }
+        $deskripsiBaru = trim($_POST['deskripsi'] ?? '');
+
+        $pdo->prepare("UPDATE template_master SET nama = ?, deskripsi = ? WHERE id = ?")
+            ->execute([$namaTemplateBaru, $deskripsiBaru !== '' ? $deskripsiBaru : null, $templateId]);
+
+        // ----- 2) Rename placeholder ${...} di dalam file .docx (kalau ada mapping) -----
+        $mappingLama = $_POST['field_lama'] ?? [];   // array nama field ASLI (readonly di UI)
+        $mappingBaru = $_POST['field_baru'] ?? [];   // array nama field BARU hasil edit user
+        $mappingLabel = $_POST['field_label'] ?? [];  // array label tampilan form
+
+        if ($tpl['format'] === 'word_pdf' && is_file(BASE_PATH . '/' . $tpl['file_path'])) {
+            $fullPath = BASE_PATH . '/' . $tpl['file_path'];
+            $penggantianPlaceholder = [];
+            foreach ($mappingLama as $i => $namaLama) {
+                $namaLama = trim((string) $namaLama);
+                $namaBaru = trim((string) ($mappingBaru[$i] ?? ''));
+                if ($namaLama === '' || $namaBaru === '' || $namaLama === $namaBaru) {
+                    continue;
+                }
+                if (!preg_match('/^[a-zA-Z0-9_]+$/', $namaBaru)) {
+                    throw new RuntimeException("Nama field \"{$namaBaru}\" tidak valid. Hanya boleh huruf, angka, dan underscore (_), tanpa spasi.");
+                }
+                $penggantianPlaceholder[$namaLama] = $namaBaru;
+            }
+
+            if (!empty($penggantianPlaceholder)) {
+                renamePlaceholdersInDocx($fullPath, $penggantianPlaceholder);
+            }
+
+            // ----- 3) Re-scan template setelah rename, supaya fields_json selalu sinkron dengan isi file terbaru -----
+            $hasilScanBaru = scanPlaceholdersFromDocx($fullPath);
+            $fieldsBaruDenganLabel = buildFieldsWithDefaultLabels($hasilScanBaru);
+
+            // Terapkan label kustom dari form (kalau user mengubah label tampilan)
+            $petaLabelBaru = [];
+            foreach ($mappingBaru as $i => $namaBaru) {
+                $namaBaru = trim((string) $namaBaru);
+                $labelBaru = trim((string) ($mappingLabel[$i] ?? ''));
+                if ($namaBaru !== '' && $labelBaru !== '') {
+                    $petaLabelBaru[$namaBaru] = $labelBaru;
+                }
+            }
+            foreach ($fieldsBaruDenganLabel['fields'] as &$f) {
+                if (isset($petaLabelBaru[$f['field']])) {
+                    $f['label'] = $petaLabelBaru[$f['field']];
+                }
+            }
+            unset($f);
+            foreach ($fieldsBaruDenganLabel['table_fields'] as &$f) {
+                if (isset($petaLabelBaru[$f['field']])) {
+                    $f['label'] = $petaLabelBaru[$f['field']];
+                }
+            }
+            unset($f);
+
+            $pdo->prepare("UPDATE template_master SET fields_json = ? WHERE id = ?")
+                ->execute([json_encode($fieldsBaruDenganLabel, JSON_UNESCAPED_UNICODE), $templateId]);
+        }
+
+        // ----- 4) Update kode surat (kode + nama jenis surat) yang terhubung -----
+        // Form mengirim array kode_template_id[] beserta kode_baru[] & nama_kode_baru[]
+        // untuk tiap baris kode yang terhubung ke template ini.
+        $kodeTemplateIds = $_POST['kode_template_id'] ?? [];
+        $kodeBaruList = $_POST['kode_baru'] ?? [];
+        $namaKodeBaruList = $_POST['nama_kode_baru'] ?? [];
+
+        foreach ($kodeTemplateIds as $i => $kodeTemplateId) {
+            $kodeTemplateId = (int) $kodeTemplateId;
+            $kodeBaru = strtoupper(trim((string) ($kodeBaruList[$i] ?? '')));
+            $namaKodeBaru = trim((string) ($namaKodeBaruList[$i] ?? ''));
+
+            if ($kodeBaru === '' || $namaKodeBaru === '') {
+                continue;
+            }
+
+            $stmtKodeId = $pdo->prepare("SELECT kode_id FROM kode_template WHERE id = ? AND template_id = ?");
+            $stmtKodeId->execute([$kodeTemplateId, $templateId]);
+            $kodeId = (int) $stmtKodeId->fetchColumn();
+            if (!$kodeId) {
+                continue;
+            }
+
+            // Cek supaya tidak bentrok dengan baris kode_surat lain (kombinasi kode+nama unik)
+            $cekBentrok = $pdo->prepare("SELECT id FROM kode_surat WHERE kode = ? AND nama = ? AND id != ?");
+            $cekBentrok->execute([$kodeBaru, $namaKodeBaru, $kodeId]);
+            if ($cekBentrok->fetch()) {
+                throw new RuntimeException("Kombinasi kode \"{$kodeBaru}\" & jenis surat \"{$namaKodeBaru}\" sudah dipakai baris lain.");
+            }
+
+            $pdo->prepare("UPDATE kode_surat SET kode = ?, nama = ? WHERE id = ?")
+                ->execute([$kodeBaru, $namaKodeBaru, $kodeId]);
+        }
+
+        $pdo->commit();
+        $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Template "' . $namaTemplateBaru . '" berhasil diperbarui.'];
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction())
+            $pdo->rollBack();
+        $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Gagal memperbarui template: ' . $e->getMessage()];
+    }
+    suratRedirect('template');
+}
+
+// ==========================================
+// [TAB: SURAT] CATAT SURAT MASUK MANUAL (tanpa generate docx)
+// ==========================================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'catat_surat_masuk') {
+    try {
+        $pdo->beginTransaction();
+
+        $nomorAgenda = generateNomorAgenda($pdo, 'Masuk');
+
+        $nomorSuratInput = trim($_POST['nomor_surat'] ?? '');
+        $tglTerima = $_POST['tanggal_surat'] ?? date('Y-m-d');
+        $pengirim = trim($_POST['tujuan_pengirim'] ?? '');
+        $perihal = trim($_POST['perihal'] ?? '') ?: '-';
+        $status = trim($_POST['status'] ?? '') ?: 'Baru';
+
+        if ($nomorSuratInput === '' || $pengirim === '') {
+            throw new RuntimeException("Nomor surat dan pengirim wajib diisi.");
+        }
+
+        $fileRelatif = null;
+        if (!empty($_FILES['lampiran']['name'])) {
+            $fileRelatif = uploadTemplateFile($_FILES['lampiran']);
+        }
+
+        $stmtKodeManual = $pdo->prepare("SELECT id FROM kode_surat WHERE kode = ?");
+        $stmtKodeManual->execute(['MASUK']);
+        $kodeManualId = (int) $stmtKodeManual->fetchColumn();
+        if (!$kodeManualId) {
+            $pdo->prepare("INSERT INTO kode_surat (kode, nama) VALUES (?, ?)")->execute(['MASUK', 'Surat Masuk']);
+            $kodeManualId = (int) $pdo->lastInsertId();
+        }
+
+        $insert = $pdo->prepare("INSERT INTO surat
+            (nomor_agenda, nomor, kode_id, template_id, perihal, status, arah, tujuan, dibuat_oleh, tgl_dibuat, tanggal_diterima, file_hasil, isi_data)
+            VALUES (?, ?, ?, NULL, ?, ?, 'Masuk', ?, ?, ?, ?, ?, ?)");
+        $insert->execute([
+            $nomorAgenda,
+            $nomorSuratInput,
+            $kodeManualId,
+            $perihal,
+            $status,
+            $pengirim,
+            $current_user_id,
+            $tglTerima,
+            $tglTerima,
+            $fileRelatif,
+            json_encode(['sumber' => 'catat_manual'], JSON_UNESCAPED_UNICODE),
+        ]);
+
+        $pdo->commit();
+        $_SESSION['flash'] = ['type' => 'success', 'msg' => "Surat masuk berhasil dicatat dengan nomor agenda {$nomorAgenda}."];
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction())
+            $pdo->rollBack();
+        $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Gagal mencatat surat masuk: ' . $e->getMessage()];
+    }
+    suratRedirect('surat_masuk');
+}
+
+// ==========================================
+// [TAB: BUAT SURAT] GENERATE SURAT DARI TEMPLATE
+// ==========================================
+$errorGenerateSurat = null;
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generate_surat') {
+    $active_tab = 'tabPanelBuatSurat';
+    $isPreviewOnly = ($_POST['preview_only'] ?? '') === '1';
+
+    if (!$isPreviewOnly) {
+        $kodeIdPost = (int) ($_POST['kode_id'] ?? 0);
+        $templateIdPost = (int) ($_POST['template_id'] ?? 0);
+        try {
+            $stmt = $pdo->prepare("SELECT k.*, t.id AS template_id, t.file_path, t.format
+                                    FROM kode_surat k
+                                    JOIN kode_template kt ON kt.kode_id = k.id AND kt.template_id = ?
+                                    JOIN template_master t ON t.id = kt.template_id
+                                    WHERE k.id = ?");
+            $stmt->execute([$templateIdPost, $kodeIdPost]);
+            $kode = $stmt->fetch();
+
+            if (!$kode || !$kode['file_path']) {
+                throw new RuntimeException("Kombinasi jenis surat & template ini tidak/belum terhubung.");
+            }
+            if (!is_file(BASE_PATH . '/' . $kode['file_path'])) {
+                throw new RuntimeException("File template master tidak ditemukan di storage. Upload ulang template ini lewat tab \"Upload Template\".");
+            }
+            if ($kode['format'] !== 'word_pdf') {
+                throw new RuntimeException("Template ini bukan file Word (.docx), tidak bisa digenerate otomatis lewat form ini.");
+            }
+
+            $pdo->beginTransaction();
+
+            $noUrutManualPost = trim($_POST['no_urut_manual'] ?? '');
+            $nomorSurat = resolveNomorSurat($pdo, $kodeIdPost, $noUrutManualPost);
+            $nomorAgenda = generateNomorAgenda($pdo, 'Keluar');
+
+            $dataForm = [];
+            foreach ($_POST['dinamis'] ?? [] as $fieldName => $fieldValue) {
+                $fieldValue = trim((string) $fieldValue);
+                if (preg_match('/tanggal|tgl/i', $fieldName) && $fieldValue !== '') {
+                    $fieldValue = formatTanggalIndonesia($fieldValue);
+                }
+                $dataForm[$fieldName] = $fieldValue;
+            }
+
+            $items = [];
+            foreach ($_POST['items'] ?? [] as $baris) {
+                $baris = array_map('trim', (array) $baris);
+                $adaIsi = false;
+                foreach ($baris as $v) {
+                    if ($v !== '') {
+                        $adaIsi = true;
+                        break;
+                    }
+                }
+                if ($adaIsi) {
+                    $items[] = $baris;
+                }
+            }
+
+            $blocksData = [];
+            foreach ($_POST['blok'] ?? [] as $namaBlok => $barisList) {
+                foreach ((array) $barisList as $baris) {
+                    $baris = array_map('trim', (array) $baris);
+                    $adaIsi = false;
+                    foreach ($baris as $v) {
+                        if ($v !== '') {
+                            $adaIsi = true;
+                            break;
+                        }
+                    }
+                    if ($adaIsi) {
+                        $blocksData[$namaBlok][] = $baris;
+                    }
+                }
+            }
+
+            $fileHasilRelatif = generateSuratDocx(BASE_PATH . '/' . $kode['file_path'], $dataForm, $items, $nomorSurat, $blocksData, $kode['nama']);
+
+            $perihalDariWord = extractPerihalFromDocxText(BASE_PATH . '/' . $fileHasilRelatif);
+            $perihalSimpan = $perihalDariWord
+                ?? $dataForm['perihal']
+                ?? ($_POST['perihal'] ?? null)
+                ?? ($kode['nama'] ?? '-');
+            $tujuanSimpan = $dataForm['instansi_tujuan']
+                ?? $dataForm['tujuan']
+                ?? $dataForm['nama_perusahaan']
+                ?? $dataForm['nama_perusahaan_tujuan']
+                ?? $dataForm['item_nama_perusahaan']
+                ?? $dataForm['nama_perusahaan_pihak_pertama']
+                ?? '-';
+
+            $statusInput = trim($_POST['status'] ?? '') ?: 'Draft';
+
+            $isiDataDisimpan = $dataForm;
+            if (!empty($items)) {
+                $isiDataDisimpan['__items'] = $items;
+            }
+            if (!empty($blocksData)) {
+                $isiDataDisimpan['__blok'] = $blocksData;
+            }
+
+            $insert = $pdo->prepare("INSERT INTO surat
+                (nomor_agenda, nomor, kode_id, template_id, perihal, status, arah, tujuan, dibuat_oleh, tgl_dibuat, tanggal_diterima, file_hasil, isi_data)
+                VALUES (?, ?, ?, ?, ?, ?, 'Keluar', ?, ?, CURDATE(), NULL, ?, ?)");
+            $insert->execute([
+                $nomorAgenda,
+                $nomorSurat,
+                $kodeIdPost,
+                $templateIdPost,
+                $perihalSimpan,
+                $statusInput,
+                $tujuanSimpan,
+                $current_user_id,
+                $fileHasilRelatif,
+                json_encode($isiDataDisimpan, JSON_UNESCAPED_UNICODE),
+            ]);
+
+            $pdo->commit();
+            $_SESSION['flash'] = ['type' => 'success', 'msg' => "Surat berhasil dibuat dengan nomor {$nomorSurat} (agenda {$nomorAgenda})."];
+            suratRedirect('surat_keluar');
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction())
+                $pdo->rollBack();
+            $errorGenerateSurat = 'Gagal membuat surat: ' . $e->getMessage();
+        }
+    }
+}
+
+// ==========================================
+// [TAB: SURAT MASUK] ALUR TINDAKAN SURAT MASUK
+// Baru -> Diproses -> Didisposisi -> Selesai -> Diarsipkan
+// Menggantikan dropdown status manual: sekarang lewat tombol Tindakan
+// yang mengikuti alur baku, supaya konsisten dengan Surat Keluar.
+// ==========================================
+
+// Aturan transisi status yang SAH untuk surat masuk (dari => [tujuan_valid])
+const ALUR_STATUS_MASUK = [
+    'Baru' => ['Diproses'],
+    'Diproses' => ['Didisposisi', 'Selesai'],
+    'Didisposisi' => ['Selesai'],
+    'Selesai' => ['Diarsipkan'],
+    'Diarsipkan' => [],
+];
+
+// ----- Proses surat masuk (Baru -> Diproses) -----
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'proses_surat_masuk') {
+    try {
+        $suratId = (int) $_POST['surat_id'];
+        $catatan = trim($_POST['catatan'] ?? '');
+
+        $cek = $pdo->prepare("SELECT * FROM surat WHERE id = ? AND arah = 'Masuk'");
+        $cek->execute([$suratId]);
+        $surat = $cek->fetch();
+        if (!$surat) {
+            throw new RuntimeException("Surat masuk tidak ditemukan.");
+        }
+        if ($surat['status'] !== 'Baru') {
+            throw new RuntimeException("Hanya surat berstatus Baru yang bisa mulai diproses (status saat ini: " . $surat['status'] . ").");
+        }
+
+        $isiData = json_decode($surat['isi_data'] ?? '', true) ?: [];
+        $isiData['__log_tindakan'][] = [
+            'aksi' => 'Diproses',
+            'oleh' => $current_user_id,
+            'waktu' => date('Y-m-d H:i:s'),
+            'catatan' => $catatan !== '' ? $catatan : null,
+        ];
+
+        $pdo->prepare("UPDATE surat SET status = 'Diproses', isi_data = ? WHERE id = ?")
+            ->execute([json_encode($isiData, JSON_UNESCAPED_UNICODE), $suratId]);
+
+        $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Surat masuk mulai diproses.'];
+    } catch (Throwable $e) {
+        $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Gagal memproses surat: ' . $e->getMessage()];
+    }
+    suratRedirect('surat_masuk');
+}
+
+// ----- Disposisikan surat masuk ke user/role tertentu (Diproses -> Didisposisi) -----
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'disposisi_surat_masuk') {
+    try {
+        $suratId = (int) $_POST['surat_id'];
+        $tujuanDisposisiId = (int) ($_POST['tujuan_disposisi_id'] ?? 0);
+        $instruksi = trim($_POST['instruksi_disposisi'] ?? '');
+        $catatan = trim($_POST['catatan'] ?? '');
+
+        if ($tujuanDisposisiId <= 0) {
+            throw new RuntimeException("Tujuan disposisi wajib dipilih.");
+        }
+
+        $pdo->beginTransaction();
+
+        $cek = $pdo->prepare("SELECT * FROM surat WHERE id = ? AND arah = 'Masuk' FOR UPDATE");
+        $cek->execute([$suratId]);
+        $surat = $cek->fetch();
+        if (!$surat) {
+            throw new RuntimeException("Surat masuk tidak ditemukan.");
+        }
+        if (!in_array($surat['status'], ['Diproses'], true)) {
+            throw new RuntimeException("Surat harus berstatus Diproses sebelum bisa didisposisikan (status saat ini: " . $surat['status'] . ").");
+        }
+
+        $cekUser = $pdo->prepare("SELECT id, nama_lengkap, role FROM Users WHERE id = ?");
+        $cekUser->execute([$tujuanDisposisiId]);
+        $userTujuan = $cekUser->fetch();
+        if (!$userTujuan) {
+            throw new RuntimeException("User tujuan disposisi tidak ditemukan.");
+        }
+
+        $isiData = json_decode($surat['isi_data'] ?? '', true) ?: [];
+        $isiData['__disposisi'] = [
+            'tujuan_user_id' => $tujuanDisposisiId,
+            'tujuan_nama' => $userTujuan['nama_lengkap'],
+            'tujuan_role' => $userTujuan['role'],
+            'instruksi' => $instruksi !== '' ? $instruksi : null,
+            'oleh' => $current_user_id,
+            'waktu' => date('Y-m-d H:i:s'),
+        ];
+        $isiData['__log_tindakan'][] = [
+            'aksi' => 'Didisposisi ke ' . $userTujuan['nama_lengkap'],
+            'oleh' => $current_user_id,
+            'waktu' => date('Y-m-d H:i:s'),
+            'catatan' => $catatan !== '' ? $catatan : $instruksi,
+        ];
+
+        $pdo->prepare("UPDATE surat SET status = 'Didisposisi', isi_data = ? WHERE id = ?")
+            ->execute([json_encode($isiData, JSON_UNESCAPED_UNICODE), $suratId]);
+
+        // Kirim notifikasi ke user tujuan disposisi (kalau tabel Notifikasi tersedia).
+        try {
+            $pdo->prepare("
+                INSERT INTO Notifikasi (user_id, judul, pesan, modul_terkait, ref_id)
+                VALUES (?, 'Disposisi Surat Masuk', ?, 'Surat', ?)
+            ")->execute([
+                        $tujuanDisposisiId,
+                        'Surat masuk ' . $surat['nomor'] . ' perihal "' . $surat['perihal'] . '" didisposisikan kepada Anda.'
+                        . ($instruksi !== '' ? ' Instruksi: ' . $instruksi : ''),
+                        $suratId,
+                    ]);
+        } catch (Throwable $eNotif) {
+            // Kalau tabel Notifikasi tidak tersedia/gagal, tidak menggagalkan disposisi.
+        }
+
+        $pdo->commit();
+        $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Surat berhasil didisposisikan kepada ' . $userTujuan['nama_lengkap'] . '.'];
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction())
+            $pdo->rollBack();
+        $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Gagal mendisposisikan surat: ' . $e->getMessage()];
+    }
+    suratRedirect('surat_masuk');
+}
+
+// ----- Tandai selesai (Diproses/Didisposisi -> Selesai) -----
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'selesaikan_surat_masuk') {
+    try {
+        $suratId = (int) $_POST['surat_id'];
+        $catatan = trim($_POST['catatan'] ?? '');
+
+        $cek = $pdo->prepare("SELECT * FROM surat WHERE id = ? AND arah = 'Masuk'");
+        $cek->execute([$suratId]);
+        $surat = $cek->fetch();
+        if (!$surat) {
+            throw new RuntimeException("Surat masuk tidak ditemukan.");
+        }
+        if (!in_array($surat['status'], ['Diproses', 'Didisposisi'], true)) {
+            throw new RuntimeException("Surat harus berstatus Diproses atau Didisposisi sebelum bisa diselesaikan (status saat ini: " . $surat['status'] . ").");
+        }
+
+        $isiData = json_decode($surat['isi_data'] ?? '', true) ?: [];
+        $isiData['__log_tindakan'][] = [
+            'aksi' => 'Selesai',
+            'oleh' => $current_user_id,
+            'waktu' => date('Y-m-d H:i:s'),
+            'catatan' => $catatan !== '' ? $catatan : null,
+        ];
+
+        $pdo->prepare("UPDATE surat SET status = 'Selesai', isi_data = ? WHERE id = ?")
+            ->execute([json_encode($isiData, JSON_UNESCAPED_UNICODE), $suratId]);
+
+        $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Surat masuk ditandai Selesai.'];
+    } catch (Throwable $e) {
+        $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Gagal menyelesaikan surat: ' . $e->getMessage()];
+    }
+    suratRedirect('surat_masuk');
+}
+
+// ----- Arsipkan surat masuk yang sudah selesai (Selesai -> Diarsipkan) -----
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'arsipkan_surat_masuk') {
+    try {
+        $suratId = (int) $_POST['surat_id'];
+        $cek = $pdo->prepare("SELECT status FROM surat WHERE id = ? AND arah = 'Masuk'");
+        $cek->execute([$suratId]);
+        $statusSekarang = $cek->fetchColumn();
+
+        if ($statusSekarang === false) {
+            throw new RuntimeException("Surat masuk tidak ditemukan.");
+        }
+        if ($statusSekarang !== 'Selesai') {
+            throw new RuntimeException("Hanya surat berstatus Selesai yang bisa diarsipkan.");
+        }
+
+        $pdo->prepare("UPDATE surat SET status = 'Diarsipkan' WHERE id = ?")->execute([$suratId]);
+        $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Surat masuk berhasil diarsipkan.'];
+    } catch (Throwable $e) {
+        $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Gagal mengarsipkan surat: ' . $e->getMessage()];
+    }
+    suratRedirect('surat_masuk');
+}
+
+// ----- Kembalikan surat masuk ke status sebelumnya (Didisposisi/Selesai -> Diproses) -----
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'batalkan_tindakan_surat_masuk') {
+    try {
+        $suratId = (int) $_POST['surat_id'];
+        $cek = $pdo->prepare("SELECT status FROM surat WHERE id = ? AND arah = 'Masuk'");
+        $cek->execute([$suratId]);
+        $statusSekarang = $cek->fetchColumn();
+
+        if ($statusSekarang === false) {
+            throw new RuntimeException("Surat masuk tidak ditemukan.");
+        }
+        if (!in_array($statusSekarang, ['Didisposisi', 'Selesai'], true)) {
+            throw new RuntimeException("Hanya surat berstatus Didisposisi atau Selesai yang bisa dikembalikan ke Diproses.");
+        }
+
+        $pdo->prepare("UPDATE surat SET status = 'Diproses' WHERE id = ?")->execute([$suratId]);
+        $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Tindakan dibatalkan, surat dikembalikan ke status Diproses.'];
+    } catch (Throwable $e) {
+        $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Gagal membatalkan tindakan: ' . $e->getMessage()];
+    }
+    suratRedirect('surat_masuk');
+}
+
+// ==========================================
+// [TAB: SURAT] AJUKAN / PROSES APPROVAL SURAT KELUAR
+// Status Disetujui/Ditolak mengikuti hasil approval di tabel Approval,
+// bukan dipilih manual — konsisten dengan modul approval lain di sistem.
+// ==========================================
+
+// ----- Ajukan surat untuk disetujui (Draft -> Menunggu Persetujuan) -----
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'ajukan_approval_surat') {
+    try {
+        $suratId = (int) $_POST['surat_id'];
+
+        $pdo->beginTransaction();
+
+        $cek = $pdo->prepare("SELECT * FROM surat WHERE id = ? FOR UPDATE");
+        $cek->execute([$suratId]);
+        $surat = $cek->fetch();
+
+        if (!$surat) {
+            throw new RuntimeException("Surat tidak ditemukan.");
+        }
+        if ($surat['arah'] !== 'Keluar') {
+            throw new RuntimeException("Hanya surat keluar yang melalui alur persetujuan.");
+        }
+        if ($surat['status'] !== 'Draft') {
+            throw new RuntimeException("Surat ini sudah diajukan/diproses sebelumnya (" . $surat['status'] . ").");
+        }
+
+        $pdo->prepare("UPDATE surat SET status = 'Menunggu Persetujuan' WHERE id = ?")->execute([$suratId]);
+
+        $insertApproval = $pdo->prepare("
+            INSERT INTO Approval (jenis_pengajuan, ref_id, requester_id, level, status)
+            VALUES ('Surat', :ref_id, :requester_id, 1, 'Menunggu')
+        ");
+        $insertApproval->execute([
+            ':ref_id' => $suratId,
+            ':requester_id' => $surat['dibuat_oleh'],
+        ]);
+
+        $pdo->commit();
+        $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Surat berhasil diajukan untuk persetujuan.'];
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction())
+            $pdo->rollBack();
+        $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Gagal mengajukan persetujuan: ' . $e->getMessage()];
+    }
+    suratRedirect('surat_keluar');
+}
+
+// ----- Setujui / Tolak surat (Menunggu Persetujuan -> Disetujui/Ditolak) -----
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'proses_approval_surat') {
+    try {
+        $suratId = (int) $_POST['surat_id'];
+        $decision = $_POST['decision'] ?? ''; // 'approve' | 'reject'
+        $catatan = trim($_POST['catatan'] ?? '');
+
+        $status_map = [
+            'approve' => 'Disetujui',
+            'reject' => 'Ditolak',
+        ];
+
+        if (!isset($status_map[$decision])) {
+            throw new RuntimeException("Keputusan tidak valid.");
+        }
+        if ($decision === 'reject' && $catatan === '') {
+            throw new RuntimeException("Catatan/alasan wajib diisi saat menolak surat.");
+        }
+
+        $pdo->beginTransaction();
+
+        $cek = $pdo->prepare("SELECT * FROM surat WHERE id = ? FOR UPDATE");
+        $cek->execute([$suratId]);
+        $surat = $cek->fetch();
+
+        if (!$surat) {
+            throw new RuntimeException("Surat tidak ditemukan.");
+        }
+        if ($surat['status'] !== 'Menunggu Persetujuan') {
+            throw new RuntimeException("Surat ini sudah diproses sebelumnya (" . $surat['status'] . ").");
+        }
+
+        $statusBaru = $status_map[$decision];
+        $pdo->prepare("UPDATE surat SET status = ? WHERE id = ?")->execute([$statusBaru, $suratId]);
+
+        $cekApproval = $pdo->prepare("
+            SELECT id FROM Approval
+            WHERE jenis_pengajuan = 'Surat' AND ref_id = ? AND status = 'Menunggu'
+            ORDER BY id DESC LIMIT 1
+        ");
+        $cekApproval->execute([$suratId]);
+        $approvalId = $cekApproval->fetchColumn();
+
+        if ($approvalId) {
+            $pdo->prepare("
+                UPDATE Approval SET status = ?, approver_id = ?, catatan = ?, tgl_aksi = NOW() WHERE id = ?
+            ")->execute([$statusBaru, $current_user_id, $catatan !== '' ? $catatan : null, $approvalId]);
+        } else {
+            $pdo->prepare("
+                INSERT INTO Approval (jenis_pengajuan, ref_id, requester_id, approver_id, level, status, catatan, tgl_aksi)
+                VALUES ('Surat', ?, ?, ?, 1, ?, ?, NOW())
+            ")->execute([$suratId, $surat['dibuat_oleh'], $current_user_id, $statusBaru, $catatan !== '' ? $catatan : null]);
+        }
+
+        $pdo->commit();
+        $_SESSION['flash'] = [
+            'type' => 'success',
+            'msg' => $decision === 'approve' ? 'Surat berhasil disetujui.' : 'Surat berhasil ditolak.',
+        ];
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction())
+            $pdo->rollBack();
+        $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Gagal memproses persetujuan: ' . $e->getMessage()];
+    }
+    suratRedirect('surat_keluar');
+}
+
+// ----- Revisi surat yang ditolak (Ditolak -> Draft) -----
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'revisi_surat') {
+    try {
+        $suratId = (int) $_POST['surat_id'];
+        $cek = $pdo->prepare("SELECT status FROM surat WHERE id = ?");
+        $cek->execute([$suratId]);
+        $statusSekarang = $cek->fetchColumn();
+
+        if ($statusSekarang !== 'Ditolak') {
+            throw new RuntimeException("Hanya surat berstatus Ditolak yang bisa direvisi.");
+        }
+
+        $pdo->prepare("UPDATE surat SET status = 'Draft' WHERE id = ?")->execute([$suratId]);
+        $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Surat dikembalikan ke Draft untuk direvisi.'];
+    } catch (Throwable $e) {
+        $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Gagal merevisi surat: ' . $e->getMessage()];
+    }
+    suratRedirect('surat_keluar');
+}
+
+// ----- Kirim surat yang sudah disetujui ke client (Disetujui -> Terkirim) -----
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'kirim_surat') {
+    try {
+        $suratId = (int) $_POST['surat_id'];
+
+        $pdo->beginTransaction();
+
+        $cek = $pdo->prepare("SELECT * FROM surat WHERE id = ? FOR UPDATE");
+        $cek->execute([$suratId]);
+        $surat = $cek->fetch();
+
+        if (!$surat) {
+            throw new RuntimeException("Surat tidak ditemukan.");
+        }
+        if ($surat['status'] !== 'Disetujui') {
+            throw new RuntimeException("Surat harus berstatus Disetujui sebelum bisa dikirim ke client.");
+        }
+
+        $pdo->prepare("UPDATE surat SET status = 'Terkirim' WHERE id = ?")->execute([$suratId]);
+
+        // Cocokkan nama tujuan surat dengan Data_Klien untuk mengirim notifikasi
+        // langsung ke akun client terkait (jika akunnya terdaftar di sistem).
+        $klienTerkirim = null;
+        if (!empty($surat['tujuan'])) {
+            $cariKlien = $pdo->prepare("
+                SELECT dk.id AS klien_id, dk.nama_perusahaan, dk.user_id
+                FROM Data_Klien dk
+                WHERE dk.nama_perusahaan LIKE ?
+                LIMIT 1
+            ");
+            $cariKlien->execute(['%' . $surat['tujuan'] . '%']);
+            $klienTerkirim = $cariKlien->fetch();
+        }
+
+        if ($klienTerkirim && !empty($klienTerkirim['user_id'])) {
+            // Notifikasi masuk ke akun client
+            $pdo->prepare("
+                INSERT INTO Notifikasi (user_id, judul, pesan, modul_terkait, ref_id)
+                VALUES (?, 'Surat Baru Diterima', ?, 'Surat', ?)
+            ")->execute([
+                        $klienTerkirim['user_id'],
+                        'Surat ' . $surat['nomor'] . ' perihal "' . $surat['perihal'] . '" telah dikirim untuk Anda.',
+                        $suratId,
+                    ]);
+
+            // Salin berkas surat ke Dokumen Digital agar bisa dilihat/diunduh client
+            if (!empty($surat['file_hasil'])) {
+                $pdo->prepare("
+                    INSERT INTO Dokumen_Digital (nama_dokumen, kategori, file_path, modul_sumber, ref_id, klien_id, visibilitas, diupload_oleh)
+                    VALUES (?, 'Lainnya', ?, 'Surat', ?, ?, 'Client', ?)
+                ")->execute([
+                            $surat['nomor'] . ' - ' . $surat['perihal'],
+                            $surat['file_hasil'],
+                            $suratId,
+                            $klienTerkirim['klien_id'],
+                            $current_user_id,
+                        ]);
+            }
+        }
+
+        $pdo->commit();
+
+        $_SESSION['flash'] = [
+            'type' => 'success',
+            'msg' => $klienTerkirim && !empty($klienTerkirim['user_id'])
+                ? 'Surat berhasil dikirim dan notifikasi diteruskan ke akun client "' . $klienTerkirim['nama_perusahaan'] . '".'
+                : 'Surat ditandai Terkirim. Catatan: tidak ditemukan akun client yang cocok dengan tujuan surat, notifikasi tidak terkirim otomatis.',
+        ];
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction())
+            $pdo->rollBack();
+        $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Gagal mengirim surat: ' . $e->getMessage()];
+    }
+    suratRedirect('surat_keluar');
+}
+
+// ----- Arsipkan surat yang sudah terkirim (Terkirim -> Diarsipkan) -----
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'arsipkan_surat') {
+    try {
+        $suratId = (int) $_POST['surat_id'];
+        $cek = $pdo->prepare("SELECT status FROM surat WHERE id = ?");
+        $cek->execute([$suratId]);
+        $statusSekarang = $cek->fetchColumn();
+
+        if ($statusSekarang !== 'Terkirim') {
+            throw new RuntimeException("Hanya surat berstatus Terkirim yang bisa diarsipkan.");
+        }
+
+        $pdo->prepare("UPDATE surat SET status = 'Diarsipkan' WHERE id = ?")->execute([$suratId]);
+        $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Surat berhasil diarsipkan.'];
+    } catch (Throwable $e) {
+        $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Gagal mengarsipkan surat: ' . $e->getMessage()];
+    }
+    suratRedirect('surat_keluar');
+}
+
+// ==========================================
+// [TAB: SURAT] HAPUS SURAT
+// ==========================================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'hapus_surat') {
+    $tabTujuanHapus = 'surat_keluar';
+    try {
+        $suratId = (int) $_POST['surat_id'];
+        $stmt = $pdo->prepare("SELECT * FROM surat WHERE id = ?");
+        $stmt->execute([$suratId]);
+        $s = $stmt->fetch();
+        if (!$s) {
+            throw new RuntimeException("Surat tidak ditemukan.");
+        }
+        $tabTujuanHapus = ($s['arah'] === 'Masuk') ? 'surat_masuk' : 'surat_keluar';
+
+        $pdo->prepare("DELETE FROM surat WHERE id = ?")->execute([$suratId]);
+
+        if (!empty($s['file_hasil']) && is_file(BASE_PATH . '/' . $s['file_hasil'])) {
+            @unlink(BASE_PATH . '/' . $s['file_hasil']);
+        }
+
+        $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Surat berhasil dihapus.'];
+    } catch (Throwable $e) {
+        $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Gagal menghapus: ' . $e->getMessage()];
+    }
+    suratRedirect($tabTujuanHapus);
+}
+
+if ($errorGenerateSurat) {
+    $flash = ['type' => 'error', 'msg' => $errorGenerateSurat];
+}
+
+// ==========================================
+// [DATA: TAB SURAT] Daftar surat (pencarian & pagination dilakukan di sisi
+// klien lewat handleTableSearch()/initTablePagination() seperti modul lain)
+// ==========================================
+$daftar_surat_semua = $pdo->query("
+    SELECT s.*, k.kode AS kode_str, k.nama AS jenis_surat_kode,
+           u.nama_lengkap AS pembuat_nama, u.role AS pembuat_role
+    FROM surat s
+    JOIN kode_surat k ON s.kode_id = k.id
+    LEFT JOIN Users u ON s.dibuat_oleh = u.id
+    ORDER BY s.tgl_dibuat DESC, s.id DESC
+")->fetchAll();
+$daftar_surat_keluar = array_values(array_filter($daftar_surat_semua, fn($s) => $s['arah'] === 'Keluar'));
+$daftar_surat_masuk = array_values(array_filter($daftar_surat_semua, fn($s) => $s['arah'] === 'Masuk'));
+
+// ==========================================
+// [DATA: TAB UPLOAD TEMPLATE] Daftar template + kode yang terhubung
+// ==========================================
+$daftar_template = $pdo->query("SELECT * FROM template_master ORDER BY created_at DESC")->fetchAll();
+
+$daftar_kode_per_template = [];
+$rowsKodeTemplate = $pdo->query("SELECT kt.template_id, k.kode FROM kode_template kt
+                                  JOIN kode_surat k ON k.id = kt.kode_id")->fetchAll();
+foreach ($rowsKodeTemplate as $r) {
+    $daftar_kode_per_template[$r['template_id']][] = $r['kode'];
+}
+
+// ==========================================
+// [DATA: TAB BUAT SURAT] Daftar kode surat (yang punya minimal 1 template)
+// ==========================================
+$daftar_kode = $pdo->query("SELECT * FROM kode_surat ORDER BY nama")->fetchAll();
+
+$template_per_kode = [];
+$rowsTplPerKode = $pdo->query("SELECT kt.id AS kode_template_id, kt.kode_id, kt.template_id, kt.is_default,
+                                       t.nama AS nama_template, t.deskripsi, t.format
+                                FROM kode_template kt
+                                JOIN template_master t ON t.id = kt.template_id
+                                ORDER BY kt.is_default DESC, t.nama ASC")->fetchAll();
+foreach ($rowsTplPerKode as $r) {
+    $template_per_kode[$r['kode_id']][] = $r;
+}
+$daftar_kode_dengan_template = array_values(array_filter(
+    $daftar_kode,
+    fn($k) => !empty($template_per_kode[$k['id']])
+));
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generate_surat') {
+    $kodeIdTerpilih = (int) ($_POST['kode_id'] ?? 0);
+    $templateIdTerpilih = (int) ($_POST['template_id'] ?? 0);
+} else {
+    $kodeIdTerpilih = (int) ($_GET['kode_id'] ?? 0);
+    $templateIdTerpilih = (int) ($_GET['template_id'] ?? 0);
+}
+
+$kodeTerpilih = null;
+$fields_dinamis = [];
+$fields_tabel = [];
+$fields_blok = [];
+if ($active_tab === 'tabPanelBuatSurat' && $kodeIdTerpilih && $templateIdTerpilih) {
+    $stmt = $pdo->prepare("SELECT k.*, t.id AS template_id, t.nama AS nama_template, t.file_path, t.format, t.fields_json
+                            FROM kode_surat k
+                            JOIN kode_template kt ON kt.kode_id = k.id AND kt.template_id = ?
+                            JOIN template_master t ON t.id = kt.template_id
+                            WHERE k.id = ?");
+    $stmt->execute([$templateIdTerpilih, $kodeIdTerpilih]);
+    $kodeTerpilih = $stmt->fetch();
+
+    if ($kodeTerpilih && !empty($kodeTerpilih['fields_json'])) {
+        $decoded = json_decode($kodeTerpilih['fields_json'], true) ?: [];
+        if (isset($decoded['fields']) || isset($decoded['table_fields'])) {
+            $fields_dinamis = $decoded['fields'] ?? [];
+            $fields_tabel = $decoded['table_fields'] ?? [];
+            $fields_blok = $decoded['blocks'] ?? [];
+        } else {
+            $fields_dinamis = $decoded;
+        }
+
+        if (defined('FIELD_OTOMATIS_SISTEM')) {
+            $fields_dinamis = array_values(array_filter(
+                $fields_dinamis,
+                fn($f) => !in_array(strtolower($f['field'] ?? ''), FIELD_OTOMATIS_SISTEM, true)
+            ));
+        }
+    }
+}
+
+$file_template_hilang = $kodeTerpilih && !is_file(BASE_PATH . '/' . $kodeTerpilih['file_path']);
+
+$auto_fields_template = ($kodeTerpilih && !$file_template_hilang && $kodeTerpilih['format'] === 'word_pdf')
+    ? scanAutoFieldsFromDocx(BASE_PATH . '/' . $kodeTerpilih['file_path'])
+    : [];
+$ada_pph23 = in_array('pph_23', $auto_fields_template, true);
+// Panel "Ringkasan Total" (Total/PPN/PPH/Total Bayar) HANYA ditampilkan kalau
+// template Word memang benar-benar punya salah satu placeholder ini
+// (dibaca langsung dari isi dokumen lewat scanAutoFieldsFromDocx()).
+// Sebelumnya panel ini ikut muncul hanya karena tabel item punya kolom
+// harga, walau template tidak punya ${total}/${ppn}/${total_bayar} sama
+// sekali -- itu yang bikin box "Rp. 0" nongol padahal tidak relevan.
+$ada_ringkasan_total = !empty(array_intersect(['total', 'ppn', 'total_bayar'], $auto_fields_template));
+
+$nilai_dinamis = [];
+foreach ($fields_dinamis as $f) {
+    $nilai_dinamis[$f['field']] = $_POST['dinamis'][$f['field']] ?? '';
+}
+
+$nilai_items = $_POST['items'] ?? [];
+if (empty($nilai_items) && !empty($fields_tabel)) {
+    $barisKosong = [];
+    foreach ($fields_tabel as $kolom) {
+        $barisKosong[$kolom['field']] = '';
+    }
+    $nilai_items = [$barisKosong];
+}
+
+$nilai_blok = $_POST['blok'] ?? [];
+foreach ($fields_blok as $namaBlok => $daftarFieldBlok) {
+    if (empty($nilai_blok[$namaBlok])) {
+        $barisKosongBlok = [];
+        foreach ($daftarFieldBlok as $kolom) {
+            $barisKosongBlok[$kolom['field']] = '';
+        }
+        $nilai_blok[$namaBlok] = [$barisKosongBlok];
+    }
+}
+
+$preview_nomor = '(otomatis saat disimpan)';
+if ($kodeTerpilih) {
+    $tahun = (int) date('Y');
+    $counterDariKodeSurat = ((int) $kodeTerpilih['tahun_counter'] === $tahun) ? (int) $kodeTerpilih['counter'] : 0;
+
+    // Ikut cek nomor urut TERTINGGI yang benar-benar sudah dipakai di tabel
+    // surat untuk kode ini di tahun berjalan (termasuk yang diisi manual),
+    // supaya prediksi nomor berikutnya tidak "mundur"/nabrak nomor lama.
+    $stmtMaxNomor = $pdo->prepare("
+        SELECT nomor FROM surat
+        WHERE kode_id = ? AND nomor LIKE ?
+    ");
+    $stmtMaxNomor->execute([$kodeTerpilih['id'], '%/' . $kodeTerpilih['kode'] . '/ARP/%/' . $tahun]);
+    $counterDariSurat = 0;
+    foreach ($stmtMaxNomor->fetchAll(PDO::FETCH_COLUMN) as $nomorLama) {
+        $angkaAwal = (int) strtok($nomorLama, '/');
+        if ($angkaAwal > $counterDariSurat) {
+            $counterDariSurat = $angkaAwal;
+        }
+    }
+
+    $counterPreview = max($counterDariKodeSurat, $counterDariSurat) + 1;
+    $bulanRomawi = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'][date('n') - 1];
+    $preview_nomor = sprintf('%03d/%s/ARP/%s/%d', $counterPreview, $kodeTerpilih['kode'], $bulanRomawi, $tahun);
+}
+
+$tabel_item_punya_harga = false;
+foreach ($fields_tabel as $kolom) {
+    if (isKolomHarga($kolom['field'])) {
+        $tabel_item_punya_harga = true;
+        break;
+    }
+}
+
+// ==========================================
+// Helper tampilan: warna badge status & arah (mengikuti palet badge-* app_aksara)
+// ==========================================
+if (!function_exists('badgeArah')) {
+    function badgeArah(string $arah): string
+    {
+        return $arah === 'Masuk' ? 'badge-warning' : 'badge-success';
+    }
+}
+if (!function_exists('badgeStatus')) {
+    function badgeStatus(string $status): string
+    {
+        $map = [
+            'Terkirim' => 'badge-success',
+            'Selesai' => 'badge-success',
+            'Disetujui' => 'badge-success',
+            'Diproses' => 'badge-warning',
+            'Didisposisi' => 'badge-warning',
+            'Menunggu Persetujuan' => 'badge-warning',
+            'Baru' => 'badge-warning',
+            'Ditolak' => 'badge-danger',
+            'Draft' => 'badge-secondary',
+            'Diarsipkan' => 'badge-secondary',
+        ];
+        return $map[$status] ?? 'badge-warning';
+    }
+}
+
+if (!function_exists('labelRole')) {
+    function labelRole(?string $role): string
+    {
+        $map = [
+            'admin' => 'Admin',
+            'ahli_k3' => 'Ahli K3',
+            'it' => 'IT',
+            'direksi' => 'Direksi',
+            'client' => 'Client',
+        ];
+        return $map[$role] ?? ucfirst((string) $role);
+    }
+}
+
+// ==========================================
+// [DATA: TAB SURAT MASUK] Daftar user untuk tujuan disposisi (semua role
+// kecuali client, karena disposisi internal saja).
+// ==========================================
+$daftar_user_disposisi = $pdo->query("
+    SELECT id, nama_lengkap, role
+    FROM Users
+    WHERE role != 'client'
+    ORDER BY nama_lengkap ASC
+")->fetchAll();
+
+
 include "../includes/header.php";
 include "../includes/sidebar.php";
 include "../includes/topbar.php";
 ?>
 
 <main class="main-content">
-    <div class="card-box">
-        <h5 class="fw-bold mb-3"><?= htmlspecialchars($page_title) ?></h5>
-        <div class="alert alert-success-custom mb-3">
-            <i class="bi bi-info-circle-fill fs-5"></i>
-            <div>
-                <strong>Modul Aktif</strong><br>
-                Halaman ini memuat master layout yang konsisten untuk <strong>PT Aksara Riksa Perdana</strong>.
+
+    <?php if ($flash): ?>
+        <div
+            class="alert alert-<?= $flash['type'] === 'success' ? 'success-custom' : 'danger-custom' ?> align-items-center">
+            <i
+                class="bi <?= $flash['type'] === 'success' ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill' ?> fs-5"></i>
+            <div><?= e($flash['msg']) ?></div>
+        </div>
+    <?php endif; ?>
+
+    <!-- Tab Navigation -->
+    <div class="arp-tab-group">
+        <div class="arp-tab-nav">
+            <button type="button" class="arp-tab-btn<?= $active_tab === 'tabPanelSuratKeluar' ? ' active' : '' ?>"
+                data-tab-target="tabPanelSuratKeluar" onclick="switchTab('tabPanelSuratKeluar', this)">
+                <i class="bi bi-send-check me-1"></i> Surat Keluar
+            </button>
+            <button type="button" class="arp-tab-btn<?= $active_tab === 'tabPanelSuratMasuk' ? ' active' : '' ?>"
+                data-tab-target="tabPanelSuratMasuk" onclick="switchTab('tabPanelSuratMasuk', this)">
+                <i class="bi bi-inbox me-1"></i> Surat Masuk
+            </button>
+            <button type="button" class="arp-tab-btn<?= $active_tab === 'tabPanelBuatSurat' ? ' active' : '' ?>"
+                data-tab-target="tabPanelBuatSurat" onclick="switchTab('tabPanelBuatSurat', this)">
+                <i class="bi bi-file-earmark-plus me-1"></i> Buat Surat
+            </button>
+            <button type="button" class="arp-tab-btn<?= $active_tab === 'tabPanelTemplate' ? ' active' : '' ?>"
+                data-tab-target="tabPanelTemplate" onclick="switchTab('tabPanelTemplate', this)">
+                <i class="bi bi-file-earmark-word me-1"></i> Upload Template
+            </button>
+        </div>
+
+        <!-- ============================== TAB: SURAT KELUAR ============================== -->
+        <div class="col-12 arp-tab-panel" id="tabPanelSuratKeluar" <?= $active_tab === 'tabPanelSuratKeluar' ? '' : 'style="display:none;"' ?>>
+            <div class="card-box">
+                <div class="table-toolbar">
+                    <h5 class="table-toolbar-title fw-bold">Daftar Surat Keluar</h5>
+                    <div class="table-toolbar-actions">
+                        <div class="search-box-container">
+                            <i class="bi bi-search"></i>
+                            <input type="text" class="search-box" placeholder="Cari nomor surat, perihal, tujuan..."
+                                data-table-search="tabelSuratKeluar" onkeyup="handleTableSearch('tabelSuratKeluar')">
+                        </div>
+                        <button class="btn-primary-custom"
+                            onclick="switchTab('tabPanelBuatSurat', document.querySelector('[data-tab-target=tabPanelBuatSurat]'))">
+                            <i class="bi bi-file-earmark-plus"></i>
+                            Buat Surat
+                        </button>
+                    </div>
+                </div>
+                <div class="table-responsive-custom">
+                    <table class="table-custom" id="tabelSuratKeluar">
+                        <thead>
+                            <tr>
+                                <th>No</th>
+                                <th>Nomor Surat</th>
+                                <th>Jenis Surat</th>
+                                <th>Perihal</th>
+                                <th>Tujuan</th>
+                                <th>Dibuat Oleh</th>
+                                <th>Tanggal</th>
+                                <th>Status</th>
+                                <th style="text-align:center;">Tindakan</th>
+                                <th class="col-aksi" style="text-align:center;">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if (empty($daftar_surat_keluar)): ?>
+                                <tr>
+                                    <td colspan="10" class="text-center py-4 text-muted">
+                                        <i class="bi bi-envelope-x d-block mb-2" style="font-size:2rem;"></i>
+                                        Belum ada data surat keluar.
+                                    </td>
+                                </tr>
+                            <?php endif; ?>
+                            <?php $no = 1; ?>
+                            <?php foreach ($daftar_surat_keluar as $s): ?>
+                                <tr>
+                                    <td><?= $no++; ?></td>
+                                    <td><strong><?= e($s['nomor']) ?></strong>
+                                        <?php if (!empty($s['nomor_agenda'])): ?>
+                                            <br><small class="text-secondary"><?= e($s['nomor_agenda']) ?></small>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td><?= e($s['jenis_surat_kode']) ?> <span
+                                            class="text-secondary">(<?= e($s['kode_str']) ?>)</span></td>
+                                    <td style="white-space:normal; word-break:break-word; max-width:300px;">
+                                        <?= e($s['perihal']) ?>
+                                    </td>
+                                    <td style="white-space:normal; word-break:break-word; max-width:280px;">
+                                        <?= e($s['tujuan']) ?>
+                                    </td>
+                                    <td>
+                                        <?php if (!empty($s['pembuat_nama'])): ?>
+                                            <strong><?= e($s['pembuat_nama']) ?></strong>
+                                            <br><small class="text-secondary"><?= e(labelRole($s['pembuat_role'])) ?></small>
+                                        <?php else: ?>
+                                            <span class="text-secondary">-</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td><?= !empty($s['tgl_dibuat']) ? date('d-m-Y', strtotime($s['tgl_dibuat'])) : '-' ?>
+                                    </td>
+                                    <td><span class="<?= badgeStatus($s['status'] ?? '') ?>"><?= e($s['status']) ?></span>
+                                    </td>
+                                    <td style="text-align:center;">
+                                        <div class="table-actions">
+                                            <?php if ($s['status'] === 'Draft'): ?>
+                                                <form method="POST" action="surat.php" class="d-inline"
+                                                    onsubmit="return confirm('Ajukan surat ini untuk persetujuan?');">
+                                                    <input type="hidden" name="aksi" value="ajukan_approval_surat">
+                                                    <input type="hidden" name="surat_id" value="<?= (int) $s['id'] ?>">
+                                                    <button type="submit" class="btn-primary-custom"
+                                                        style="height:28px; padding:0 10px; font-size:0.75rem;">
+                                                        <i class="bi bi-send"></i> Ajukan
+                                                    </button>
+                                                </form>
+                                            <?php elseif ($s['status'] === 'Menunggu Persetujuan'): ?>
+                                                <button type="button" class="btn-primary-custom"
+                                                    style="height:28px; padding:0 10px; font-size:0.75rem;"
+                                                    onclick="openSuratApprovalModal(<?= (int) $s['id'] ?>, 'approve', '<?= e(addslashes($s['perihal'])) ?>')">
+                                                    <i class="bi bi-check-lg"></i> Setujui
+                                                </button>
+                                                <button type="button" class="btn-secondary-custom"
+                                                    style="height:28px; padding:0 10px; font-size:0.75rem; color: var(--danger); border-color: var(--danger);"
+                                                    onclick="openSuratApprovalModal(<?= (int) $s['id'] ?>, 'reject', '<?= e(addslashes($s['perihal'])) ?>')">
+                                                    <i class="bi bi-x-lg"></i> Tolak
+                                                </button>
+                                            <?php elseif ($s['status'] === 'Ditolak'): ?>
+                                                <form method="POST" action="surat.php" class="d-inline"
+                                                    onsubmit="return confirm('Kembalikan surat ini ke Draft untuk direvisi?');">
+                                                    <input type="hidden" name="aksi" value="revisi_surat">
+                                                    <input type="hidden" name="surat_id" value="<?= (int) $s['id'] ?>">
+                                                    <button type="submit" class="btn-secondary-custom"
+                                                        style="height:28px; padding:0 10px; font-size:0.75rem;">
+                                                        <i class="bi bi-arrow-counterclockwise"></i> Revisi
+                                                    </button>
+                                                </form>
+                                            <?php elseif ($s['status'] === 'Disetujui'): ?>
+                                                <form method="POST" action="surat.php" class="d-inline"
+                                                    onsubmit="return confirm('Kirim surat ini ke client sekarang?');">
+                                                    <input type="hidden" name="aksi" value="kirim_surat">
+                                                    <input type="hidden" name="surat_id" value="<?= (int) $s['id'] ?>">
+                                                    <button type="submit" class="btn-primary-custom"
+                                                        style="height:28px; padding:0 10px; font-size:0.75rem;">
+                                                        <i class="bi bi-send-check"></i> Kirim ke Client
+                                                    </button>
+                                                </form>
+                                            <?php elseif ($s['status'] === 'Terkirim'): ?>
+                                                <form method="POST" action="surat.php" class="d-inline"
+                                                    onsubmit="return confirm('Arsipkan surat ini?');">
+                                                    <input type="hidden" name="aksi" value="arsipkan_surat">
+                                                    <input type="hidden" name="surat_id" value="<?= (int) $s['id'] ?>">
+                                                    <button type="submit" class="btn-secondary-custom"
+                                                        style="height:28px; padding:0 10px; font-size:0.75rem;">
+                                                        <i class="bi bi-archive"></i> Arsipkan
+                                                    </button>
+                                                </form>
+                                            <?php else: ?>
+                                                <span class="text-secondary">-</span>
+                                            <?php endif; ?>
+                                        </div>
+                                    </td>
+                                    <td class="col-aksi" style="text-align:center;">
+                                        <div class="table-actions">
+                                            <?php if (!empty($s['file_hasil'])): ?>
+                                                <a class="btn btn-outline-primary btn-sm py-1" style="font-size:0.75rem;"
+                                                    href="edit_surat.php?id=<?= (int) $s['id'] ?>" title="Edit Surat">
+                                                    <i class="bi bi-pencil-square"></i>
+                                                </a>
+                                                <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
+                                                    href="../<?= e($s['file_hasil']) ?>" download title="Unduh">
+                                                    <i class="bi bi-download"></i>
+                                                </a>
+                                            <?php endif; ?>
+
+                                            <form method="POST" action="surat.php" class="d-inline"
+                                                onsubmit="return confirm('Hapus surat ini? Tindakan tidak bisa dibatalkan.');">
+                                                <input type="hidden" name="aksi" value="hapus_surat">
+                                                <input type="hidden" name="surat_id" value="<?= (int) $s['id'] ?>">
+                                                <button type="submit" class="btn-danger-custom"
+                                                    style="height:28px; padding:0 8px; font-size:0.75rem;">
+                                                    <i class="bi bi-trash-fill"></i>
+                                                </button>
+                                            </form>
+                                        </div>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="pagination-custom" id="pagination-tabelSuratKeluar"></div>
             </div>
         </div>
-        <p class="text-secondary mb-0">Silakan kembangkan fungsionalitas halaman ini di file <code>admin/persuratan.php</code> sesuai dengan kebutuhan modul.</p>
+
+        <!-- ============================== TAB: SURAT MASUK ============================== -->
+        <div class="col-12 arp-tab-panel" id="tabPanelSuratMasuk" <?= $active_tab === 'tabPanelSuratMasuk' ? '' : 'style="display:none;"' ?>>
+            <div class="card-box">
+                <div class="table-toolbar">
+                    <h5 class="table-toolbar-title fw-bold">Daftar Surat Masuk</h5>
+                    <div class="table-toolbar-actions">
+                        <div class="search-box-container">
+                            <i class="bi bi-search"></i>
+                            <input type="text" class="search-box" placeholder="Cari nomor surat, perihal, pengirim..."
+                                data-table-search="tabelSuratMasuk" onkeyup="handleTableSearch('tabelSuratMasuk')">
+                        </div>
+                        <button class="btn-primary-custom" onclick="openModal('modalCatatSuratMasuk')">
+                            <i class="bi bi-journal-plus"></i>
+                            Catat Surat Masuk
+                        </button>
+                    </div>
+                </div>
+                <div class="table-responsive-custom">
+                    <table class="table-custom" id="tabelSuratMasuk">
+                        <thead>
+                            <tr>
+                                <th>No</th>
+                                <th>Nomor Surat</th>
+                                <th>Jenis Surat</th>
+                                <th>Perihal</th>
+                                <th>Pengirim</th>
+                                <th>Tanggal</th>
+                                <th>Status</th>
+                                <th style="text-align:center;">Tindakan</th>
+                                <th class="col-aksi" style="text-align:center;">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if (empty($daftar_surat_masuk)): ?>
+                                <tr>
+                                    <td colspan="9" class="text-center py-4 text-muted">
+                                        <i class="bi bi-envelope-x d-block mb-2" style="font-size:2rem;"></i>
+                                        Belum ada data surat masuk.
+                                    </td>
+                                </tr>
+                            <?php endif; ?>
+                            <?php $no = 1; ?>
+                            <?php foreach ($daftar_surat_masuk as $s): ?>
+                                <tr>
+                                    <td><?= $no++; ?></td>
+                                    <td><strong><?= e($s['nomor']) ?></strong>
+                                        <?php if (!empty($s['nomor_agenda'])): ?>
+                                            <br><small class="text-secondary"><?= e($s['nomor_agenda']) ?></small>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td><?= e($s['jenis_surat_kode']) ?></td>
+                                    <td style="white-space:normal; word-break:break-word; max-width:280px;">
+                                        <?= e($s['perihal']) ?>
+                                    </td>
+                                    <td style="white-space:normal; word-break:break-word; max-width:200px;">
+                                        <?= e($s['tujuan']) ?>
+                                    </td>
+                                    <td><?= !empty($s['tgl_dibuat']) ? date('d-m-Y', strtotime($s['tgl_dibuat'])) : '-' ?>
+                                    </td>
+                                    <td><span class="<?= badgeStatus($s['status'] ?? '') ?>"><?= e($s['status']) ?></span>
+                                    </td>
+                                    <td style="text-align:center;">
+                                        <div class="table-actions">
+                                            <?php if (($s['status'] ?? '') === 'Baru'): ?>
+                                                <form method="POST" action="surat.php" class="d-inline"
+                                                    onsubmit="return confirm('Mulai proses surat ini?');">
+                                                    <input type="hidden" name="aksi" value="proses_surat_masuk">
+                                                    <input type="hidden" name="surat_id" value="<?= (int) $s['id'] ?>">
+                                                    <button type="submit" class="btn-primary-custom"
+                                                        style="height:28px; padding:0 10px; font-size:0.75rem;">
+                                                        <i class="bi bi-play-fill"></i> Proses
+                                                    </button>
+                                                </form>
+                                            <?php elseif (($s['status'] ?? '') === 'Diproses'): ?>
+                                                <button type="button" class="btn-primary-custom"
+                                                    style="height:28px; padding:0 10px; font-size:0.75rem;"
+                                                    onclick="openDisposisiModal(<?= (int) $s['id'] ?>, '<?= e(addslashes($s['perihal'])) ?>')">
+                                                    <i class="bi bi-diagram-3"></i> Disposisi
+                                                </button>
+                                                <form method="POST" action="surat.php" class="d-inline"
+                                                    onsubmit="return confirm('Tandai surat ini Selesai?');">
+                                                    <input type="hidden" name="aksi" value="selesaikan_surat_masuk">
+                                                    <input type="hidden" name="surat_id" value="<?= (int) $s['id'] ?>">
+                                                    <button type="submit" class="btn-secondary-custom"
+                                                        style="height:28px; padding:0 10px; font-size:0.75rem;">
+                                                        <i class="bi bi-check2"></i> Selesai
+                                                    </button>
+                                                </form>
+                                            <?php elseif (($s['status'] ?? '') === 'Didisposisi'): ?>
+                                                <?php
+                                                $isiDataMasuk = json_decode($s['isi_data'] ?? '', true) ?: [];
+                                                $infoDisposisi = $isiDataMasuk['__disposisi'] ?? null;
+                                                ?>
+                                                <?php if ($infoDisposisi): ?>
+                                                    <span class="text-secondary text-xs d-block mb-1">
+                                                        Ke: <b><?= e($infoDisposisi['tujuan_nama'] ?? '-') ?></b>
+                                                    </span>
+                                                <?php endif; ?>
+                                                <form method="POST" action="surat.php" class="d-inline"
+                                                    onsubmit="return confirm('Tandai surat ini Selesai?');">
+                                                    <input type="hidden" name="aksi" value="selesaikan_surat_masuk">
+                                                    <input type="hidden" name="surat_id" value="<?= (int) $s['id'] ?>">
+                                                    <button type="submit" class="btn-primary-custom"
+                                                        style="height:28px; padding:0 10px; font-size:0.75rem;">
+                                                        <i class="bi bi-check2"></i> Selesai
+                                                    </button>
+                                                </form>
+                                                <form method="POST" action="surat.php" class="d-inline"
+                                                    onsubmit="return confirm('Batalkan disposisi & kembalikan ke Diproses?');">
+                                                    <input type="hidden" name="aksi" value="batalkan_tindakan_surat_masuk">
+                                                    <input type="hidden" name="surat_id" value="<?= (int) $s['id'] ?>">
+                                                    <button type="submit" class="btn-secondary-custom"
+                                                        style="height:28px; padding:0 10px; font-size:0.75rem;">
+                                                        <i class="bi bi-arrow-counterclockwise"></i> Batal
+                                                    </button>
+                                                </form>
+                                            <?php elseif (($s['status'] ?? '') === 'Selesai'): ?>
+                                                <form method="POST" action="surat.php" class="d-inline"
+                                                    onsubmit="return confirm('Arsipkan surat ini?');">
+                                                    <input type="hidden" name="aksi" value="arsipkan_surat_masuk">
+                                                    <input type="hidden" name="surat_id" value="<?= (int) $s['id'] ?>">
+                                                    <button type="submit" class="btn-secondary-custom"
+                                                        style="height:28px; padding:0 10px; font-size:0.75rem;">
+                                                        <i class="bi bi-archive"></i> Arsipkan
+                                                    </button>
+                                                </form>
+                                            <?php else: ?>
+                                                <span class="text-secondary">-</span>
+                                            <?php endif; ?>
+                                        </div>
+                                    </td>
+                                    <td class="col-aksi" style="text-align:center;">
+                                        <div class="table-actions">
+                                            <?php if (!empty($s['file_hasil'])): ?>
+                                                <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
+                                                    href="../<?= e($s['file_hasil']) ?>" target="_blank"
+                                                    title="Lihat / unduh berkas">
+                                                    <i class="bi bi-eye"></i>
+                                                </a>
+                                                <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
+                                                    href="../<?= e($s['file_hasil']) ?>" download title="Unduh">
+                                                    <i class="bi bi-download"></i>
+                                                </a>
+                                            <?php endif; ?>
+
+                                            <form method="POST" action="surat.php" class="d-inline"
+                                                onsubmit="return confirm('Hapus surat ini? Tindakan tidak bisa dibatalkan.');">
+                                                <input type="hidden" name="aksi" value="hapus_surat">
+                                                <input type="hidden" name="surat_id" value="<?= (int) $s['id'] ?>">
+                                                <button type="submit" class="btn-danger-custom"
+                                                    style="height:28px; padding:0 8px; font-size:0.75rem;">
+                                                    <i class="bi bi-trash-fill"></i>
+                                                </button>
+                                            </form>
+                                        </div>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="pagination-custom" id="pagination-tabelSuratMasuk"></div>
+            </div>
+        </div>
+
+
+        <!-- ============================== TAB: BUAT SURAT ============================== -->
+        <div class="col-12 arp-tab-panel" id="tabPanelBuatSurat" <?= $active_tab === 'tabPanelBuatSurat' ? '' : 'style="display:none;"' ?>>
+            <div class="buat-surat-grid">
+
+                <section class="card-box">
+                    <h5 class="fw-bold mb-3">Buat Surat Baru</h5>
+
+                    <div class="row g-3 mb-2">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold mb-2">Jenis Surat</label>
+                            <select id="pilih-jenis-surat" class="select-custom" <?= empty($daftar_kode_dengan_template) ? 'disabled' : '' ?>>
+                                <option value="">-- Pilih jenis surat --</option>
+                                <?php foreach ($daftar_kode_dengan_template as $k): ?>
+                                    <option value="<?= (int) $k['id'] ?>" <?= ($kodeIdTerpilih === (int) $k['id']) ? 'selected' : '' ?>>
+                                        <?= e($k['kode'] . ' (' . $k['nama'] . ')') ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold mb-2">Template</label>
+                            <select id="pilih-template-surat" class="select-custom" <?= $kodeIdTerpilih ? '' : 'disabled' ?>>
+                                <option value="">-- Pilih template --</option>
+                                <?php if ($kodeIdTerpilih): ?>
+                                    <?php foreach (($template_per_kode[$kodeIdTerpilih] ?? []) as $tpl): ?>
+                                        <option value="<?= (int) $tpl['template_id'] ?>" <?= ($templateIdTerpilih === (int) $tpl['template_id']) ? 'selected' : '' ?>>
+                                            <?= e($tpl['nama_template']) ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
+                            </select>
+                        </div>
+                    </div>
+                    <?php if (empty($daftar_kode_dengan_template)): ?>
+                        <p class="text-secondary text-xs mb-3">Belum ada jenis surat yang punya template. Silakan
+                            <a href="#"
+                                onclick="switchTab('tabPanelTemplate', document.querySelector('[data-tab-target=tabPanelTemplate]')); return false;">upload
+                                template</a> terlebih dahulu.
+                        </p>
+                    <?php else: ?>
+                        <p class="text-secondary text-xs mb-3">Belum ada jenis surat/template yang cocok?
+                            <a href="#"
+                                onclick="switchTab('tabPanelTemplate', document.querySelector('[data-tab-target=tabPanelTemplate]')); return false;">Upload
+                                template baru</a>.
+                        </p>
+                    <?php endif; ?>
+
+                    <script id="data-template-per-kode" type="application/json">
+<?php
+$dataUntukJs = [];
+foreach ($daftar_kode_dengan_template as $k) {
+    $tplTerhubung = $template_per_kode[$k['id']] ?? [];
+    $dataUntukJs[(int) $k['id']] = array_map(function ($tpl) {
+        return ['id' => (int) $tpl['template_id'], 'nama' => $tpl['nama_template']];
+    }, $tplTerhubung);
+}
+echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
+?>
+                    </script>
+                    <script>
+                        (function () {
+                            var dataTemplatePerKode = JSON.parse(document.getElementById('data-template-per-kode').textContent);
+                            var selectJenis = document.getElementById('pilih-jenis-surat');
+                            var selectTemplate = document.getElementById('pilih-template-surat');
+                            if (!selectJenis || !selectTemplate) return;
+
+                            function pindahHalaman(kodeId, templateId) {
+                                var url = 'surat.php?tab=buat';
+                                if (kodeId) url += '&kode_id=' + kodeId;
+                                if (templateId) url += '&template_id=' + templateId;
+                                window.location.href = url;
+                            }
+
+                            selectJenis.addEventListener('change', function () {
+                                var kodeId = this.value;
+                                if (!kodeId) {
+                                    window.location.href = 'surat.php?tab=buat';
+                                    return;
+                                }
+                                var daftarTemplate = dataTemplatePerKode[kodeId] || [];
+                                if (daftarTemplate.length === 1) {
+                                    pindahHalaman(kodeId, daftarTemplate[0].id);
+                                } else {
+                                    pindahHalaman(kodeId, '');
+                                }
+                            });
+
+                            selectTemplate.addEventListener('change', function () {
+                                var templateId = this.value;
+                                if (!templateId) return;
+                                pindahHalaman(selectJenis.value, templateId);
+                            });
+                        })();
+                    </script>
+
+                    <?php if (!$kodeTerpilih && $kodeIdTerpilih && $templateIdTerpilih): ?>
+                        <div class="alert alert-danger-custom py-2 px-3 text-xs">
+                            <i class="bi bi-exclamation-triangle-fill"></i>
+                            <div>Kombinasi jenis surat &amp; template ini tidak ditemukan / tidak terhubung.
+                                <a href="surat.php?tab=buat">Pilih ulang</a>.
+                            </div>
+                        </div>
+                    <?php endif; ?>
+
+                    <?php if ($kodeTerpilih && $file_template_hilang): ?>
+                        <div class="alert alert-danger-custom text-xs">
+                            <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+                            <div>
+                                <p class="fw-semibold mb-1">File template tidak ditemukan di storage</p>
+                                <p class="mb-1">Template untuk jenis surat <b><?= e($kodeTerpilih['kode']) ?></b>
+                                    (<?= e($kodeTerpilih['nama_template'] ?? '-') ?>) sudah tidak ada filenya. Silakan
+                                    upload ulang lewat tab <b>Upload Template</b>.</p>
+                            </div>
+                        </div>
+                    <?php endif; ?>
+
+                    <?php if ($kodeTerpilih && $kodeTerpilih['format'] !== 'word_pdf' && !$file_template_hilang): ?>
+                        <p class="text-secondary mb-0">Template ini bukan file Word (.docx), tidak bisa digenerate
+                            otomatis lewat form ini.</p>
+                    <?php endif; ?>
+
+                    <?php if ($kodeTerpilih && !$file_template_hilang && $kodeTerpilih['format'] === 'word_pdf'): ?>
+                        <hr>
+                        <form method="POST" action="surat.php" id="form-buat-surat">
+                            <input type="hidden" name="aksi" value="generate_surat">
+                            <input type="hidden" name="kode_id" value="<?= (int) $kodeTerpilih['id'] ?>">
+                            <input type="hidden" name="template_id" value="<?= (int) $kodeTerpilih['template_id'] ?>">
+
+                            <div class="row g-3 mb-3">
+                                <div class="col-md-6">
+                                    <label class="form-label fw-semibold mb-2">Jenis surat / Kode</label>
+                                    <input type="text" class="form-control-custom field-readonly"
+                                        value="<?= e($kodeTerpilih['nama']) ?> (<?= e($kodeTerpilih['kode']) ?>)" readonly>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-semibold mb-2">No Urut Surat</label>
+                                    <div class="nomor-surat-group">
+                                        <input type="text" name="no_urut_manual"
+                                            class="form-control-custom nomor-surat-input"
+                                            value="<?= e($_POST['no_urut_manual'] ?? sprintf('%03d', $counterPreview)) ?>"
+                                            placeholder="<?= e(sprintf('%03d', $counterPreview)) ?>">
+                                        <div class="form-control-custom field-readonly text-secondary nomor-surat-suffix">
+                                            /<?= e($kodeTerpilih['kode']) ?>/ARP/<?= e($bulanRomawi) ?>/<?= e($tahun) ?>
+                                        </div>
+                                    </div>
+                                    <!-- <small class="text-secondary text-xs d-block mt-1">Otomatis:
+                                        <b><?= e(sprintf('%03d', $counterPreview)) ?></b> — kode jenis/ARP/bulan/tahun
+                                        tetap otomatis, hanya angka urut yang bisa Anda ganti.</small> -->
+                                </div>
+                            </div>
+
+                            <?php if (!empty($kodeTerpilih['deskripsi'])): ?>
+                                <div class="alert alert-success-custom text-xs mb-3">
+                                    <i class="bi bi-info-circle-fill"></i>
+                                    <div><span class="fw-semibold">Deskripsi:</span> <?= nl2br(e($kodeTerpilih['deskripsi'])) ?>
+                                    </div>
+                                </div>
+                            <?php endif; ?>
+
+                            <?php if (empty($fields_dinamis) && empty($fields_tabel) && empty($fields_blok)): ?>
+                                <div class="alert alert-danger-custom text-xs">
+                                    <i class="bi bi-exclamation-triangle-fill"></i>
+                                    <div>Template ini belum punya placeholder <code>${...}</code> yang terbaca. Upload
+                                        ulang file .docx yang sudah berisi placeholder seperti <code>${perihal}</code>
+                                        lewat tab Upload Template.</div>
+                                </div>
+                            <?php endif; ?>
+
+                            <div class="row g-3">
+                                <?php foreach ($fields_dinamis as $f): ?>
+                                    <?php $isTanggal = (bool) preg_match('/tanggal|tgl/i', $f['field']); ?>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-semibold mb-2"><?= e($f['label']) ?></label>
+                                        <input type="<?= $isTanggal ? 'date' : 'text' ?>" name="dinamis[<?= e($f['field']) ?>]"
+                                            class="form-control-custom" value="<?= e($nilai_dinamis[$f['field']] ?? '') ?>">
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+
+                            <?php foreach ($fields_blok as $namaBlok => $daftarFieldBlok): ?>
+                                <?php if (empty($daftarFieldBlok))
+                                    continue; ?>
+                                <div class="blok-box mt-3" data-blok-wrapper="<?= e($namaBlok) ?>">
+                                    <label
+                                        class="form-label fw-semibold mb-2 d-block"><?= e(labelFromFieldName($namaBlok)) ?></label>
+                                    <div id="blok-<?= e($namaBlok) ?>-body">
+                                        <?php foreach (($nilai_blok[$namaBlok] ?? [[]]) as $idxBarisBlok => $barisBlok): ?>
+                                            <div class="blok-baris" data-baris-index="<?= (int) $idxBarisBlok ?>">
+                                                <?php foreach ($daftarFieldBlok as $kolomBlok): ?>
+                                                    <input type="text"
+                                                        name="blok[<?= e($namaBlok) ?>][<?= (int) $idxBarisBlok ?>][<?= e($kolomBlok['field']) ?>]"
+                                                        placeholder="<?= e($kolomBlok['label']) ?>"
+                                                        value="<?= e($barisBlok[$kolomBlok['field']] ?? '') ?>"
+                                                        class="form-control-custom">
+                                                <?php endforeach; ?>
+                                                <button type="button" class="btn btn-outline-danger btn-sm tombol-hapus-baris-blok">
+                                                    <i class="bi bi-x-lg"></i>
+                                                </button>
+                                            </div>
+                                        <?php endforeach; ?>
+                                    </div>
+                                    <button type="button" class="btn btn-outline-primary btn-sm tombol-tambah-blok"
+                                        data-blok="<?= e($namaBlok) ?>">
+                                        <i class="bi bi-plus-lg"></i> Tambah
+                                    </button>
+                                </div>
+                                <script>
+                                    (function () {
+                                        var namaBlok = <?= json_encode($namaBlok) ?>;
+                                        var fieldList = <?= json_encode(array_column($daftarFieldBlok, 'field')) ?>;
+                                        var labelList = <?= json_encode(array_column($daftarFieldBlok, 'label')) ?>;
+                                        var body = document.getElementById('blok-' + namaBlok + '-body');
+                                        var tombolTambah = document.querySelector('.tombol-tambah-blok[data-blok="' + namaBlok + '"]');
+                                        if (!body || !tombolTambah) return;
+
+                                        var idxBerikutnya = body.querySelectorAll('.blok-baris').length;
+
+                                        function pasangTombolHapus(barisEl) {
+                                            var btn = barisEl.querySelector('.tombol-hapus-baris-blok');
+                                            if (!btn) return;
+                                            btn.addEventListener('click', function () {
+                                                if (body.querySelectorAll('.blok-baris').length > 1) {
+                                                    barisEl.remove();
+                                                } else {
+                                                    barisEl.querySelectorAll('input').forEach(function (inp) { inp.value = ''; });
+                                                }
+                                            });
+                                        }
+
+                                        body.querySelectorAll('.blok-baris').forEach(pasangTombolHapus);
+
+                                        tombolTambah.addEventListener('click', function () {
+                                            var div = document.createElement('div');
+                                            div.className = 'blok-baris';
+                                            div.setAttribute('data-baris-index', idxBerikutnya);
+                                            fieldList.forEach(function (f, i) {
+                                                var inp = document.createElement('input');
+                                                inp.type = 'text';
+                                                inp.name = 'blok[' + namaBlok + '][' + idxBerikutnya + '][' + f + ']';
+                                                inp.placeholder = labelList[i];
+                                                inp.className = 'form-control-custom';
+                                                div.appendChild(inp);
+                                            });
+                                            var btnHapus = document.createElement('button');
+                                            btnHapus.type = 'button';
+                                            btnHapus.className = 'btn btn-outline-danger btn-sm tombol-hapus-baris-blok';
+                                            btnHapus.innerHTML = '<i class="bi bi-x-lg"></i>';
+                                            div.appendChild(btnHapus);
+                                            body.appendChild(div);
+                                            pasangTombolHapus(div);
+                                            idxBerikutnya++;
+                                        });
+                                    })();
+                                </script>
+                            <?php endforeach; ?>
+
+                            <?php if (!empty($fields_tabel)): ?>
+                                <div class="mt-3">
+                                    <label class="form-label fw-semibold mb-2">Rincian Item</label>
+                                    <div class="table-responsive-custom">
+                                        <table class="table-custom" id="tabel-item">
+                                            <thead>
+                                                <tr>
+                                                    <th style="width:36px;">No</th>
+                                                    <?php foreach ($fields_tabel as $kolom): ?>
+                                                        <th><?= e($kolom['label']) ?></th>
+                                                    <?php endforeach; ?>
+                                                    <?php if ($tabel_item_punya_harga): ?>
+                                                        <th style="text-align:right;">Sub Total</th>
+                                                    <?php endif; ?>
+                                                    <th style="width:36px;"></th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="tabel-item-body">
+                                                <?php foreach ($nilai_items as $idxBaris => $baris): ?>
+                                                    <tr class="baris-item" data-baris-index="<?= (int) $idxBaris ?>">
+                                                        <td class="nomor-baris">1</td>
+                                                        <?php foreach ($fields_tabel as $kolom): ?>
+                                                            <?php
+                                                            $isHarga = isKolomHarga($kolom['field']);
+                                                            $isQty = isKolomQty($kolom['field']);
+                                                            $placeholderKolom = $isHarga ? 'cth: 6055000' : ($isQty ? 'cth: 3 unit / 5 orang' : '');
+                                                            ?>
+                                                            <td>
+                                                                <input type="text"
+                                                                    name="items[<?= (int) $idxBaris ?>][<?= e($kolom['field']) ?>]"
+                                                                    data-kolom="<?= e($kolom['field']) ?>" <?= $isHarga ? 'data-tipe="harga"' : '' ?>
+                                                                    placeholder="<?= e($placeholderKolom) ?>"
+                                                                    class="form-control-custom"
+                                                                    value="<?= e($baris[$kolom['field']] ?? '') ?>">
+                                                            </td>
+                                                        <?php endforeach; ?>
+                                                        <?php if ($tabel_item_punya_harga): ?>
+                                                            <td class="subtotal-baris" style="text-align:right; font-family:monospace;">
+                                                                -</td>
+                                                        <?php endif; ?>
+                                                        <td style="text-align:center;">
+                                                            <button type="button"
+                                                                class="btn btn-outline-danger btn-sm tombol-hapus-baris">
+                                                                <i class="bi bi-x-lg"></i>
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                <?php endforeach; ?>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <button type="button" id="tombol-tambah-baris" class="btn btn-outline-primary btn-sm mt-2">
+                                        <i class="bi bi-plus-lg"></i> Tambah Baris
+                                    </button>
+                                    <?php if ($tabel_item_punya_harga): ?>
+                                        <p class="text-secondary text-xs mt-2 mb-0">Subtotal, Total, PPN &amp; PPH
+                                            dihitung otomatis oleh sistem saat surat disimpan.</p>
+                                    <?php endif; ?>
+                                </div>
+
+                                <template id="template-baris-item">
+                                    <tr class="baris-item" data-baris-index="__IDX__">
+                                        <td class="nomor-baris">1</td>
+                                        <?php foreach ($fields_tabel as $kolom): ?>
+                                            <?php
+                                            $isHarga = isKolomHarga($kolom['field']);
+                                            $isQty = isKolomQty($kolom['field']);
+                                            $placeholderKolom = $isHarga ? 'cth: 6055000' : ($isQty ? 'cth: 3 unit / 5 orang' : '');
+                                            ?>
+                                            <td>
+                                                <input type="text" name="items[__IDX__][<?= e($kolom['field']) ?>]"
+                                                    data-kolom="<?= e($kolom['field']) ?>" <?= $isHarga ? 'data-tipe="harga"' : '' ?>
+                                                    placeholder="<?= e($placeholderKolom) ?>" class="form-control-custom" value="">
+                                            </td>
+                                        <?php endforeach; ?>
+                                        <?php if ($tabel_item_punya_harga): ?>
+                                            <td class="subtotal-baris" style="text-align:right; font-family:monospace;">-</td>
+                                        <?php endif; ?>
+                                        <td style="text-align:center;">
+                                            <button type="button" class="btn btn-outline-danger btn-sm tombol-hapus-baris">
+                                                <i class="bi bi-x-lg"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                </template>
+
+                                <script>
+                                    (function () {
+                                        var tbody = document.getElementById('tabel-item-body');
+                                        var tpl = document.getElementById('template-baris-item');
+                                        var tombolTambah = document.getElementById('tombol-tambah-baris');
+                                        if (!tbody || !tpl || !tombolTambah) return;
+
+                                        var idxBerikutnya = tbody.querySelectorAll('tr.baris-item').length;
+
+                                        function nomorUlangBaris() {
+                                            tbody.querySelectorAll('tr.baris-item').forEach(function (tr, i) {
+                                                tr.querySelector('.nomor-baris').textContent = i + 1;
+                                            });
+                                        }
+
+                                        function parseAngkaJsLokal(teks) {
+                                            teks = String(teks || '').trim();
+                                            var m = teks.match(/-?\d[\d.,]*/);
+                                            if (!m) return null;
+                                            var angka = m[0];
+                                            if (angka.indexOf(',') !== -1 && angka.indexOf('.') !== -1) {
+                                                angka = angka.replace(/\./g, '').replace(',', '.');
+                                            } else if (angka.indexOf(',') !== -1) {
+                                                angka = angka.replace(',', '.');
+                                            } else {
+                                                var bagian = angka.split('.');
+                                                if (bagian.length > 1 && bagian[bagian.length - 1].length === 3) {
+                                                    angka = angka.split('.').join('');
+                                                }
+                                            }
+                                            var hasil = parseFloat(angka);
+                                            return isNaN(hasil) ? null : hasil;
+                                        }
+
+                                        function formatRupiahJsLokal(angka) {
+                                            var bulat = Math.round(angka);
+                                            var negatif = bulat < 0;
+                                            bulat = Math.abs(bulat);
+                                            var str = bulat.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+                                            return (negatif ? '-' : '') + 'Rp. ' + str;
+                                        }
+
+                                        function hitungSubtotalBaris(tr) {
+                                            var qty = null, harga = null;
+                                            tr.querySelectorAll('input[data-kolom]').forEach(function (inp) {
+                                                var nama = inp.getAttribute('data-kolom');
+                                                if (qty === null && /qty|jumlah/i.test(nama)) qty = parseAngkaJsLokal(inp.value);
+                                                if (harga === null && /harga/i.test(nama)) harga = parseAngkaJsLokal(inp.value);
+                                            });
+                                            var elSubtotal = tr.querySelector('.subtotal-baris');
+                                            if (!elSubtotal) return;
+                                            elSubtotal.textContent = (qty !== null && harga !== null) ? formatRupiahJsLokal(qty * harga) : '-';
+                                        }
+
+                                        function formatRibuan(str) {
+                                            var angkaSaja = str.replace(/\D/g, '');
+                                            if (angkaSaja === '') return '';
+                                            return angkaSaja.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+                                        }
+
+                                        function pasangAutoFormatHarga(tr) {
+                                            tr.querySelectorAll('input[data-tipe="harga"]').forEach(function (inp) {
+                                                if (inp.value) inp.value = formatRibuan(inp.value);
+                                                inp.addEventListener('input', function () {
+                                                    var posisiKursorDariBelakang = this.value.length - this.selectionStart;
+                                                    this.value = formatRibuan(this.value);
+                                                    var posisiBaru = this.value.length - posisiKursorDariBelakang;
+                                                    this.setSelectionRange(posisiBaru, posisiBaru);
+                                                });
+                                            });
+                                        }
+
+                                        function pasangTombolHapus(tr) {
+                                            var btn = tr.querySelector('.tombol-hapus-baris');
+                                            btn.addEventListener('click', function () {
+                                                if (tbody.querySelectorAll('tr.baris-item').length > 1) {
+                                                    tr.remove();
+                                                    nomorUlangBaris();
+                                                } else {
+                                                    tr.querySelectorAll('input').forEach(function (inp) { inp.value = ''; });
+                                                    hitungSubtotalBaris(tr);
+                                                }
+                                                if (window.hitungUlangTotalSurat) window.hitungUlangTotalSurat();
+                                            });
+                                        }
+
+                                        tbody.querySelectorAll('tr.baris-item').forEach(function (tr) {
+                                            pasangTombolHapus(tr);
+                                            pasangAutoFormatHarga(tr);
+                                            hitungSubtotalBaris(tr);
+                                        });
+
+                                        tbody.addEventListener('input', function (e) {
+                                            if (e.target && e.target.matches('input[data-kolom]')) {
+                                                var tr = e.target.closest('tr.baris-item');
+                                                if (tr) hitungSubtotalBaris(tr);
+                                                if (window.hitungUlangTotalSurat) window.hitungUlangTotalSurat();
+                                            }
+                                        });
+
+                                        tombolTambah.addEventListener('click', function () {
+                                            var html = tpl.innerHTML.replace(/__IDX__/g, idxBerikutnya);
+                                            var sementara = document.createElement('tbody');
+                                            sementara.innerHTML = html;
+                                            var trBaru = sementara.querySelector('tr');
+                                            tbody.appendChild(trBaru);
+                                            pasangTombolHapus(trBaru);
+                                            pasangAutoFormatHarga(trBaru);
+                                            hitungSubtotalBaris(trBaru);
+                                            nomorUlangBaris();
+                                            idxBerikutnya++;
+                                            if (window.hitungUlangTotalSurat) window.hitungUlangTotalSurat();
+                                        });
+                                    })();
+                                </script>
+                            <?php endif; ?>
+
+                            <div class="d-flex gap-2 mt-4">
+                                <button type="submit" name="preview_only" value="1" class="btn-secondary-custom">
+                                    <i class="bi bi-arrow-repeat"></i> Update Preview
+                                </button>
+                                <button type="submit" class="btn-primary-custom">
+                                    <i class="bi bi-file-earmark-check"></i> Simpan &amp; Buat Surat
+                                </button>
+                            </div>
+                            <p class="text-secondary text-xs mt-2">"Simpan &amp; Buat Surat" akan mengunci nomor surat,
+                                menyimpan ke database, dan men-generate file .docx dari template master.</p>
+                        </form>
+                    <?php elseif (!$kodeIdTerpilih): ?>
+                        <p class="text-secondary text-xs mt-2 mb-0">Silakan pilih jenis surat &amp; template di atas
+                            untuk mulai mengisi data surat.</p>
+                    <?php endif; ?>
+                </section>
+
+                <section class="card-box">
+                    <span class="text-xs fw-bold text-secondary text-uppercase d-block mb-2">Pratinjau Data ke Template
+                        Word</span>
+                    <?php if (!$kodeTerpilih || $file_template_hilang || $kodeTerpilih['format'] !== 'word_pdf'): ?>
+                        <p class="text-secondary text-xs fst-italic mb-0">Pratinjau akan muncul di sini setelah jenis
+                            surat &amp; template dipilih.</p>
+                    <?php else: ?>
+                        <p class="text-secondary text-xs fst-italic mb-3">
+                            Panel ini menampilkan nilai yang akan menggantikan setiap placeholder <code>${...}</code>
+                            saat dokumen digenerate. Klik "Update Preview" untuk menyegarkan tabel item.
+                            <?php if ($ada_ringkasan_total): ?>
+                                Total, PPN, PPH &amp; Total Bayar adalah <b>estimasi langsung</b> dari isian tabel item.
+                            <?php endif; ?>
+                        </p>
+
+                        <table class="preview-kv w-100 mb-3">
+                            <tr>
+                                <td>Nomor</td>
+                                <td style="font-family:monospace;">
+                                    <?php
+                                    $noUrutPreviewTampil = trim($_POST['no_urut_manual'] ?? '');
+                                    if ($noUrutPreviewTampil !== '' && ctype_digit($noUrutPreviewTampil)) {
+                                        echo e(sprintf('%03d/%s/ARP/%s/%d', (int) $noUrutPreviewTampil, $kodeTerpilih['kode'], $bulanRomawi, $tahun));
+                                    } else {
+                                        echo e($preview_nomor);
+                                    }
+                                    ?>
+                                </td>
+                            </tr>
+                            <?php foreach ($fields_dinamis as $f): ?>
+                                <tr>
+                                    <td><?= e($f['label']) ?></td>
+                                    <td><?= nl2br(e($nilai_dinamis[$f['field']] ?? '')) ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </table>
+
+                        <?php if (!empty($fields_tabel)): ?>
+                            <span class="text-xs fw-bold text-secondary text-uppercase d-block mb-2">Rincian Item</span>
+                            <div class="table-responsive-custom mb-3">
+                                <table class="table-custom" id="preview-tabel-item">
+                                    <thead>
+                                        <tr>
+                                            <th>No</th>
+                                            <?php foreach ($fields_tabel as $kolom): ?>
+                                                <th><?= e($kolom['label']) ?></th>
+                                            <?php endforeach; ?>
+                                            <?php if ($tabel_item_punya_harga): ?>
+                                                <th style="text-align:right;">Sub Total</th>
+                                            <?php endif; ?>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($nilai_items as $i => $baris): ?>
+                                            <?php
+                                            $adaIsiPreview = false;
+                                            foreach ($baris as $v) {
+                                                if (trim((string) $v) !== '') {
+                                                    $adaIsiPreview = true;
+                                                    break;
+                                                }
+                                            }
+                                            if (!$adaIsiPreview)
+                                                continue;
+
+                                            $qtyBarisPreview = null;
+                                            $hargaBarisPreview = null;
+                                            foreach ($baris as $namaKolomPreview => $nilaiKolomPreview) {
+                                                if ($qtyBarisPreview === null && isKolomQty((string) $namaKolomPreview)) {
+                                                    $qtyBarisPreview = parseAngka($nilaiKolomPreview);
+                                                }
+                                                if ($hargaBarisPreview === null && isKolomHarga((string) $namaKolomPreview)) {
+                                                    $hargaBarisPreview = parseAngka($nilaiKolomPreview);
+                                                }
+                                            }
+                                            $subTotalBarisPreview = ($qtyBarisPreview !== null && $hargaBarisPreview !== null)
+                                                ? ($qtyBarisPreview * $hargaBarisPreview)
+                                                : null;
+                                            ?>
+                                            <tr data-baris-index="<?= (int) $i ?>">
+                                                <td><?= $i + 1 ?></td>
+                                                <?php foreach ($fields_tabel as $kolom): ?>
+                                                    <td><?= e($baris[$kolom['field']] ?? '') ?></td>
+                                                <?php endforeach; ?>
+                                                <?php if ($tabel_item_punya_harga): ?>
+                                                    <td style="text-align:right; font-family:monospace;">
+                                                        <?= $subTotalBarisPreview !== null ? e(formatRupiah($subTotalBarisPreview)) : '-' ?>
+                                                    </td>
+                                                <?php endif; ?>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <?php if ($ada_ringkasan_total): ?>
+                                <div id="blok-ringkasan-total" data-ada-pph23="<?= $ada_pph23 ? '1' : '0' ?>">
+                                    <div class="ringkasan-total-row">
+                                        <span>Total</span><span id="preview-total" style="font-family:monospace;">Rp. 0</span>
+                                    </div>
+                                    <div class="ringkasan-total-row">
+                                        <span>PPN (11%)</span><span id="preview-ppn" style="font-family:monospace;">Rp. 0</span>
+                                    </div>
+                                    <?php if ($ada_pph23): ?>
+                                        <div class="ringkasan-total-row">
+                                            <span>PPH 23 (2%)</span><span id="preview-pph" style="font-family:monospace;">Rp. 0</span>
+                                        </div>
+                                    <?php endif; ?>
+                                    <div class="ringkasan-total-row total-bayar">
+                                        <span>Total Bayar</span><span id="preview-total-bayar" style="font-family:monospace;">Rp.
+                                            0</span>
+                                    </div>
+                                </div>
+
+                                <script>
+                                    (function () {
+                                        var tbody = document.getElementById('tabel-item-body');
+                                        var elTotal = document.getElementById('preview-total');
+                                        var elPpn = document.getElementById('preview-ppn');
+                                        var elTotalBayar = document.getElementById('preview-total-bayar');
+                                        var previewTabelItem = document.getElementById('preview-tabel-item');
+                                        if (!tbody || !elTotal) return;
+
+                                        function parseAngkaJs(teks) {
+                                            teks = String(teks || '').trim();
+                                            var m = teks.match(/-?\d[\d.,]*/);
+                                            if (!m) return null;
+                                            var angka = m[0];
+                                            if (angka.indexOf(',') !== -1 && angka.indexOf('.') !== -1) {
+                                                angka = angka.replace(/\./g, '').replace(',', '.');
+                                            } else if (angka.indexOf(',') !== -1) {
+                                                angka = angka.replace(',', '.');
+                                            } else {
+                                                var bagian = angka.split('.');
+                                                if (bagian.length > 1 && bagian[bagian.length - 1].length === 3) {
+                                                    angka = angka.split('.').join('');
+                                                }
+                                            }
+                                            var hasil = parseFloat(angka);
+                                            return isNaN(hasil) ? null : hasil;
+                                        }
+
+                                        function formatRupiahJs(angka) {
+                                            var bulat = Math.round(angka);
+                                            var negatif = bulat < 0;
+                                            bulat = Math.abs(bulat);
+                                            var str = bulat.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+                                            return (negatif ? '-' : '') + 'Rp. ' + str;
+                                        }
+
+                                        function updateSubtotalPreview(idxBaris, nilaiSubtotal) {
+                                            if (!previewTabelItem) return;
+                                            var barisPreview = previewTabelItem.querySelector('tr[data-baris-index="' + idxBaris + '"]');
+                                            if (!barisPreview) return;
+                                            var cellSubtotal = barisPreview.children[barisPreview.children.length - 1];
+                                            if (!cellSubtotal) return;
+                                            cellSubtotal.textContent = nilaiSubtotal !== null ? formatRupiahJs(nilaiSubtotal) : '-';
+                                        }
+
+                                        window.hitungUlangTotalSurat = function () {
+                                            var totalSemuaBaris = 0;
+                                            var adaSubtotal = false;
+
+                                            tbody.querySelectorAll('tr.baris-item').forEach(function (tr) {
+                                                var qty = null, harga = null;
+                                                tr.querySelectorAll('input[data-kolom]').forEach(function (inp) {
+                                                    var nama = inp.getAttribute('data-kolom');
+                                                    if (qty === null && /qty|jumlah/i.test(nama)) qty = parseAngkaJs(inp.value);
+                                                    if (harga === null && /harga/i.test(nama)) harga = parseAngkaJs(inp.value);
+                                                });
+                                                var idxBaris = tr.getAttribute('data-baris-index');
+                                                if (qty !== null && harga !== null) {
+                                                    totalSemuaBaris += qty * harga;
+                                                    adaSubtotal = true;
+                                                    updateSubtotalPreview(idxBaris, qty * harga);
+                                                } else {
+                                                    updateSubtotalPreview(idxBaris, null);
+                                                }
+                                            });
+
+                                            var blokRingkasan = document.getElementById('blok-ringkasan-total');
+                                            var adaPph23 = blokRingkasan && blokRingkasan.getAttribute('data-ada-pph23') === '1';
+                                            var elPph = document.getElementById('preview-pph');
+
+                                            if (!adaSubtotal) {
+                                                elTotal.textContent = 'Rp. 0';
+                                                elPpn.textContent = 'Rp. 0';
+                                                if (elPph) elPph.textContent = 'Rp. 0';
+                                                elTotalBayar.textContent = 'Rp. 0';
+                                                return;
+                                            }
+
+                                            var ppn = Math.round(totalSemuaBaris * 0.11);
+                                            var pph = adaPph23 ? Math.round(totalSemuaBaris * 0.02) : 0;
+                                            var totalBayar = totalSemuaBaris + ppn - pph;
+
+                                            elTotal.textContent = formatRupiahJs(totalSemuaBaris);
+                                            elPpn.textContent = formatRupiahJs(ppn);
+                                            if (adaPph23 && elPph) elPph.textContent = formatRupiahJs(pph);
+                                            elTotalBayar.textContent = formatRupiahJs(totalBayar);
+                                        };
+
+                                        var observer = new MutationObserver(window.hitungUlangTotalSurat);
+                                        observer.observe(tbody, { childList: true });
+
+                                        window.hitungUlangTotalSurat();
+                                    })();
+                                </script>
+                            <?php endif; ?>
+                        <?php endif; ?>
+                    <?php endif; ?>
+                </section>
+            </div>
+        </div>
+
+        <!-- ============================== TAB: UPLOAD TEMPLATE ============================== -->
+        <div class="col-12 arp-tab-panel" id="tabPanelTemplate" <?= $active_tab === 'tabPanelTemplate' ? '' : 'style="display:none;"' ?>>
+            <div class="card-box">
+                <div class="table-toolbar">
+                    <h5 class="table-toolbar-title fw-bold">Daftar Template Surat</h5>
+                    <div class="table-toolbar-actions">
+                        <div class="search-box-container">
+                            <i class="bi bi-search"></i>
+                            <input type="text" class="search-box" placeholder="Cari nama template atau kode..."
+                                data-table-search="tabelTemplate" onkeyup="handleTableSearch('tabelTemplate')">
+                        </div>
+                        <button class="btn-primary-custom" onclick="openModal('modalUploadTemplate')">
+                            <i class="bi bi-cloud-upload"></i>
+                            Upload Template
+                        </button>
+                    </div>
+                </div>
+                <div class="table-responsive-custom">
+                    <table class="table-custom" id="tabelTemplate">
+                        <thead>
+                            <tr>
+                                <th>No</th>
+                                <th>Nama Template</th>
+                                <th>Kode (Jenis)</th>
+                                <th>Tanggal Upload</th>
+                                <th>Format</th>
+                                <th>Status</th>
+                                <th class="col-aksi" style="text-align:center;">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if (empty($daftar_template)): ?>
+                                <tr>
+                                    <td colspan="7" class="text-center py-4 text-muted">
+                                        <i class="bi bi-file-earmark-x d-block mb-2" style="font-size:2rem;"></i>
+                                        Belum ada template surat.
+                                    </td>
+                                </tr>
+                            <?php endif; ?>
+                            <?php $no = 1; ?>
+                            <?php foreach ($daftar_template as $t): ?>
+                                <?php $fileTemplateAda = is_file(BASE_PATH . '/' . $t['file_path']); ?>
+                                <tr>
+                                    <td><?= $no++; ?></td>
+                                    <td>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <i class="bi bi-file-earmark-word text-primary"></i>
+                                            <div>
+                                                <strong><?= e($t['nama']) ?></strong>
+                                                <?php if (!empty($t['deskripsi'])): ?>
+                                                    <br><small class="text-secondary"><?= e($t['deskripsi']) ?></small>
+                                                <?php endif; ?>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td><span
+                                            class="badge-warning"><?= e(implode(', ', $daftar_kode_per_template[$t['id']] ?? ['-'])) ?></span>
+                                    </td>
+                                    <td><?= date('d-m-Y', strtotime($t['created_at'])) ?></td>
+                                    <td><?= $t['format'] === 'word_pdf' ? 'Word' : 'PDF' ?></td>
+                                    <td>
+                                        <?php if ($fileTemplateAda): ?>
+                                            <span class="badge-success">Aktif</span>
+                                        <?php else: ?>
+                                            <span class="badge-danger"
+                                                title="File fisik tidak ditemukan di storage">Hilang</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td class="col-aksi" style="text-align:center;">
+                                        <div class="table-actions">
+                                            <button type="button" class="btn btn-outline-primary btn-sm py-1"
+                                                style="font-size:0.75rem;" title="Edit Template"
+                                                onclick="bukaModalEditTemplate(<?= (int) $t['id'] ?>)">
+                                                <i class="bi bi-pencil-square"></i>
+                                            </button>
+                                            <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
+                                                href="../<?= e($t['file_path']) ?>" download title="Unduh">
+                                                <i class="bi bi-download"></i>
+                                            </a>
+                                            <form method="POST" action="surat.php" class="d-inline"
+                                                onsubmit="return confirm('Hapus template &quot;<?= e(addslashes($t['nama'])) ?>&quot;? Tindakan ini tidak bisa dibatalkan.');">
+                                                <input type="hidden" name="aksi" value="hapus_template">
+                                                <input type="hidden" name="template_id" value="<?= (int) $t['id'] ?>">
+                                                <button type="submit" class="btn-danger-custom"
+                                                    style="height:28px; padding:0 8px; font-size:0.75rem;">
+                                                    <i class="bi bi-trash-fill"></i>
+                                                </button>
+                                            </form>
+                                        </div>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="pagination-custom" id="pagination-tabelTemplate"></div>
+            </div>
+        </div>
     </div>
+
 </main>
 
-<?php
-include "../includes/footer.php";
-?>
+<!-- Modal: Setujui / Tolak Surat Keluar -->
+<div class="arp-modal-overlay" id="modalSuratApproval" onclick="closeModalOutside(event,'modalSuratApproval')">
+    <div class="arp-modal-box" style="max-width:480px;">
+        <div class="arp-modal-header">
+            <div>
+                <h5 class="fw-bold mb-0" id="modalSuratApprovalTitle">Setujui Surat</h5>
+                <small class="text-muted">Perihal: <strong id="modalSuratApprovalPerihal">-</strong></small>
+            </div>
+            <button class="arp-modal-close" onclick="closeModal('modalSuratApproval')">&times;</button>
+        </div>
+        <div class="arp-modal-body">
+            <form method="POST" action="surat.php">
+                <input type="hidden" name="aksi" value="proses_approval_surat">
+                <input type="hidden" name="surat_id" id="modalSuratApprovalSuratId" value="">
+                <input type="hidden" name="decision" id="modalSuratApprovalDecision" value="">
+
+                <label class="form-label fw-semibold fs-7 mb-2" id="modalSuratApprovalCatatanLabel">Catatan
+                    (opsional)</label>
+                <textarea class="textarea-custom" name="catatan" id="modalSuratApprovalCatatan"
+                    placeholder="Tulis catatan untuk pembuat surat..."></textarea>
+
+                <div class="d-flex gap-2 justify-content-end mt-3">
+                    <button type="button" class="btn-secondary-custom"
+                        onclick="closeModal('modalSuratApproval')">Batal</button>
+                    <button type="submit" class="btn-primary-custom" id="modalSuratApprovalSubmit">Setujui</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Catat Surat Masuk -->
+<div class="arp-modal-overlay" id="modalCatatSuratMasuk" onclick="closeModalOutside(event,'modalCatatSuratMasuk')">
+    <div class="arp-modal-box" style="max-width:650px;">
+        <div class="arp-modal-header">
+            <div>
+                <h5 class="fw-bold mb-0">Catat Surat Masuk</h5>
+                <small class="text-muted">Catat surat masuk secara manual (tanpa generate dokumen).</small>
+            </div>
+            <button class="arp-modal-close" onclick="closeModal('modalCatatSuratMasuk')">&times;</button>
+        </div>
+        <div class="arp-modal-body">
+            <form method="POST" action="surat.php" enctype="multipart/form-data">
+                <input type="hidden" name="aksi" value="catat_surat_masuk">
+
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold mb-2">Nomor Surat *</label>
+                        <input type="text" class="form-control-custom" name="nomor_surat" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold mb-2">Tanggal Diterima</label>
+                        <input type="date" class="form-control-custom" name="tanggal_surat"
+                            value="<?= date('Y-m-d') ?>">
+                    </div>
+                </div>
+
+                <div class="mt-3">
+                    <label class="form-label fw-semibold mb-2">Pengirim *</label>
+                    <input type="text" class="form-control-custom" name="tujuan_pengirim" required>
+                </div>
+
+                <div class="row g-3 mt-1">
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold mb-2">Perihal</label>
+                        <input type="text" class="form-control-custom" name="perihal">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold mb-2">Status</label>
+                        <select class="select-custom" name="status">
+                            <?php foreach (STATUS_OPSI_MASUK as $st): ?>
+                                <option value="<?= e($st) ?>"><?= e($st) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="mt-3">
+                    <label class="form-label fw-semibold mb-2">Lampiran</label>
+                    <input type="file" class="form-control-custom" name="lampiran" accept=".pdf,.doc,.docx"
+                        style="padding-top:8px;">
+                </div>
+
+                <div class="d-flex justify-content-end gap-2 mt-4">
+                    <button type="button" class="btn-secondary-custom"
+                        onclick="closeModal('modalCatatSuratMasuk')">Batal</button>
+                    <button type="submit" class="btn-primary-custom">Simpan Data</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Disposisi Surat Masuk -->
+<div class="arp-modal-overlay" id="modalDisposisiSuratMasuk"
+    onclick="closeModalOutside(event,'modalDisposisiSuratMasuk')">
+    <div class="arp-modal-box" style="max-width:550px;">
+        <div class="arp-modal-header">
+            <div>
+                <h5 class="fw-bold mb-0">Disposisi Surat Masuk</h5>
+                <small class="text-muted">Perihal: <strong id="disposisiPerihalText">-</strong></small>
+            </div>
+            <button class="arp-modal-close" onclick="closeModal('modalDisposisiSuratMasuk')">&times;</button>
+        </div>
+        <div class="arp-modal-body">
+            <form method="POST" action="surat.php">
+                <input type="hidden" name="aksi" value="disposisi_surat_masuk">
+                <input type="hidden" name="surat_id" id="disposisiSuratId" value="">
+
+                <div class="mb-3">
+                    <label class="form-label fw-semibold mb-2">Disposisikan Kepada *</label>
+                    <select name="tujuan_disposisi_id" class="select-custom" required>
+                        <option value="">-- Pilih penerima disposisi --</option>
+                        <?php foreach ($daftar_user_disposisi as $u): ?>
+                            <option value="<?= (int) $u['id'] ?>">
+                                <?= e($u['nama_lengkap']) ?> (<?= e(labelRole($u['role'])) ?>)
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-semibold mb-2">Instruksi Disposisi</label>
+                    <textarea class="textarea-custom" name="instruksi_disposisi"
+                        placeholder="Contoh: Mohon ditindaklanjuti dan dibalas paling lambat 3 hari kerja."></textarea>
+                </div>
+
+                <div class="d-flex gap-2 justify-content-end mt-3">
+                    <button type="button" class="btn-secondary-custom"
+                        onclick="closeModal('modalDisposisiSuratMasuk')">Batal</button>
+                    <button type="submit" class="btn-primary-custom">
+                        <i class="bi bi-diagram-3"></i> Kirim Disposisi
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    function openDisposisiModal(suratId, perihal) {
+        document.getElementById('disposisiSuratId').value = suratId;
+        document.getElementById('disposisiPerihalText').textContent = perihal;
+        openModal('modalDisposisiSuratMasuk');
+    }
+</script>
+
+
+<!-- Modal: Upload Template -->
+<div class="arp-modal-overlay" id="modalUploadTemplate" onclick="closeModalOutside(event,'modalUploadTemplate')">
+    <div class="arp-modal-box" style="max-width:650px;">
+        <div class="arp-modal-header">
+            <div>
+                <h5 class="fw-bold mb-0">Upload Template Surat</h5>
+                <small class="text-muted">
+                    Placeholder <code>${...}</code>, tabel <code>${item_...}</code>, dan blok <code>${blok_...}</code>
+                    di dalam file Word akan otomatis terdeteksi.
+                </small>
+            </div>
+            <button class="arp-modal-close" onclick="closeModal('modalUploadTemplate')">&times;</button>
+        </div>
+
+        <div class="arp-modal-body">
+            <form method="POST" action="surat.php" enctype="multipart/form-data">
+                <input type="hidden" name="aksi" value="upload_template">
+
+                <div class="mb-3">
+                    <label class="form-label fw-semibold mb-2">Nama Template *</label>
+                    <input type="text" name="nama_template" class="form-control-custom"
+                        placeholder="Contoh : Surat Tugas" required>
+                </div>
+
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold mb-2">Kode Surat *</label>
+                        <input type="text" name="kode" id="input-kode" class="form-control-custom"
+                            style="text-transform:uppercase;" placeholder="Contoh : ST" required>
+                        <div id="status-cek-kode" class="text-xs mt-1"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold mb-2">Nama Jenis Surat</label>
+                        <input type="text" name="nama_kode" id="input-nama-kode" class="form-control-custom"
+                            placeholder="Contoh : Surat Tugas">
+                    </div>
+                </div>
+
+                <div class="mt-3">
+                    <label class="form-label fw-semibold mb-2">Deskripsi Template</label>
+                    <input type="text" name="deskripsi" class="form-control-custom"
+                        placeholder="Contoh : Template surat tugas untuk kegiatan operasional.">
+                </div>
+
+                <div class="mt-3">
+                    <label class="form-label fw-semibold mb-2">File Template *</label>
+                    <input type="file" name="file_template" class="form-control-custom" accept=".doc,.docx,.pdf"
+                        style="padding-top:8px;" required>
+                </div>
+
+                <div class="d-flex justify-content-end gap-2 mt-4">
+                    <button type="button" class="btn-secondary-custom"
+                        onclick="closeModal('modalUploadTemplate')">Batal</button>
+                    <button type="submit" class="btn-primary-custom">
+                        <i class="bi bi-cloud-upload"></i>
+                        Upload Template
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Edit Template -->
+<div class="arp-modal-overlay" id="modalEditTemplate" onclick="closeModalOutside(event,'modalEditTemplate')">
+    <div class="arp-modal-box" style="max-width:750px;">
+        <div class="arp-modal-header">
+            <div>
+                <h5 class="fw-bold mb-0">Edit Template</h5>
+                <small class="text-muted">Ubah nama template, kode surat, jenis surat, deskripsi, dan nama field
+                    placeholder <code>${...}</code> di dalam file Word.</small>
+            </div>
+            <button class="arp-modal-close" onclick="closeModal('modalEditTemplate')">&times;</button>
+        </div>
+
+        <div class="arp-modal-body">
+            <div id="editTemplateLoading" class="text-center py-4 text-secondary">
+                <i class="bi bi-arrow-repeat" style="font-size:1.5rem;"></i>
+                <div class="mt-2 text-xs">Memuat data template...</div>
+            </div>
+            <div id="editTemplateError" class="alert alert-danger-custom text-xs" style="display:none;"></div>
+
+            <form method="POST" action="surat.php" id="formEditTemplate" style="display:none;">
+                <input type="hidden" name="aksi" value="edit_template">
+                <input type="hidden" name="template_id" id="editTplId" value="">
+
+                <div class="mb-3">
+                    <label class="form-label fw-semibold mb-2">Nama Template *</label>
+                    <input type="text" name="nama_template" id="editTplNama" class="form-control-custom" required>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-semibold mb-2">Deskripsi Template</label>
+                    <input type="text" name="deskripsi" id="editTplDeskripsi" class="form-control-custom">
+                </div>
+
+                <hr>
+                <label class="form-label fw-semibold mb-2 d-block">Kode Surat &amp; Jenis Surat Terhubung</label>
+                <div id="editTplKodeList" class="mb-3"></div>
+                <p class="text-secondary text-xs mb-3">Mengubah kode/nama di sini akan berlaku untuk SEMUA template
+                    lain yang memakai kombinasi kode ini juga (jika ada).</p>
+
+                <hr>
+                <label class="form-label fw-semibold mb-2 d-block">
+                    Field Placeholder di Dalam Template
+                    <span class="text-secondary fw-normal">(ubah nama field &amp; label tampilan form)</span>
+                </label>
+                <div class="table-responsive-custom mb-2">
+                    <table class="table-custom" id="editTplFieldTable">
+                        <thead>
+                            <tr>
+                                <th>Nama Field Saat Ini</th>
+                                <th>Nama Field Baru</th>
+                                <th>Label di Form</th>
+                            </tr>
+                        </thead>
+                        <tbody id="editTplFieldBody"></tbody>
+                    </table>
+                </div>
+                <p class="text-secondary text-xs mb-3">
+                    Contoh: ubah <code>nama_perusahaan_tujuan</code> jadi <code>nama_perusahaan</code> — sistem akan
+                    otomatis mengganti semua <code>${nama_perusahaan_tujuan}</code> di dalam file Word menjadi
+                    <code>${nama_perusahaan}</code>. Nama field baru hanya boleh huruf, angka, dan underscore
+                    (<code>_</code>), tanpa spasi.
+                </p>
+
+                <div class="d-flex justify-content-end gap-2 mt-4">
+                    <button type="button" class="btn-secondary-custom"
+                        onclick="closeModal('modalEditTemplate')">Batal</button>
+                    <button type="submit" class="btn-primary-custom">
+                        <i class="bi bi-save"></i> Simpan Perubahan
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    function bukaModalEditTemplate(templateId) {
+        openModal('modalEditTemplate');
+
+        var loadingEl = document.getElementById('editTemplateLoading');
+        var errorEl = document.getElementById('editTemplateError');
+        var formEl = document.getElementById('formEditTemplate');
+
+        loadingEl.style.display = 'block';
+        errorEl.style.display = 'none';
+        formEl.style.display = 'none';
+
+        fetch('surat.php?ajax=get_template&id=' + encodeURIComponent(templateId))
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                loadingEl.style.display = 'none';
+
+                if (data.error) {
+                    errorEl.textContent = data.error;
+                    errorEl.style.display = 'block';
+                    return;
+                }
+
+                document.getElementById('editTplId').value = data.template.id;
+                document.getElementById('editTplNama').value = data.template.nama || '';
+                document.getElementById('editTplDeskripsi').value = data.template.deskripsi || '';
+
+                // ----- Render daftar kode surat terhubung -----
+                var kodeListEl = document.getElementById('editTplKodeList');
+                kodeListEl.innerHTML = '';
+
+                if (!data.kode_terhubung || data.kode_terhubung.length === 0) {
+                    kodeListEl.innerHTML = '<p class="text-secondary text-xs">Template ini belum terhubung ke kode surat manapun.</p>';
+                } else {
+                    data.kode_terhubung.forEach(function (k) {
+                        var row = document.createElement('div');
+                        row.className = 'row g-2 mb-2 align-items-center';
+                        row.innerHTML =
+                            '<input type="hidden" name="kode_template_id[]" value="' + k.kode_template_id + '">' +
+                            '<div class="col-md-5">' +
+                            '<input type="text" name="kode_baru[]" class="form-control-custom" style="text-transform:uppercase;" ' +
+                            'value="' + escapeHtmlAttr(k.kode) + '" placeholder="Kode (cth: ST)">' +
+                            '</div>' +
+                            '<div class="col-md-6">' +
+                            '<input type="text" name="nama_kode_baru[]" class="form-control-custom" ' +
+                            'value="' + escapeHtmlAttr(k.nama_kode) + '" placeholder="Nama jenis surat">' +
+                            '</div>' +
+                            '<div class="col-md-1 text-center">' +
+                            (k.is_default == 1 ? '<span class="badge-success" title="Default">Def</span>' : '') +
+                            '</div>';
+                        kodeListEl.appendChild(row);
+                    });
+                }
+
+                // ----- Render daftar field placeholder (fields + table_fields) -----
+                var fieldBody = document.getElementById('editTplFieldBody');
+                fieldBody.innerHTML = '';
+
+                var semuaField = [];
+                (data.fields || []).forEach(function (f) { semuaField.push({ field: f.field, label: f.label, tipe: 'Field' }); });
+                (data.table_fields || []).forEach(function (f) { semuaField.push({ field: f.field, label: f.label, tipe: 'Tabel (item_' + f.field + ')' }); });
+                Object.keys(data.blocks || {}).forEach(function (namaBlok) {
+                    (data.blocks[namaBlok] || []).forEach(function (f) {
+                        semuaField.push({ field: f.field, label: f.label, tipe: 'Blok: ' + namaBlok });
+                    });
+                });
+
+                if (semuaField.length === 0) {
+                    fieldBody.innerHTML = '<tr><td colspan="3" class="text-center text-secondary text-xs py-3">Tidak ada placeholder terdeteksi di template ini.</td></tr>';
+                } else {
+                    semuaField.forEach(function (f) {
+                        var tr = document.createElement('tr');
+                        tr.innerHTML =
+                            '<td>' +
+                            '<code>${' + escapeHtmlText(f.field) + '}</code>' +
+                            '<br><small class="text-secondary">' + escapeHtmlText(f.tipe) + '</small>' +
+                            '<input type="hidden" name="field_lama[]" value="' + escapeHtmlAttr(f.field) + '">' +
+                            '</td>' +
+                            '<td>' +
+                            '<input type="text" name="field_baru[]" class="form-control-custom field-baru-input" value="' + escapeHtmlAttr(f.field) + '">' +
+                            '</td>' +
+                            '<td>' +
+                            '<input type="text" name="field_label[]" class="form-control-custom field-label-input" value="' + escapeHtmlAttr(f.label) + '" data-label-manual="0">' +
+                            '</td>';
+                        fieldBody.appendChild(tr);
+                    });
+
+                    pasangAutoLabelListener();
+                }
+
+                formEl.style.display = 'block';
+            })
+            .catch(function () {
+                loadingEl.style.display = 'none';
+                errorEl.textContent = 'Gagal memuat data template. Silakan coba lagi.';
+                errorEl.style.display = 'block';
+            });
+    }
+
+    function escapeHtmlAttr(str) {
+        return String(str || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    function escapeHtmlText(str) {
+        return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    // Ubah "nama_perusahaan_tujuan" -> "Nama Perusahaan Tujuan", persis
+    // meniru labelFromFieldName() di PHP (ucwords + underscore jadi spasi).
+    function labelDariNamaField(nama) {
+        nama = String(nama || '').trim();
+        if (nama === '') return '';
+        return nama
+            .replace(/_/g, ' ')
+            .split(' ')
+            .map(function (kata) {
+                return kata.length ? kata.charAt(0).toUpperCase() + kata.slice(1) : kata;
+            })
+            .join(' ');
+    }
+
+    function pasangAutoLabelListener() {
+        var baris = document.querySelectorAll('#editTplFieldBody tr');
+        baris.forEach(function (tr) {
+            var inputFieldBaru = tr.querySelector('.field-baru-input');
+            var inputLabel = tr.querySelector('.field-label-input');
+            if (!inputFieldBaru || !inputLabel) return;
+
+            // Kalau user sudah pernah mengubah label secara manual, jangan
+            // ditimpa lagi otomatis -- hormati perubahan manual tsb.
+            inputLabel.addEventListener('input', function () {
+                inputLabel.setAttribute('data-label-manual', '1');
+            });
+
+            inputFieldBaru.addEventListener('input', function () {
+                if (inputLabel.getAttribute('data-label-manual') === '1') return;
+                inputLabel.value = labelDariNamaField(inputFieldBaru.value);
+            });
+        });
+    }
+</script>
+
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        initTablePagination('tabelSuratKeluar', 10);
+        initTablePagination('tabelSuratMasuk', 10);
+        initTablePagination('tabelTemplate', 10);
+    });
+
+    (function () {
+        var inputKode = document.getElementById('input-kode');
+        var inputNamaKode = document.getElementById('input-nama-kode');
+        var statusEl = document.getElementById('status-cek-kode');
+        if (!inputKode || !inputNamaKode) return;
+
+        var timer = null;
+
+        function tampilkanStatus(pesan, jenis) {
+            if (!statusEl) return;
+            statusEl.textContent = pesan;
+            statusEl.className = 'text-xs mt-1 ' + (jenis === 'warning' ? 'text-warning' : (jenis === 'danger' ? 'text-danger' : 'text-success'));
+        }
+
+        function cekKode() {
+            var kode = inputKode.value.trim();
+            var nama = inputNamaKode.value.trim();
+            if (kode === '') {
+                tampilkanStatus('', '');
+                return;
+            }
+            fetch('surat.php?ajax=cek_kode&kode=' + encodeURIComponent(kode) + '&nama=' + encodeURIComponent(nama))
+                .then(function (res) { return res.json(); })
+                .then(function (data) {
+                    if (data.combo_exists) {
+                        tampilkanStatus('Kombinasi kode & jenis surat ini sudah ada — akan memakai data yang sama (bukan bikin baris baru).', 'warning');
+                    } else if (data.kode_exists) {
+                        var daftar = (data.daftar_nama_lain && data.daftar_nama_lain.length)
+                            ? ' Jenis surat lain yang sudah pakai kode ini: ' + data.daftar_nama_lain.join(', ') + '.'
+                            : '';
+                        tampilkanStatus('Kode ini sudah dipakai jenis surat lain — akan dibuat jenis surat BARU dengan kode yang sama.' + daftar, 'success');
+                    } else if (nama !== '') {
+                        tampilkanStatus('Kode & jenis surat baru — siap dibuat.', 'success');
+                    } else {
+                        tampilkanStatus('', '');
+                    }
+                })
+                .catch(function () { });
+        }
+
+        inputKode.addEventListener('input', function () {
+            clearTimeout(timer);
+            timer = setTimeout(cekKode, 400);
+        });
+        inputNamaKode.addEventListener('input', function () {
+            clearTimeout(timer);
+            timer = setTimeout(cekKode, 400);
+        });
+        inputKode.addEventListener('blur', cekKode);
+        inputNamaKode.addEventListener('blur', cekKode);
+    })();
+</script>
+
+<?php if ($errorGenerateSurat): ?>
+    <script>document.addEventListener('DOMContentLoaded', function () { switchTab('tabPanelBuatSurat', document.querySelector('[data-tab-target=tabPanelBuatSurat]')); });</script>
+<?php endif; ?>
+
+<script>
+    function openSuratApprovalModal(suratId, decision, perihal) {
+        document.getElementById('modalSuratApprovalSuratId').value = suratId;
+        document.getElementById('modalSuratApprovalDecision').value = decision;
+        document.getElementById('modalSuratApprovalPerihal').textContent = perihal;
+
+        const title = document.getElementById('modalSuratApprovalTitle');
+        const submitBtn = document.getElementById('modalSuratApprovalSubmit');
+        const catatanLabel = document.getElementById('modalSuratApprovalCatatanLabel');
+        const catatanInput = document.getElementById('modalSuratApprovalCatatan');
+        catatanInput.value = '';
+
+        if (decision === 'approve') {
+            title.textContent = 'Setujui Surat';
+            submitBtn.textContent = 'Setujui';
+            catatanLabel.textContent = 'Catatan (opsional)';
+            catatanInput.required = false;
+        } else {
+            title.textContent = 'Tolak Surat';
+            submitBtn.textContent = 'Tolak Surat';
+            catatanLabel.textContent = 'Alasan Penolakan (wajib diisi)';
+            catatanInput.required = true;
+        }
+
+        openModal('modalSuratApproval');
+    }
+</script>
+
+<?php include "../includes/footer.php"; ?>

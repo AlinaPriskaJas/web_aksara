@@ -84,3 +84,14 @@
         font-size: 1.1rem;
     }
 }
+
+@media (max-width: 576px) {
+    .table-toolbar-actions {
+        width: 100%;
+    }
+
+    .table-toolbar-actions .search-box-container {
+        width: 100%;
+        flex: 1 1 100%;
+    }
+}

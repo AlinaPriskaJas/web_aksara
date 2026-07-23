@@ -99,6 +99,212 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
 
 });
 
+// === Modal Global Functions ===
+function openModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.classList.add('show');
+        document.body.style.overflow = 'hidden'; // prevent background scroll
+    }
+}
+
+function closeModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.classList.remove('show');
+        document.body.style.overflow = '';
+    }
+}
+
+function closeModalOutside(event, modalId) {
+    const modal = document.getElementById(modalId);
+    // If click is exactly on the overlay (not its children)
+    if (event.target === modal) {
+        closeModal(modalId);
+    }
+}
+
+// === Preview Bukti Foto Absensi ===
+// Membuat modal preview foto secara otomatis (sekali saja) lalu menampilkan gambar yang diklik.
+function tampilkanBuktiFoto(src) {
+    let modal = document.getElementById('modalBuktiFotoAbsensi');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'modalBuktiFotoAbsensi';
+        modal.className = 'arp-modal-overlay';
+        modal.setAttribute('onclick', "closeModalOutside(event, 'modalBuktiFotoAbsensi')");
+        modal.innerHTML = `
+            <div class="arp-modal-box" style="max-width:480px;">
+                <div class="arp-modal-header">
+                    <h6 class="fw-bold mb-0">Bukti Foto Absensi</h6>
+                    <button type="button" class="arp-modal-close" onclick="closeModal('modalBuktiFotoAbsensi')">&times;</button>
+                </div>
+                <div class="arp-modal-body text-center">
+                    <img id="imgBuktiFotoAbsensi" src="" alt="Bukti Foto Absensi" class="arp-bukti-foto-preview">
+                </div>
+            </div>`;
+        document.body.appendChild(modal);
+    }
+    document.getElementById('imgBuktiFotoAbsensi').src = src;
+    openModal('modalBuktiFotoAbsensi');
+}
+
+/* =========================================================
+   Table Search + Pagination Controller
+   Used by card-box tables via the .table-toolbar search box
+   and the .pagination-custom footer under each table.
+   ========================================================= */
+const tablePaginationState = {};
+
+/**
+ * Initialize pagination (and search-awareness) for a table.
+ * Usage: initTablePagination('tabelJadwal', 10)
+ */
+function initTablePagination(tableId, rowsPerPage) {
+    const table = document.getElementById(tableId);
+    if (!table) return;
+
+    const tbody = table.querySelector('tbody');
+    if (!tbody) return;
+
+    const allRows = Array.from(tbody.querySelectorAll('tr')).filter(function (row) {
+        return !row.hasAttribute('data-search-empty');
+    });
+
+    tablePaginationState[tableId] = {
+        rowsPerPage: rowsPerPage || 10,
+        currentPage: 1,
+        allRows: allRows
+    };
+
+    renderTablePage(tableId);
+}
+
+function getFilteredTableRows(tableId) {
+    const state = tablePaginationState[tableId];
+    if (!state) return [];
+
+    const searchInput = document.querySelector('[data-table-search="' + tableId + '"]');
+    const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
+
+    if (!query) return state.allRows;
+
+    return state.allRows.filter(function (row) {
+        return row.textContent.toLowerCase().indexOf(query) !== -1;
+    });
+}
+
+/**
+ * Called from the table-toolbar search input on keyup.
+ * Usage: <input data-table-search="tabelJadwal" onkeyup="handleTableSearch('tabelJadwal')">
+ */
+function handleTableSearch(tableId) {
+    const state = tablePaginationState[tableId];
+    if (!state) return;
+    state.currentPage = 1;
+    renderTablePage(tableId);
+}
+
+function goToTablePage(tableId, page) {
+    const state = tablePaginationState[tableId];
+    if (!state) return;
+
+    const totalPages = Math.max(1, Math.ceil(getFilteredTableRows(tableId).length / state.rowsPerPage));
+    if (page < 1 || page > totalPages) return;
+
+    state.currentPage = page;
+    renderTablePage(tableId);
+}
+
+function renderTablePage(tableId) {
+    const state = tablePaginationState[tableId];
+    const table = document.getElementById(tableId);
+    if (!state || !table) return;
+
+    const tbody = table.querySelector('tbody');
+    const filteredRows = getFilteredTableRows(tableId);
+    const totalRows = filteredRows.length;
+    const totalPages = Math.max(1, Math.ceil(totalRows / state.rowsPerPage));
+    if (state.currentPage > totalPages) state.currentPage = totalPages;
+
+    // Hide every real row first
+    state.allRows.forEach(function (row) {
+        row.style.display = 'none';
+    });
+
+    // Show only the rows for the current page
+    const start = (state.currentPage - 1) * state.rowsPerPage;
+    const pageRows = filteredRows.slice(start, start + state.rowsPerPage);
+    pageRows.forEach(function (row) {
+        row.style.display = '';
+    });
+
+    // "No data / not found" placeholder row
+    let emptyRow = tbody.querySelector('tr[data-search-empty="true"]');
+    if (totalRows === 0) {
+        if (!emptyRow) {
+            const colCount = table.querySelectorAll('thead th').length || 1;
+            emptyRow = document.createElement('tr');
+            emptyRow.setAttribute('data-search-empty', 'true');
+            emptyRow.innerHTML = '<td colspan="' + colCount + '" class="text-center py-4 text-muted">Data tidak ditemukan.</td>';
+            tbody.appendChild(emptyRow);
+        }
+        emptyRow.style.display = '';
+    } else if (emptyRow) {
+        emptyRow.style.display = 'none';
+    }
+
+    renderTablePaginationControls(tableId, totalRows, totalPages);
+}
+
+function renderTablePaginationControls(tableId, totalRows, totalPages) {
+    const state = tablePaginationState[tableId];
+    const container = document.getElementById('pagination-' + tableId);
+    if (!state || !container) return;
+
+    const start = totalRows === 0 ? 0 : (state.currentPage - 1) * state.rowsPerPage + 1;
+    const end = Math.min(state.currentPage * state.rowsPerPage, totalRows);
+
+    let html = '<div class="pagination-info text-muted" style="font-size:0.875rem;">Menampilkan ' + start + '-' + end + ' dari ' + totalRows + ' data</div>';
+
+    html += '<ul class="pagination-pages">';
+
+    const prevDisabled = state.currentPage === 1;
+    html += '<li class="pagination-item' + (prevDisabled ? ' disabled' : '') + '">' +
+        '<a href="javascript:void(0)"' + (prevDisabled ? '' : ' onclick="goToTablePage(\'' + tableId + '\', ' + (state.currentPage - 1) + ')"') + '>' +
+        '<i class="bi bi-chevron-left"></i></a></li>';
+
+    for (let i = 1; i <= totalPages; i++) {
+        const isActive = i === state.currentPage;
+        html += '<li class="pagination-item' + (isActive ? ' active' : '') + '">' +
+            '<span style="cursor:pointer;" onclick="goToTablePage(\'' + tableId + '\', ' + i + ')">' + i + '</span></li>';
+    }
+
+    const nextDisabled = state.currentPage === totalPages;
+    html += '<li class="pagination-item' + (nextDisabled ? ' disabled' : '') + '">' +
+        '<a href="javascript:void(0)"' + (nextDisabled ? '' : ' onclick="goToTablePage(\'' + tableId + '\', ' + (state.currentPage + 1) + ')"') + '>' +
+        '<i class="bi bi-chevron-right"></i></a></li>';
+
+    html += '</ul>';
+
+    container.innerHTML = html;
+}
+
+
+function switchTab(targetId, btnEl) {
+    const scope = btnEl.closest('.arp-tab-group') || document;
+
+    scope.querySelectorAll('.arp-tab-panel').forEach(function (panel) {
+        panel.style.display = (panel.id === targetId) ? '' : 'none';
+    });
+    scope.querySelectorAll('.arp-tab-btn').forEach(function (btn) {
+        btn.classList.remove('active');
+    });
+    btnEl.classList.add('active');
+}
+
+
+
 // Navbar Shadow Saat Scroll
 window.addEventListener("scroll", function(){
 

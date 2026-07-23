@@ -5,7 +5,7 @@
 $host = "localhost";
 $username = "root";
 $password = "";
-$database = "db_aksara";
+$database = "arp_aksara";
 
 try {
     // Create PDO connection

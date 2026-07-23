@@ -16,7 +16,8 @@ include "../includes/topbar.php";
                 Halaman ini memuat master layout yang konsisten untuk <strong>PT Aksara Riksa Perdana</strong>.
             </div>
         </div>
-        <p class="text-secondary mb-0">Silakan kembangkan fungsionalitas halaman ini di file <code>admin/sertifikat_ahli.php</code> sesuai dengan kebutuhan modul.</p>
+        <p class="text-secondary mb-0">Silakan kembangkan fungsionalitas halaman ini di file
+            <code>admin/sertifikat_ahli.php</code> sesuai dengan kebutuhan modul.</p>
     </div>
 </main>
 

@@ -29,12 +29,14 @@ body {
     flex-direction: column;
     flex: 1;
     min-height: 100vh;
+    min-width: 0;
     margin-left: var(--sidebar-width);
     transition: margin-left var(--transition);
 }
 
 .main-content {
     flex: 1;
+    min-width: 0;
     padding: var(--padding);
     margin-top: var(--header-height);
 }
@@ -372,13 +374,6 @@ body {
     padding: 0 var(--padding);
 }
 
-*{
-    margin:0;
-    padding:0;
-    box-sizing:border-box;
-    font-family:'Segoe UI',sans-serif;
-}
-
 body{
     background:#F4F8F7;
 }
@@ -523,109 +518,72 @@ footer{
 /*================ ROLE (Beranda) =================*/
 
 .role-section{
-
     background:linear-gradient(135deg,#2E9F74,#248564);
     padding:80px 0;
 }
 
 .role-subtitle{
-
     color:#F7C65A;
     font-weight:700;
 }
 
 .role-title{
-
     color:white;
     font-size:42px;
     font-weight:700;
 }
 
 .role-desc{
-
     color:#d7f4e8;
     margin-bottom:40px;
 }
 
 .role-card{
-
     background:rgba(255,255,255,.18);
-
     border-radius:12px;
-
     padding:25px;
-
     backdrop-filter:blur(10px);
-
     transition:.3s;
 }
 
 .role-card:hover{
-
     transform:translateY(-6px);
-
     background:rgba(255,255,255,.25);
-
 }
 
 .role-card h4{
-
     color:white;
-
     margin:15px 0;
-
 }
 
 .role-card ul{
-
     padding-left:18px;
-
     color:white;
-
     font-size:14px;
-
     line-height:28px;
-
     min-height:150px;
-
 }
 
 .btn-role{
-
     display:block;
-
     text-align:center;
-
     text-decoration:none;
-
     color:white;
-
     padding:12px;
-
     border:1px solid white;
-
     border-radius:8px;
-
     transition:.3s;
-
 }
 
 .btn-role:hover{
-
     background:white;
-
     color:#2E9F74;
-
 }
 
 .role-icon{
-
     width:45px;
-
     height:45px;
-
     border-radius:10px;
-
     display:flex;
     align-items:center;
     justify-content:center;
@@ -636,6 +594,37 @@ footer{
     color:#fff;
 }
 
+.admin{
+    background:#F4D03F;
+}
+
+.admin i{
+    color:#7A5B00;
+}
+
+.ahli{
+    background:white;
+}
+
+.ahli i{
+    color:#2E9F74;
+}
+
+.it{
+    background:#DDEEFF;
+}
+
+.it i{
+    color:#2E6DA6;
+}
+
+.client{
+    background:#2E9F74;
+}
+
+.direksi{
+    background:#777;
+}
 
 .logo-img{
     width:55px;
@@ -646,17 +635,6 @@ footer{
 .navbar-brand{
     display:flex;
     align-items:center;
-}
-
-.brand-title{
-    font-weight:700;
-    color:#2E9F74;
-    font-size:20px;
-}
-
-.brand-sub{
-    font-size:13px;
-    color:#666;
 }
 
 
@@ -699,15 +677,12 @@ footer{
 }
 
 @keyframes zoomPhoto{
-
     from{
         transform:scale(1);
     }
-
     to{
         transform:scale(1.12);
     }
-
 }
 
 /* Color grading */
@@ -742,112 +717,68 @@ footer{
 /* Text Glass */
 
 .preview-text{
-
     position:absolute;
-
     left:30px;
-
     bottom:28px;
-
     width:340px;
-
     background:rgba(255,255,255,.12);
-
     backdrop-filter:blur(30px);
-
     border:1px solid rgba(255,255,255,.18);
-
     padding:22px;
-
     border-radius:24px;
-
     z-index:10;
-
 }
 
 .preview-text h5{
-
     font-size:30px;
-
     font-weight:700;
-
     margin-bottom:12px;
-
     line-height:1.2;
-
 }
 
 .preview-text p{
-
     font-size:15px;
-
     line-height:1.7;
-
     color:#f8f8f8;
-
 }
 
 /* Dots */
 
 .preview-dots{
-
     position:absolute;
-
     right:30px;
-
     bottom:36px;
-
     display:flex;
-
     gap:10px;
-
     z-index:5;
-
 }
 
 .preview-dots .dot{
-
     width:10px;
-
     height:10px;
-
     border-radius:50%;
-
     background:rgba(255,255,255,.4);
-
     transition:.35s;
-
 }
 
 .preview-dots .dot:hover{
-
     transform:scale(1.3);
-
 }
 
 .preview-dots .dot.active{
-
     width:32px;
-
     border-radius:20px;
-
     background:#fff;
-
     box-shadow:0 0 20px rgba(255,255,255,.5);
-
 }
 
 /* Glow */
 
 .preview:hover{
-
     transform:translateY(-3px);
-
     transition:.4s;
-
     box-shadow:
     0 45px 80px rgba(46,159,116,.20);
-
 }
 
 /* Responsive */
@@ -855,73 +786,44 @@ footer{
 @media(max-width:768px){
 
 .preview{
-
     height:340px;
-
 }
 
 .preview-text{
-
     left:18px;
-
     right:18px;
-
     bottom:20px;
-
     max-width:unset;
-
     padding:15px;
-
 }
 
 .preview-text h5{
-
     font-size:20px;
-
 }
 
 .preview-dots{
-
     right:20px;
-
     bottom:18px;
-
 }
 
 }
 
 .preview-badge{
-
     position:absolute;
-
     top:24px;
-
     left:24px;
-
     z-index:5;
-
     padding:10px 18px;
-
     border-radius:40px;
-
     background:rgba(255,255,255,.18);
-
     backdrop-filter:blur(15px);
-
     color:#fff;
-
     font-size:13px;
-
     font-weight:600;
-
     border:1px solid rgba(255,255,255,.2);
-
     display:flex;
-
     align-items:center;
-
     gap:8px;
-
 }
 
 
@@ -974,37 +876,27 @@ button:focus-visible,
 .about-header{
     background:linear-gradient(135deg,#2E9F74,#248564);
     color:#fff;
+    padding:70px 0 80px;
     text-align:center;
-    padding:16px 0 20px;
-}
-
-.about-header .container{
-    max-width:720px;
 }
 
 .about-header .eyebrow{
-    display:inline-block;
-    padding:5px 12px;
-    margin-bottom:8px;
-    font-size:11px;
-    line-height:1;
     background:rgba(255,255,255,.16);
     color:#fff;
-    border-radius:30px;
 }
 
 .about-header h2{
-    font-size:28px;
-    font-weight:700;
-    margin:0 0 8px;
-    line-height:1.2;
+    font-size:42px;
+    font-weight:800;
+    margin-bottom:16px;
+    white-space:nowrap;
 }
 
 .about-header p{
-    margin:0 auto;
-    max-width:560px;
-    font-size:14px;
-    line-height:1.5;
+    max-width:700px;
+    margin:auto;
+    font-size:16px;
+    line-height:27px;
     color:rgba(255,255,255,.88);
 }
 
@@ -1215,6 +1107,9 @@ button:focus-visible,
 }
 
 /*================ AKSES / ROLE (Tentang) =================*/
+/* menggunakan gradasi hijau + kartu frosted yang sama dengan role-section
+   di Beranda, dan warna ikon .admin/.ahli/.it/.client/.direksi yang sama,
+   supaya kedua halaman menampilkan sistem role yang konsisten */
 
 .access-section{
     background:linear-gradient(135deg,#2E9F74,#248564);
@@ -1359,2595 +1254,12 @@ button:focus-visible,
 /*=========================================
 =            HALAMAN BERANDA
 =========================================*/
-body {
-    background-color: var(--bg-body);
-    color: var(--text-primary);
-    min-height: 100vh;
-    display: flex;
-    overflow-x: hidden;
-}
 
 /* Override khusus untuk halaman publik (index, tentang, panduan, kontak, login) */
 body.landing-page {
     display: block;
 }
 
-*{
-    margin:0;
-    padding:0;
-    box-sizing:border-box;
-    font-family:'Segoe UI',sans-serif;
-}
-
-body{
-    background:#F4F8F7;
-}
-
-.topbar{
-    background:#2E9F74;
-    color:#fff;
-    padding:10px 0;
-    font-size:14px;
-}
-
-.navbar{
-    background:#fff;
-    box-shadow:0 3px 10px rgba(0,0,0,.08);
-}
-
-.logo-box{
-    width:55px;
-    height:55px;
-    background:#2E9F74;
-    border-radius:8px;
-    margin-right:15px;
-}
-
-.brand-title{
-    font-size:28px;
-    font-weight:bold;
-}
-
-.brand-sub{
-    color:#777;
-    font-size:14px;
-}
-
-.nav-link{
-    color:#555!important;
-    font-weight:600;
-    margin-right:20px;
-}
-
-.btn-login{
-    background:#2E9F74;
-    color:#fff;
-    border-radius:8px;
-    padding:10px 28px;
-}
-
-.btn-login:hover{
-    background:#248564;
-    color:#fff;
-}
-
-.hero{
-    padding:80px 0;
-}
-
-.badge-custom{
-    background:#FFF1AE;
-    color:#B77800;
-    display:inline-block;
-    padding:10px 20px;
-    border-radius:30px;
-    margin-bottom:20px;
-}
-
-.hero h1{
-    font-size:48px;
-    font-weight:800;
-    margin-bottom:20px;
-}
-
-.hero p{
-    color:#666;
-    margin-bottom:40px;
-}
-
-.btn-main{
-    background:#2E9F74;
-    color:white;
-    padding:15px 35px;
-    border-radius:8px;
-    margin-right:15px;
-}
-
-.btn-main:hover{
-    background:#248564;
-    color:white;
-}
-
-.btn-second{
-    background:#E8E8E8;
-    color:#333;
-    padding:15px 35px;
-    border-radius:8px;
-}
-
-.preview{
-    height:420px;
-    border-radius:15px;
-    background:#D9D9D9;
-    position:relative;
-}
-
-.preview-text{
-    position:absolute;
-    left:20px;
-    bottom:20px;
-    color:white;
-}
-
-.info-box{
-    background:white;
-    border-top:1px solid #ddd;
-    border-bottom:1px solid #ddd;
-}
-
-.info-item{
-    text-align:center;
-    padding:35px;
-    border-right:1px solid #ddd;
-}
-
-.info-item:last-child{
-    border-right:none;
-}
-
-.info-item h2{
-    font-weight:800;
-}
-
-.info-item p{
-    color:#777;
-}
-
-footer{
-    padding:40px;
-    text-align:center;
-    color:#777;
-}
-
-/*================ ROLE (Beranda) =================*/
-
-.role-section{
-
-    background:linear-gradient(135deg,#2E9F74,#248564);
-    padding:80px 0;
-}
-
-.role-subtitle{
-
-    color:#F7C65A;
-    font-weight:700;
-}
-
-.role-title{
-
-    color:white;
-    font-size:42px;
-    font-weight:700;
-}
-
-.role-desc{
-
-    color:#d7f4e8;
-    margin-bottom:40px;
-}
-
-.role-card{
-
-    background:rgba(255,255,255,.18);
-
-    border-radius:12px;
-
-    padding:25px;
-
-    backdrop-filter:blur(10px);
-
-    transition:.3s;
-}
-
-.role-card:hover{
-
-    transform:translateY(-6px);
-
-    background:rgba(255,255,255,.25);
-
-}
-
-.role-card h4{
-
-    color:white;
-
-    margin:15px 0;
-
-}
-
-.role-card ul{
-
-    padding-left:18px;
-
-    color:white;
-
-    font-size:14px;
-
-    line-height:28px;
-
-    min-height:150px;
-
-}
-
-.btn-role{
-
-    display:block;
-
-    text-align:center;
-
-    text-decoration:none;
-
-    color:white;
-
-    padding:12px;
-
-    border:1px solid white;
-
-    border-radius:8px;
-
-    transition:.3s;
-
-}
-
-.btn-role:hover{
-
-    background:white;
-
-    color:#2E9F74;
-
-}
-
-.role-icon{
-
-    width:45px;
-
-    height:45px;
-
-    border-radius:10px;
-
-    display:flex;
-    align-items:center;
-    justify-content:center;
-}
-
-.role-icon svg{
-    color:#fff;   
-}
-
-.admin{
-    background:#F4D03F;
-}
-
-.admin svg{
-    color:#7A5B00;
-}
-
-.ahli{
-    background:white;
-}
-
-.ahli svg{
-    color:#2E9F74;
-}
-
-.it{
-    background:#DDEEFF;
-}
-
-.it svg{
-    color:#2E6DA6;
-}
-
-.client{
-    background:#2E9F74;
-}
-
-.direksi{
-    background:#777;
-}
-
-
-
-
-/*=========================================
-=            HALAMAN LAYANAN — PANDUAN
-=========================================*/
-
-/*================ INTRO =================*/
-
-.guide-intro{
-    background:var(--c-surface);
-    padding:35px 0 15px;
-    text-align:center;
-}
-
-.guide-intro p{
-    max-width:680px;
-    margin:auto;
-    color:var(--c-muted);
-    font-size:15px;
-    line-height:25px;
-}
-
-.about-header h2{
-    font-size:32px;
-    font-weight:700;
-    white-space:nowrap;
-    margin-bottom:10px;
-}
-
-/*================ SECTION =================*/
-
-.steps-section{
-    background:var(--c-bg);
-    padding:45px 0;
-}
-
-.role-guide-section{
-    background:var(--c-surface);
-    padding:45px 0;
-}
-
-.faq-section{
-    background:var(--c-bg);
-    padding:45px 0;
-}
-
-/*================ SECTION HEADER =================*/
-
-.steps-section .section-head,
-.role-guide-section .section-head,
-.faq-section .section-head{
-    text-align:center;
-    margin-bottom:30px;
-}
-
-.steps-section h2,
-.role-guide-section h2,
-.faq-section h2{
-    font-size:28px;
-    font-weight:700;
-    color:#222;
-    margin-bottom:8px;
-}
-
-.steps-section .section-head p,
-.role-guide-section .section-head p,
-.faq-section .section-head p{
-    color:var(--c-muted);
-    font-size:14px;
-    margin-top:6px;
-    line-height:24px;
-}
-
-/*================ STEP CARD =================*/
-
-.step-card{
-    background:var(--c-surface);
-    border-radius:15px;
-    padding:22px;
-    height:100%;
-    box-shadow:0 4px 12px rgba(0,0,0,.08);
-    transition:.3s;
-}
-
-.step-card:hover{
-    transform:translateY(-5px);
-    box-shadow:0 10px 24px rgba(0,0,0,.10);
-}
-
-.step-number{
-    width:40px;
-    height:40px;
-    border-radius:50%;
-    background:linear-gradient(135deg,#2E9F74,#248564);
-    color:#fff;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    font-size:16px;
-    font-weight:700;
-    margin-bottom:15px;
-}
-
-.step-card h4{
-    font-size:17px;
-    font-weight:700;
-    margin-bottom:10px;
-    color:#222;
-}
-
-.step-card p{
-    color:var(--c-muted);
-    font-size:14px;
-    line-height:23px;
-    margin-bottom:0;
-}
-
-/*================ ROLE GUIDE =================*/
-
-.role-guide-card{
-    background:var(--c-bg);
-    border-radius:15px;
-    padding:22px;
-    height:100%;
-    box-shadow:0 4px 12px rgba(0,0,0,.06);
-    transition:.3s;
-}
-
-.role-guide-card:hover{
-    transform:translateY(-5px);
-    box-shadow:0 10px 24px rgba(0,0,0,.10);
-}
-
-.role-guide-card .role-icon{
-    width:54px;
-    height:54px;
-    margin-bottom:16px;
-}
-
-.role-guide-card .role-icon i{
-    font-size:22px;
-}
-
-.role-guide-card h4{
-    font-size:17px;
-    font-weight:700;
-    margin-bottom:12px;
-    color:#222;
-}
-
-.role-guide-card ul{
-    padding-left:18px;
-    margin-bottom:0;
-    color:var(--c-muted);
-    font-size:14px;
-    line-height:24px;
-}
-
-/*================ FAQ =================*/
-
-.faq-section .accordion-item{
-    border:none;
-    border-radius:12px !important;
-    overflow:hidden;
-    margin-bottom:14px;
-    box-shadow:0 4px 12px rgba(0,0,0,.06);
-}
-
-.faq-section .accordion-button{
-    background:var(--c-surface);
-    color:#222;
-    font-weight:600;
-    font-size:15px;
-    padding:16px 20px;
-}
-
-.faq-section .accordion-button:not(.collapsed){
-    background:#EAF8F2;
-    color:var(--c-primary-dark);
-    box-shadow:none;
-}
-
-.faq-section .accordion-button:focus{
-    box-shadow:0 0 0 3px rgba(46,159,116,.20);
-}
-
-.faq-section .accordion-button::after{
-    filter:invert(46%) sepia(48%) saturate(478%)
-           hue-rotate(112deg) brightness(92%) contrast(88%);
-}
-
-.faq-section .accordion-body{
-    background:var(--c-surface);
-    color:var(--c-muted);
-    font-size:14px;
-    line-height:24px;
-    padding:16px 20px;
-}
-
-/*================ RESPONSIVE =================*/
-
-@media (max-width:768px){
-
-    .guide-intro{
-        padding:28px 0 10px;
-    }
-
-    .steps-section,
-    .role-guide-section,
-    .faq-section{
-        padding:35px 0;
-    }
-
-    .steps-section .section-head,
-    .role-guide-section .section-head,
-    .faq-section .section-head{
-        margin-bottom:24px;
-    }
-
-    .steps-section h2,
-    .role-guide-section h2,
-    .faq-section h2{
-        font-size:24px;
-    }
-
-    .step-card,
-    .role-guide-card{
-        padding:20px;
-        margin-bottom:18px;
-    }
-
-    .step-card h4,
-    .role-guide-card h4{
-        font-size:16px;
-    }
-
-    .faq-section .accordion-button{
-        padding:15px 18px;
-        font-size:14px;
-    }
-
-    .faq-section .accordion-body{
-        padding:15px 18px;
-        font-size:13.5px;
-    }
-
-}
-
-/*=========================================
-=            HALAMAN KONTAK
-=========================================*/
-
-/*================ HEADER =================*/
-.about-header{
-    background:linear-gradient(135deg,#2E9F74,#248564);
-    color:#fff;
-    text-align:center;
-    padding:45px 0 50px;
-}
-
-.about-header .container{
-    max-width:760px;
-}
-
-.about-header .eyebrow{
-    display:inline-block;
-    background:rgba(255,255,255,.18);
-    color:#fff;
-    padding:6px 16px;
-    border-radius:30px;
-    font-size:12px;
-    font-weight:600;
-    margin-bottom:12px;
-}
-
-.about-header h2{
-    font-size:34px;
-    font-weight:700;
-    line-height:1.15;
-    margin-bottom:12px;
-
-    max-width:760px;
-    margin-left:auto;
-    margin-right:auto;
-}
-
-.about-header p{
-    font-size:15px;
-    line-height:24px;
-    color:rgba(255,255,255,.9);
-
-    max-width:650px;
-    margin:0 auto;
-}
-
-@media(max-width:768px){
-
-.about-header{
-    padding:35px 0 40px;
-}
-
-.about-header h2{
-    font-size:28px;
-}
-
-.about-header p{
-    font-size:14px;
-    line-height:22px;
-}
-
-}
-
-/*================ contact-section =================*/
-
-.contact-section{
-    padding:70px 0;
-    background:#F4F8F7;
-}
-
-.contact-card{
-    background:#fff;
-    border-radius:18px;
-    padding:30px;
-    height:100%;
-    box-shadow:0 8px 25px rgba(46,159,116,.10);
-    border-top:4px solid #2E9F74;
-    transition:.3s;
-}
-
-.contact-card:hover{
-    transform:translateY(-6px);
-}
-
-.contact-icon{
-    width:65px;
-    height:65px;
-    background:#2E9F74;
-    color:#fff;
-    border-radius:50%;
-    display:flex;
-    justify-content:center;
-    align-items:center;
-    font-size:26px;
-    margin-bottom:20px;
-}
-
-.contact-card h4{
-    font-size:22px;
-    font-weight:700;
-    margin-bottom:15px;
-    color:#2E9F74;
-}
-
-.contact-card p{
-    color:#666;
-    line-height:27px;
-    margin-bottom:20px;
-}
-
-/* LIST */
-
-.contact-list{
-    list-style:none;
-    padding:0;
-    margin:0;
-}
-
-.contact-list li{
-    display:flex;
-    align-items:center;
-    gap:12px;
-    padding:12px 0;
-    border-bottom:1px solid #ececec;
-    font-size:15px;
-}
-
-.contact-list li:last-child{
-    border:none;
-}
-
-.contact-list i{
-    color:#2E9F74;
-    width:22px;
-    text-align:center;
-}
-
-/* MAP */
-
-.map-frame{
-    border-radius:15px;
-    overflow:hidden;
-    margin-top:20px;
-    box-shadow:0 8px 20px rgba(0,0,0,.08);
-}
-
-.map-frame iframe{
-    width:100%;
-    height:170px;
-    border:0;
-}
-
-/* BUTTON */
-
-.contact-card .btn-success{
-    background:#2E9F74;
-    border:none;
-    width:100%;
-    margin-top:18px;
-    padding:12px;
-    border-radius:10px;
-    font-weight:600;
-}
-
-.contact-card .btn-success:hover{
-    background:#248564;
-}
-
-/* TABLE */
-
-.contact-card table{
-    margin:0;
-}
-
-.contact-card table td{
-    padding:12px 0;
-    border-bottom:1px solid #ececec;
-}
-
-.contact-card table tr:last-child td{
-    border:none;
-}
-
-.contact-card table td:last-child{
-    text-align:right;
-    font-weight:600;
-}
-
-/* RESPONSIVE */
-
-@media(max-width:768px){
-
-.contact-section{
-    padding:50px 0;
-}
-
-.contact-card{
-    padding:25px;
-}
-
-.map-frame iframe{
-    height:200px;
-}
-
-}
-
-*{
-    margin:0;
-    padding:0;
-    box-sizing:border-box;
-    font-family:'Segoe UI',sans-serif;
-}
-
-body{
-    background:#F4F8F7;
-}
-
-.topbar{
-    background:#2E9F74;
-    color:#fff;
-    padding:10px 0;
-    font-size:14px;
-}
-
-.navbar{
-    background:#fff;
-    box-shadow:0 3px 10px rgba(0,0,0,.08);
-}
-
-.logo-box{
-    width:55px;
-    height:55px;
-    background:#2E9F74;
-    border-radius:8px;
-    margin-right:15px;
-}
-
-.brand-title{
-    font-size:28px;
-    font-weight:bold;
-}
-
-.brand-sub{
-    color:#777;
-    font-size:14px;
-}
-
-.nav-link{
-    color:#555!important;
-    font-weight:600;
-    margin-right:20px;
-}
-
-.btn-login{
-    background:#2E9F74;
-    color:#fff;
-    border-radius:8px;
-    padding:10px 28px;
-}
-
-.btn-login:hover{
-    background:#248564;
-    color:#fff;
-}
-
-.hero{
-    padding:80px 0;
-}
-
-.badge-custom{
-    background:#FFF1AE;
-    color:#B77800;
-    display:inline-block;
-    padding:10px 20px;
-    border-radius:30px;
-    margin-bottom:20px;
-}
-
-.hero h1{
-    font-size:48px;
-    font-weight:800;
-    margin-bottom:20px;
-}
-
-.hero p{
-    color:#666;
-    margin-bottom:40px;
-}
-
-.btn-main{
-    background:#2E9F74;
-    color:white;
-    padding:15px 35px;
-    border-radius:8px;
-    margin-right:15px;
-}
-
-.btn-main:hover{
-    background:#248564;
-    color:white;
-}
-
-.btn-second{
-    background:#E8E8E8;
-    color:#333;
-    padding:15px 35px;
-    border-radius:8px;
-}
-
-.preview{
-    height:420px;
-    border-radius:15px;
-    background:#D9D9D9;
-    position:relative;
-}
-
-.preview-text{
-    position:absolute;
-    left:20px;
-    bottom:20px;
-    color:white;
-}
-
-.info-box{
-    background:white;
-    border-top:1px solid #ddd;
-    border-bottom:1px solid #ddd;
-}
-
-.info-item{
-    text-align:center;
-    padding:35px;
-    border-right:1px solid #ddd;
-}
-
-.info-item:last-child{
-    border-right:none;
-}
-
-.info-item h2{
-    font-weight:800;
-}
-
-.info-item p{
-    color:#777;
-}
-
-footer{
-    padding:40px;
-    text-align:center;
-    color:#777;
-}
-
-
-/*================ ROLE (Beranda) =================*/
-
-.role-section{
-
-    background:linear-gradient(135deg,#2E9F74,#248564);
-    padding:80px 0;
-}
-
-.role-subtitle{
-
-    color:#F7C65A;
-    font-weight:700;
-}
-
-.role-title{
-
-    color:white;
-    font-size:42px;
-    font-weight:700;
-}
-
-.role-desc{
-
-    color:#d7f4e8;
-    margin-bottom:40px;
-}
-
-.role-card{
-
-    background:rgba(255,255,255,.18);
-
-    border-radius:12px;
-
-    padding:25px;
-
-    backdrop-filter:blur(10px);
-
-    transition:.3s;
-}
-
-.role-card:hover{
-
-    transform:translateY(-6px);
-
-    background:rgba(255,255,255,.25);
-
-}
-
-.role-card h4{
-
-    color:white;
-
-    margin:15px 0;
-
-}
-
-.role-card ul{
-
-    padding-left:18px;
-
-    color:white;
-
-    font-size:14px;
-
-    line-height:28px;
-
-    min-height:150px;
-
-}
-
-.btn-role{
-
-    display:block;
-
-    text-align:center;
-
-    text-decoration:none;
-
-    color:white;
-
-    padding:12px;
-
-    border:1px solid white;
-
-    border-radius:8px;
-
-    transition:.3s;
-
-}
-
-.btn-role:hover{
-
-    background:white;
-
-    color:#2E9F74;
-
-}
-
-.role-icon{
-
-    width:45px;
-
-    height:45px;
-
-    border-radius:10px;
-
-    display:flex;
-    align-items:center;
-    justify-content:center;
-}
-
-.role-icon i{
-    font-size:20px;
-    color:#fff;
-}
-
-.admin{
-    background:#F4D03F;
-}
-
-.admin i{
-    color:#7A5B00;
-}
-
-.ahli{
-    background:white;
-}
-
-.ahli i{
-    color:#2E9F74;
-}
-
-.it{
-    background:#DDEEFF;
-}
-
-.it i{
-    color:#2E6DA6;
-}
-
-.client{
-    background:#2E9F74;
-}
-
-.direksi{
-    background:#777;
-}
-
-.logo-img{
-    width:55px;
-    height:55px;
-    object-fit:contain;
-}
-
-.navbar-brand{
-    display:flex;
-    align-items:center;
-}
-
-.brand-title{
-    font-weight:700;
-    color:#2E9F74;
-    font-size:20px;
-}
-
-.brand-sub{
-    font-size:13px;
-    color:#666;
-}
-
-
-/*=========================================
-=            HALAMAN TENTANG — ARP DIGITAL
-=            (mengikuti tema & warna Beranda)
-=========================================*/
-
-:root{
-    --c-primary:#2E9F74;
-    --c-primary-dark:#248564;
-    --c-accent:#F7C65A;
-    --c-accent-bg:#FFF1AE;
-    --c-accent-text:#B77800;
-    --c-bg:#F4F8F7;
-    --c-surface:#FFFFFF;
-    --c-text:#333333;
-    --c-muted:#666666;
-    --c-muted-2:#777777;
-    --c-line:#DDDDDD;
-}
-
-@media (prefers-reduced-motion: reduce){
-    *{ animation-duration:.01ms !important; transition-duration:.01ms !important; }
-}
-
-a{ text-decoration:none; }
-a:focus-visible,
-button:focus-visible,
-.btn:focus-visible{
-    outline:3px solid var(--c-accent);
-    outline-offset:3px;
-}
-
-/* eyebrow tag reuses the same pill look as .badge-custom on the homepage hero */
-.eyebrow{
-    display:inline-flex;
-    align-items:center;
-    background:var(--c-accent-bg);
-    color:var(--c-accent-text);
-    font-size:13px;
-    font-weight:700;
-    padding:8px 18px;
-    border-radius:30px;
-    margin-bottom:18px;
-}
-
-/*================ HEADER =================*/
-
-.about-header{
-    background:linear-gradient(135deg,#2E9F74,#248564);
-    color:#fff;
-    padding:70px 0 80px;
-    text-align:center;
-}
-
-.about-header .eyebrow{
-    background:rgba(255,255,255,.16);
-    color:#fff;
-}
-
-.about-header h2{
-    font-size:42px;
-    font-weight:800;
-    margin-bottom:16px;
-}
-
-.about-header p{
-    max-width:700px;
-    margin:auto;
-    font-size:16px;
-    line-height:27px;
-    color:rgba(255,255,255,.88);
-}
-
-/*================ SECTION SPACING =================*/
-
-.about-system,
-.vision,
-.feature-section,
-.access-section{
-    padding:80px 0;
-}
-
-.cta{
-    padding:70px 0;
-}
-
-/*================ ABOUT =================*/
-
-.about-system{
-    background:var(--c-surface);
-}
-
-.about-system h2{
-    font-size:34px;
-    font-weight:800;
-    color:#222;
-    margin-bottom:20px;
-}
-
-.about-system p{
-    color:var(--c-muted);
-    line-height:27px;
-    text-align:left;
-    font-size:15.5px;
-}
-
-.about-system p + p{
-    margin-top:16px;
-}
-
-/*================ SEAL (elemen ciri khas) =================*/
-
-.about-image{
-    position:relative;
-    width:220px;
-    height:220px;
-    margin:auto;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-}
-
-.about-image .seal-ring{
-    position:absolute;
-    inset:0;
-    border:2px dashed rgba(46,159,116,.35);
-    border-radius:50%;
-    animation:seal-spin 40s linear infinite;
-}
-
-@keyframes seal-spin{
-    from{ transform:rotate(0deg); }
-    to{ transform:rotate(360deg); }
-}
-
-.about-image .seal-core{
-    width:160px;
-    height:160px;
-    border-radius:50%;
-    background:linear-gradient(135deg,#2E9F74,#248564);
-    color:#fff;
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    justify-content:center;
-    gap:10px;
-    box-shadow:0 12px 28px rgba(46,159,116,.30);
-}
-
-.about-image .seal-core i{
-    font-size:42px;
-}
-
-.about-image .seal-core span{
-    font-size:11px;
-    font-weight:700;
-    letter-spacing:.06em;
-    text-transform:uppercase;
-    color:rgba(255,255,255,.85);
-}
-
-.about-image .seal-tag{
-    position:absolute;
-    bottom:4px;
-    right:4px;
-    background:var(--c-accent-bg);
-    color:var(--c-accent-text);
-    font-size:12px;
-    font-weight:700;
-    padding:7px 14px;
-    border-radius:30px;
-    box-shadow:0 6px 14px rgba(0,0,0,.10);
-}
-
-/*================ VISI MISI =================*/
-
-.vision{
-    background:var(--c-bg);
-}
-
-.vision-card{
-    background:var(--c-surface);
-    padding:32px 30px;
-    border-radius:15px;
-    height:100%;
-    box-shadow:0 3px 10px rgba(0,0,0,.08);
-    border-top:4px solid var(--c-primary);
-    transition:.3s;
-}
-
-.vision-card.misi{
-    border-top-color:var(--c-accent);
-}
-
-.vision-card:hover{
-    transform:translateY(-6px);
-}
-
-.vision-card i{
-    font-size:30px;
-    color:var(--c-primary);
-    margin-bottom:14px;
-    display:block;
-}
-
-.vision-card.misi i{ color:var(--c-accent-text); }
-
-.vision-card h3{
-    font-size:23px;
-    font-weight:800;
-    margin-bottom:14px;
-    color:#222;
-}
-
-.vision-card p{
-    line-height:26px;
-    color:var(--c-muted);
-}
-
-.vision-card ul{
-    padding-left:18px;
-    color:var(--c-muted);
-    font-size:15px;
-    line-height:28px;
-}
-
-/*================ FITUR =================*/
-
-.feature-section{
-    background:var(--c-surface);
-}
-
-.feature-section .section-head{
-    text-align:center;
-    margin-bottom:50px;
-}
-
-.feature-section h2{
-    font-size:34px;
-    font-weight:800;
-    color:#222;
-}
-
-.feature-card{
-    position:relative;
-    background:var(--c-bg);
-    border-radius:15px;
-    padding:30px 26px;
-    text-align:left;
-    height:100%;
-    box-shadow:0 3px 10px rgba(0,0,0,.06);
-    transition:.3s;
-}
-
-.feature-card:hover{
-    transform:translateY(-6px);
-    box-shadow:0 10px 24px rgba(0,0,0,.10);
-}
-
-.feature-card i{
-    font-size:32px;
-    color:var(--c-primary);
-    margin-bottom:18px;
-    display:block;
-}
-
-.feature-card h4{
-    font-size:19px;
-    font-weight:700;
-    margin-bottom:10px;
-    color:#222;
-}
-
-.feature-card p{
-    color:var(--c-muted);
-    line-height:25px;
-    font-size:14.5px;
-}
-
-/*================ AKSES / ROLE (Tentang) =================*/
-/* menggunakan gradasi hijau + kartu frosted yang sama dengan role-section
-   di Beranda, dan warna ikon .admin/.ahli/.it/.client/.direksi yang sama,
-   supaya kedua halaman menampilkan sistem role yang konsisten */
-
-.access-section{
-    background:linear-gradient(135deg,#2E9F74,#248564);
-}
-
-.access-section .section-head{
-    text-align:center;
-    margin-bottom:44px;
-}
-
-.access-section .eyebrow{
-    background:rgba(255,255,255,.16);
-    color:#fff;
-}
-
-.access-section h2{
-    font-size:30px;
-    color:#fff;
-    font-weight:800;
-}
-
-.role-box{
-    background:rgba(255,255,255,.18);
-    backdrop-filter:blur(10px);
-    border-radius:12px;
-    padding:26px 14px 22px;
-    text-align:center;
-    color:#fff;
-    font-size:15px;
-    font-weight:700;
-    transition:.3s;
-}
-
-.role-box:hover{
-    transform:translateY(-6px);
-    background:rgba(255,255,255,.25);
-}
-
-.role-box .role-icon{
-    margin:0 auto 14px;
-}
-
-/*================ CTA =================*/
-
-.cta{
-    background:linear-gradient(135deg,#2E9F74,#248564);
-    color:#fff;
-    text-align:center;
-}
-
-.cta h2{
-    font-size:32px;
-    font-weight:800;
-    margin-bottom:14px;
-}
-
-.cta p{
-    font-size:16px;
-    margin-bottom:28px;
-    color:rgba(255,255,255,.88);
-}
-
-.cta .btn{
-    background:#fff;
-    color:var(--c-primary);
-    border:none;
-    border-radius:8px;
-    padding:15px 35px;
-    font-size:16px;
-    font-weight:700;
-    transition:.3s;
-}
-
-.cta .btn:hover{
-    background:var(--c-accent-bg);
-    color:var(--c-accent-text);
-}
-
-/*================ RESPONSIVE =================*/
-
-@media(max-width:768px){
-
-.about-header{
-    padding:56px 0 64px;
-}
-
-.about-header h2{
-    font-size:30px;
-}
-
-.about-header p{
-    font-size:15px;
-    line-height:25px;
-}
-
-.about-system,
-.vision,
-.feature-section,
-.access-section{
-    padding:50px 0;
-}
-
-.cta{
-    padding:50px 0;
-}
-
-.about-system h2,
-.feature-section h2,
-.access-section h2{
-    font-size:26px;
-}
-
-.about-system p{
-    text-align:left;
-}
-
-.about-image{
-    width:180px;
-    height:180px;
-    margin-top:32px;
-}
-
-.about-image .seal-core{
-    width:128px;
-    height:128px;
-}
-
-.about-image .seal-core i{
-    font-size:32px;
-}
-
-.vision-card{
-    margin-bottom:20px;
-}
-
-.role-box{
-    margin-bottom:16px;
-}
-
-}
-
-/*=========================================
-=            HALAMAN LAYANAN — PANDUAN
-=========================================*/
-
-.guide-intro{
-    background:var(--c-surface);
-    padding:70px 0 20px;
-    text-align:center;
-}
-
-.guide-intro p{
-    max-width:760px;
-    margin:auto;
-    color:var(--c-muted);
-    font-size:15.5px;
-    line-height:27px;
-}
-
-.steps-section{
-    background:var(--c-bg);
-    padding:70px 0;
-}
-
-.steps-section .section-head,
-.role-guide-section .section-head,
-.faq-section .section-head{
-    text-align:center;
-    margin-bottom:46px;
-}
-
-.steps-section h2,
-.role-guide-section h2,
-.faq-section h2{
-    font-size:32px;
-    font-weight:800;
-    color:#222;
-}
-
-.steps-section .section-head p,
-.role-guide-section .section-head p,
-.faq-section .section-head p{
-    color:var(--c-muted);
-    font-size:15px;
-    margin-top:10px;
-}
-
-.step-card{
-    background:var(--c-surface);
-    border-radius:15px;
-    padding:30px 26px;
-    height:100%;
-    box-shadow:0 3px 10px rgba(0,0,0,.08);
-    transition:.3s;
-}
-
-.step-card:hover{
-    transform:translateY(-6px);
-}
-
-.step-number{
-    width:44px;
-    height:44px;
-    border-radius:50%;
-    background:linear-gradient(135deg,#2E9F74,#248564);
-    color:#fff;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    font-weight:800;
-    font-size:18px;
-    margin-bottom:18px;
-}
-
-.step-card h4{
-    font-size:18px;
-    font-weight:700;
-    margin-bottom:10px;
-    color:#222;
-}
-
-.step-card p{
-    color:var(--c-muted);
-    font-size:14.5px;
-    line-height:24px;
-}
-
-.role-guide-section{
-    background:var(--c-surface);
-    padding:70px 0;
-}
-
-.role-guide-card{
-    background:var(--c-bg);
-    border-radius:15px;
-    padding:28px 26px;
-    height:100%;
-    box-shadow:0 3px 10px rgba(0,0,0,.06);
-    transition:.3s;
-}
-
-.role-guide-card:hover{
-    transform:translateY(-6px);
-    box-shadow:0 10px 24px rgba(0,0,0,.10);
-}
-
-.role-guide-card .role-icon{
-    width:50px;
-    height:50px;
-    margin-bottom:16px;
-}
-
-.role-guide-card .role-icon i{
-    font-size:22px;
-}
-
-.role-guide-card h4{
-    font-size:19px;
-    font-weight:700;
-    margin-bottom:12px;
-    color:#222;
-}
-
-.role-guide-card ul{
-    padding-left:18px;
-    color:var(--c-muted);
-    font-size:14.5px;
-    line-height:26px;
-}
-
-.faq-section{
-    background:var(--c-bg);
-    padding:70px 0;
-}
-
-.faq-section .accordion-item{
-    border:none;
-    border-radius:12px!important;
-    overflow:hidden;
-    margin-bottom:16px;
-    box-shadow:0 3px 10px rgba(0,0,0,.06);
-}
-
-.faq-section .accordion-button{
-    background:var(--c-surface);
-    color:#222;
-    font-weight:700;
-    font-size:15.5px;
-    padding:20px 24px;
-}
-
-.faq-section .accordion-button:not(.collapsed){
-    background:#EAF8F2;
-    color:var(--c-primary-dark);
-    box-shadow:none;
-}
-
-.faq-section .accordion-button:focus{
-    box-shadow:0 0 0 3px rgba(46,159,116,.20);
-}
-
-.faq-section .accordion-button::after{
-    filter:invert(46%) sepia(48%) saturate(478%) hue-rotate(112deg) brightness(92%) contrast(88%);
-}
-
-.faq-section .accordion-body{
-    background:var(--c-surface);
-    color:var(--c-muted);
-    font-size:14.5px;
-    line-height:25px;
-    padding:20px 24px;
-}
-
-@media(max-width:768px){
-
-.guide-intro{
-    padding:50px 0 10px;
-}
-
-.steps-section,
-.role-guide-section,
-.faq-section{
-    padding:50px 0;
-}
-
-.steps-section h2,
-.role-guide-section h2,
-.faq-section h2{
-    font-size:26px;
-}
-
-.step-card,
-.role-guide-card{
-    margin-bottom:20px;
-}
-
-}
-
-
-/*=========================================
-=            HALAMAN KONTAK
-=========================================*/
-
-.contact-section{
-    padding:70px 0;
-    background:#F4F8F7;
-}
-
-.contact-card{
-    background:#fff;
-    border-radius:18px;
-    padding:30px;
-    height:100%;
-    box-shadow:0 8px 25px rgba(46,159,116,.10);
-    border-top:4px solid #2E9F74;
-    transition:.3s;
-}
-
-.contact-card:hover{
-    transform:translateY(-6px);
-}
-
-.contact-icon{
-    width:65px;
-    height:65px;
-    background:#2E9F74;
-    color:#fff;
-    border-radius:50%;
-    display:flex;
-    justify-content:center;
-    align-items:center;
-    font-size:26px;
-    margin-bottom:20px;
-}
-
-.contact-card h4{
-    font-size:22px;
-    font-weight:700;
-    margin-bottom:15px;
-    color:#2E9F74;
-}
-
-.contact-card p{
-    color:#666;
-    line-height:27px;
-    margin-bottom:20px;
-}
-
-/* LIST */
-
-.contact-list{
-    list-style:none;
-    padding:0;
-    margin:0;
-}
-
-.contact-list li{
-    display:flex;
-    align-items:center;
-    gap:12px;
-    padding:12px 0;
-    border-bottom:1px solid #ececec;
-    font-size:15px;
-}
-
-.contact-list li:last-child{
-    border:none;
-}
-
-.contact-list i{
-    color:#2E9F74;
-    width:22px;
-    text-align:center;
-}
-
-/* MAP */
-
-.map-frame{
-    border-radius:15px;
-    overflow:hidden;
-    margin-top:20px;
-    box-shadow:0 8px 20px rgba(0,0,0,.08);
-}
-
-.map-frame iframe{
-    width:100%;
-    height:170px;
-    border:0;
-}
-
-/* BUTTON */
-
-.contact-card .btn-success{
-    background:#2E9F74;
-    border:none;
-    width:100%;
-    margin-top:18px;
-    padding:12px;
-    border-radius:10px;
-    font-weight:600;
-}
-
-.contact-card .btn-success:hover{
-    background:#248564;
-}
-
-/* TABLE */
-
-.contact-card table{
-    margin:0;
-}
-
-.contact-card table td{
-    padding:12px 0;
-    border-bottom:1px solid #ececec;
-}
-
-.contact-card table tr:last-child td{
-    border:none;
-}
-
-.contact-card table td:last-child{
-    text-align:right;
-    font-weight:600;
-}
-
-/* RESPONSIVE */
-
-@media(max-width:768px){
-
-.contact-section{
-    padding:50px 0;
-}
-
-.contact-card{
-    padding:25px;
-}
-
-.map-frame iframe{
-    height:200px;
-}
-
-}
-
-*{
-    margin:0;
-    padding:0;
-    box-sizing:border-box;
-    font-family:'Segoe UI',sans-serif;
-}
-
-body{
-    background:#F4F8F7;
-}
-
-.topbar{
-    background:#2E9F74;
-    color:#fff;
-    padding:10px 0;
-    font-size:14px;
-}
-
-.navbar{
-    background:#fff;
-    box-shadow:0 3px 10px rgba(0,0,0,.08);
-}
-
-.logo-box{
-    width:55px;
-    height:55px;
-    background:#2E9F74;
-    border-radius:8px;
-    margin-right:15px;
-}
-
-.brand-title{
-    font-size:28px;
-    font-weight:bold;
-}
-
-.brand-sub{
-    color:#777;
-    font-size:14px;
-}
-
-.nav-link{
-    color:#555!important;
-    font-weight:600;
-    margin-right:20px;
-}
-
-.btn-login{
-    background:#2E9F74;
-    color:#fff;
-    border-radius:8px;
-    padding:10px 28px;
-}
-
-.btn-login:hover{
-    background:#248564;
-    color:#fff;
-}
-
-.hero{
-    padding:80px 0;
-}
-
-.badge-custom{
-    background:#FFF1AE;
-    color:#B77800;
-    display:inline-block;
-    padding:10px 20px;
-    border-radius:30px;
-    margin-bottom:20px;
-}
-
-.hero h1{
-    font-size:48px;
-    font-weight:800;
-    margin-bottom:20px;
-}
-
-.hero p{
-    color:#666;
-    margin-bottom:40px;
-}
-
-.btn-main{
-    background:#2E9F74;
-    color:white;
-    padding:15px 35px;
-    border-radius:8px;
-    margin-right:15px;
-}
-
-.btn-main:hover{
-    background:#248564;
-    color:white;
-}
-
-.btn-second{
-    background:#E8E8E8;
-    color:#333;
-    padding:15px 35px;
-    border-radius:8px;
-}
-
-.preview{
-    height:420px;
-    border-radius:15px;
-    background:#D9D9D9;
-    position:relative;
-}
-
-.preview-text{
-    position:absolute;
-    left:20px;
-    bottom:20px;
-    color:white;
-}
-
-.info-box{
-    background:white;
-    border-top:1px solid #ddd;
-    border-bottom:1px solid #ddd;
-}
-
-.info-item{
-    text-align:center;
-    padding:35px;
-    border-right:1px solid #ddd;
-}
-
-.info-item:last-child{
-    border-right:none;
-}
-
-.info-item h2{
-    font-weight:800;
-}
-
-.info-item p{
-    color:#777;
-}
-
-footer{
-    padding:40px;
-    text-align:center;
-    color:#777;
-}
-
-
-/*================ ROLE (Beranda) =================*/
-
-.role-section{
-
-    background:linear-gradient(135deg,#2E9F74,#248564);
-    padding:80px 0;
-}
-
-.role-subtitle{
-
-    color:#F7C65A;
-    font-weight:700;
-}
-
-.role-title{
-
-    color:white;
-    font-size:42px;
-    font-weight:700;
-}
-
-.role-desc{
-
-    color:#d7f4e8;
-    margin-bottom:40px;
-}
-
-.role-card{
-
-    background:rgba(255,255,255,.18);
-
-    border-radius:12px;
-
-    padding:25px;
-
-    backdrop-filter:blur(10px);
-
-    transition:.3s;
-}
-
-.role-card:hover{
-
-    transform:translateY(-6px);
-
-    background:rgba(255,255,255,.25);
-
-}
-
-.role-card h4{
-
-    color:white;
-
-    margin:15px 0;
-
-}
-
-.role-card ul{
-
-    padding-left:18px;
-
-    color:white;
-
-    font-size:14px;
-
-    line-height:28px;
-
-    min-height:150px;
-
-}
-
-.btn-role{
-
-    display:block;
-
-    text-align:center;
-
-    text-decoration:none;
-
-    color:white;
-
-    padding:12px;
-
-    border:1px solid white;
-
-    border-radius:8px;
-
-    transition:.3s;
-
-}
-
-.btn-role:hover{
-
-    background:white;
-
-    color:#2E9F74;
-
-}
-
-.role-icon{
-
-    width:45px;
-
-    height:45px;
-
-    border-radius:10px;
-
-    display:flex;
-    align-items:center;
-    justify-content:center;
-}
-
-.role-icon i{
-    font-size:20px;
-    color:#fff;
-}
-
-.admin{
-    background:#F4D03F;
-}
-
-.admin i{
-    color:#7A5B00;
-}
-
-.ahli{
-    background:white;
-}
-
-.ahli i{
-    color:#2E9F74;
-}
-
-.it{
-    background:#DDEEFF;
-}
-
-.it i{
-    color:#2E6DA6;
-}
-
-.client{
-    background:#2E9F74;
-}
-
-.direksi{
-    background:#777;
-}
-
-.logo-img{
-    width:55px;
-    height:55px;
-    object-fit:contain;
-}
-
-.navbar-brand{
-    display:flex;
-    align-items:center;
-}
-
-.brand-title{
-    font-weight:700;
-    color:#2E9F74;
-    font-size:20px;
-}
-
-.brand-sub{
-    font-size:13px;
-    color:#666;
-}
-
-
-/*=========================================
-=            HALAMAN TENTANG — ARP DIGITAL
-=            (mengikuti tema & warna Beranda)
-=========================================*/
-
-:root{
-    --c-primary:#2E9F74;
-    --c-primary-dark:#248564;
-    --c-accent:#F7C65A;
-    --c-accent-bg:#FFF1AE;
-    --c-accent-text:#B77800;
-    --c-bg:#F4F8F7;
-    --c-surface:#FFFFFF;
-    --c-text:#333333;
-    --c-muted:#666666;
-    --c-muted-2:#777777;
-    --c-line:#DDDDDD;
-}
-
-@media (prefers-reduced-motion: reduce){
-    *{ animation-duration:.01ms !important; transition-duration:.01ms !important; }
-}
-
-a{ text-decoration:none; }
-a:focus-visible,
-button:focus-visible,
-.btn:focus-visible{
-    outline:3px solid var(--c-accent);
-    outline-offset:3px;
-}
-
-/* eyebrow tag reuses the same pill look as .badge-custom on the homepage hero */
-.eyebrow{
-    display:inline-flex;
-    align-items:center;
-    background:var(--c-accent-bg);
-    color:var(--c-accent-text);
-    font-size:13px;
-    font-weight:700;
-    padding:8px 18px;
-    border-radius:30px;
-    margin-bottom:18px;
-}
-
-/*================ HEADER =================*/
-
-.about-header{
-    background:linear-gradient(135deg,#2E9F74,#248564);
-    color:#fff;
-    padding:70px 0 80px;
-    text-align:center;
-}
-
-.about-header .eyebrow{
-    background:rgba(255,255,255,.16);
-    color:#fff;
-}
-
-.about-header h2{
-    font-size:42px;
-    font-weight:800;
-    margin-bottom:16px;
-}
-
-.about-header p{
-    max-width:700px;
-    margin:auto;
-    font-size:16px;
-    line-height:27px;
-    color:rgba(255,255,255,.88);
-}
-
-/*================ SECTION SPACING =================*/
-
-.about-system,
-.vision,
-.feature-section,
-.access-section{
-    padding:80px 0;
-}
-
-.cta{
-    padding:70px 0;
-}
-
-/*================ ABOUT =================*/
-
-.about-system{
-    background:var(--c-surface);
-}
-
-.about-system h2{
-    font-size:34px;
-    font-weight:800;
-    color:#222;
-    margin-bottom:20px;
-}
-
-.about-system p{
-    color:var(--c-muted);
-    line-height:27px;
-    text-align:left;
-    font-size:15.5px;
-}
-
-.about-system p + p{
-    margin-top:16px;
-}
-
-/*================ SEAL (elemen ciri khas) =================*/
-
-.about-image{
-    position:relative;
-    width:220px;
-    height:220px;
-    margin:auto;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-}
-
-.about-image .seal-ring{
-    position:absolute;
-    inset:0;
-    border:2px dashed rgba(46,159,116,.35);
-    border-radius:50%;
-    animation:seal-spin 40s linear infinite;
-}
-
-@keyframes seal-spin{
-    from{ transform:rotate(0deg); }
-    to{ transform:rotate(360deg); }
-}
-
-.about-image .seal-core{
-    width:160px;
-    height:160px;
-    border-radius:50%;
-    background:linear-gradient(135deg,#2E9F74,#248564);
-    color:#fff;
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    justify-content:center;
-    gap:10px;
-    box-shadow:0 12px 28px rgba(46,159,116,.30);
-}
-
-.about-image .seal-core i{
-    font-size:42px;
-}
-
-.about-image .seal-core span{
-    font-size:11px;
-    font-weight:700;
-    letter-spacing:.06em;
-    text-transform:uppercase;
-    color:rgba(255,255,255,.85);
-}
-
-.about-image .seal-tag{
-    position:absolute;
-    bottom:4px;
-    right:4px;
-    background:var(--c-accent-bg);
-    color:var(--c-accent-text);
-    font-size:12px;
-    font-weight:700;
-    padding:7px 14px;
-    border-radius:30px;
-    box-shadow:0 6px 14px rgba(0,0,0,.10);
-}
-
-/*================ VISI MISI =================*/
-
-.vision{
-    background:var(--c-bg);
-}
-
-.vision-card{
-    background:var(--c-surface);
-    padding:32px 30px;
-    border-radius:15px;
-    height:100%;
-    box-shadow:0 3px 10px rgba(0,0,0,.08);
-    border-top:4px solid var(--c-primary);
-    transition:.3s;
-}
-
-.vision-card.misi{
-    border-top-color:var(--c-accent);
-}
-
-.vision-card:hover{
-    transform:translateY(-6px);
-}
-
-.vision-card i{
-    font-size:30px;
-    color:var(--c-primary);
-    margin-bottom:14px;
-    display:block;
-}
-
-.vision-card.misi i{ color:var(--c-accent-text); }
-
-.vision-card h3{
-    font-size:23px;
-    font-weight:800;
-    margin-bottom:14px;
-    color:#222;
-}
-
-.vision-card p{
-    line-height:26px;
-    color:var(--c-muted);
-}
-
-.vision-card ul{
-    padding-left:18px;
-    color:var(--c-muted);
-    font-size:15px;
-    line-height:28px;
-}
-
-/*================ FITUR =================*/
-
-.feature-section{
-    background:var(--c-surface);
-}
-
-.feature-section .section-head{
-    text-align:center;
-    margin-bottom:50px;
-}
-
-.feature-section h2{
-    font-size:34px;
-    font-weight:800;
-    color:#222;
-}
-
-.feature-card{
-    position:relative;
-    background:var(--c-bg);
-    border-radius:15px;
-    padding:30px 26px;
-    text-align:left;
-    height:100%;
-    box-shadow:0 3px 10px rgba(0,0,0,.06);
-    transition:.3s;
-}
-
-.feature-card:hover{
-    transform:translateY(-6px);
-    box-shadow:0 10px 24px rgba(0,0,0,.10);
-}
-
-.feature-card i{
-    font-size:32px;
-    color:var(--c-primary);
-    margin-bottom:18px;
-    display:block;
-}
-
-.feature-card h4{
-    font-size:19px;
-    font-weight:700;
-    margin-bottom:10px;
-    color:#222;
-}
-
-.feature-card p{
-    color:var(--c-muted);
-    line-height:25px;
-    font-size:14.5px;
-}
-
-/*================ AKSES / ROLE (Tentang) =================*/
-/* menggunakan gradasi hijau + kartu frosted yang sama dengan role-section
-   di Beranda, dan warna ikon .admin/.ahli/.it/.client/.direksi yang sama,
-   supaya kedua halaman menampilkan sistem role yang konsisten */
-
-.access-section{
-    background:linear-gradient(135deg,#2E9F74,#248564);
-}
-
-.access-section .section-head{
-    text-align:center;
-    margin-bottom:44px;
-}
-
-.access-section .eyebrow{
-    background:rgba(255,255,255,.16);
-    color:#fff;
-}
-
-.access-section h2{
-    font-size:30px;
-    color:#fff;
-    font-weight:800;
-}
-
-.role-box{
-    background:rgba(255,255,255,.18);
-    backdrop-filter:blur(10px);
-    border-radius:12px;
-    padding:26px 14px 22px;
-    text-align:center;
-    color:#fff;
-    font-size:15px;
-    font-weight:700;
-    transition:.3s;
-}
-
-.role-box:hover{
-    transform:translateY(-6px);
-    background:rgba(255,255,255,.25);
-}
-
-.role-box .role-icon{
-    margin:0 auto 14px;
-}
-
-/*================ CTA =================*/
-
-.cta{
-    background:linear-gradient(135deg,#2E9F74,#248564);
-    color:#fff;
-    text-align:center;
-}
-
-.cta h2{
-    font-size:32px;
-    font-weight:800;
-    margin-bottom:14px;
-}
-
-.cta p{
-    font-size:16px;
-    margin-bottom:28px;
-    color:rgba(255,255,255,.88);
-}
-
-.cta .btn{
-    background:#fff;
-    color:var(--c-primary);
-    border:none;
-    border-radius:8px;
-    padding:15px 35px;
-    font-size:16px;
-    font-weight:700;
-    transition:.3s;
-}
-
-.cta .btn:hover{
-    background:var(--c-accent-bg);
-    color:var(--c-accent-text);
-}
-
-/*================ RESPONSIVE =================*/
-
-@media(max-width:768px){
-
-.about-header{
-    padding:56px 0 64px;
-}
-
-.about-header h2{
-    font-size:30px;
-}
-
-.about-header p{
-    font-size:15px;
-    line-height:25px;
-}
-
-.about-system,
-.vision,
-.feature-section,
-.access-section{
-    padding:50px 0;
-}
-
-.cta{
-    padding:50px 0;
-}
-
-.about-system h2,
-.feature-section h2,
-.access-section h2{
-    font-size:26px;
-}
-
-.about-system p{
-    text-align:left;
-}
-
-.about-image{
-    width:180px;
-    height:180px;
-    margin-top:32px;
-}
-
-.about-image .seal-core{
-    width:128px;
-    height:128px;
-}
-
-.about-image .seal-core i{
-    font-size:32px;
-}
-
-.vision-card{
-    margin-bottom:20px;
-}
-
-.role-box{
-    margin-bottom:16px;
-}
-
-}
 
 /*=========================================
 =            HALAMAN LAYANAN — PANDUAN
@@ -4738,4 +2050,3 @@ button:focus-visible,
     grid-template-columns: 1fr 1fr;
 }
 }
-

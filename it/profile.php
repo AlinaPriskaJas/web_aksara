@@ -1,26 +1,297 @@
 <?php
-// it/profile.php
-$page_title = "Profile IT Support";
+// ahlik3/profile.php
+require_once "../config/koneksi.php";
+
+if (session_status() === PHP_SESSION_NONE)
+    session_start();
+
+if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'ahli_k3') {
+    header("Location: ../login.php");
+    exit;
+}
+
+$page_title = "Profil & Pengaturan Akun";
 include "../includes/header.php";
 include "../includes/sidebar.php";
 include "../includes/topbar.php";
+
+$current_user_id = $_SESSION['user_id'];
+$success_msg = "";
+$error_msg = "";
+
+// Fetch user profile
+try {
+    $stmt = $conn->prepare("SELECT * FROM Users WHERE id = :id LIMIT 1");
+    $stmt->execute(['id' => $current_user_id]);
+    $user = $stmt->fetch();
+} catch (PDOException $e) {
+    $user = null;
+}
+
+// Handle POST: edit profil atau ganti password
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = $_POST['action'] ?? '';
+
+    if ($action === 'edit_profil') {
+        $nama_lengkap = trim($_POST['nama_lengkap']);
+        if (empty($nama_lengkap)) {
+            $error_msg = "Nama lengkap tidak boleh kosong!";
+        } elseif (strlen($nama_lengkap) < 3) {
+            $error_msg = "Nama minimal 3 karakter!";
+        } else {
+            try {
+                $upd = $conn->prepare("UPDATE Users SET nama_lengkap = :nama WHERE id = :id");
+                $upd->execute(['nama' => $nama_lengkap, 'id' => $current_user_id]);
+                $success_msg = "Profil berhasil diperbarui!";
+                // Refresh
+                $stmt->execute(['id' => $current_user_id]);
+                $user = $stmt->fetch();
+            } catch (PDOException $e) {
+                $error_msg = "Gagal memperbarui profil: " . $e->getMessage();
+            }
+        }
+    } elseif ($action === 'ganti_password') {
+        $password_lama = $_POST['password_lama'];
+        $password_baru = $_POST['password_baru'];
+        $konfirmasi = $_POST['konfirmasi_baru'];
+
+        if (empty($password_lama) || empty($password_baru)) {
+            $error_msg = "Kedua kolom kata sandi wajib diisi!";
+        } elseif (strlen($password_baru) < 6) {
+            $error_msg = "Kata sandi baru minimal 6 karakter!";
+        } elseif ($password_baru !== $konfirmasi) {
+            $error_msg = "Konfirmasi kata sandi baru tidak cocok!";
+        } elseif (!password_verify($password_lama, $user['password'])) {
+            $error_msg = "Kata sandi lama salah!";
+        } else {
+            try {
+                $hash = password_hash($password_baru, PASSWORD_BCRYPT);
+                $upd = $conn->prepare("UPDATE Users SET password = :pwd WHERE id = :id");
+                $upd->execute(['pwd' => $hash, 'id' => $current_user_id]);
+                $success_msg = "Kata sandi berhasil diperbarui!";
+                $stmt->execute(['id' => $current_user_id]);
+                $user = $stmt->fetch();
+            } catch (PDOException $e) {
+                $error_msg = "Gagal memperbarui database: " . $e->getMessage();
+            }
+        }
+    }
+}
+
+// Decode modal untuk auto-open saat error
+$open_modal_on_error = '';
+if ($error_msg) {
+    $open_modal_on_error = (isset($_POST['action']) && $_POST['action'] === 'edit_profil') ? 'modalEditProfil' : 'modalGantiPassword';
+}
 ?>
 
 <main class="main-content">
-    <div class="card-box">
-        <h5 class="fw-bold mb-3"><?= htmlspecialchars($page_title) ?></h5>
-        <div class="alert alert-success-custom mb-3">
-            <i class="bi bi-info-circle-fill fs-5"></i>
-            <div>
-                <strong>Modul Aktif</strong><br>
-                Halaman ini memuat master layout yang konsisten untuk <strong>PT Aksara Riksa Perdana</strong>.
+    <?php if ($success_msg): ?>
+        <div class="alert alert-success-custom align-items-center">
+            <i class="bi bi-check-circle-fill fs-5"></i>
+            <div><?= htmlspecialchars($success_msg) ?></div>
+        </div>
+    <?php endif; ?>
+    <?php if ($error_msg): ?>
+        <div class="alert alert-danger-custom align-items-center">
+            <i class="bi bi-exclamation-triangle-fill"></i>
+            <div><?= htmlspecialchars($error_msg) ?></div>
+        </div>
+    <?php endif; ?>
+
+    <!-- Page Header & Action Bar -->
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
+        <div class="d-flex gap-2">
+            <button class="btn-primary-custom" onclick="openModal('modalEditProfil')">
+                <i class="bi bi-pencil-square me-1"></i> Edit Profil
+            </button>
+            <button class="btn-secondary-custom" onclick="openModal('modalGantiPassword')">
+                <i class="bi bi-shield-lock me-1"></i> Kata Sandi
+            </button>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <!-- Kartu Profil (Tampilan Utama) -->
+        <div class="col-lg-5 col-12">
+            <div class="card-box text-center">
+                <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=256&auto=format&fit=crop"
+                    alt="Avatar" class="rounded-circle border border-primary border-2 p-1 mb-3"
+                    style="width: 110px; height:110px; object-fit: cover;">
+                <h5 class="mb-1 fw-bold"><?= htmlspecialchars($user['nama_lengkap']) ?></h5>
+                <span class="badge bg-secondary mb-3 d-block" style="width:fit-content; margin:auto;">Peran:
+                    <?= htmlspecialchars($user['role']) ?></span>
+
+                <div class="text-start mb-3 border-bottom pb-3">
+                    <label class="text-muted" style="font-size:0.75rem; display:block;">Email Karyawan</label>
+                    <span class="fw-semibold"><?= htmlspecialchars($user['email']) ?></span>
+                </div>
+                <div class="text-start mb-3 border-bottom pb-3">
+                    <label class="text-muted" style="font-size:0.75rem; display:block;">Tanggal Bergabung</label>
+                    <span><?= date('d-m-Y H:i', strtotime($user['created_at'])) ?> WIB</span>
+                </div>
+                <div class="text-start mb-4">
+                    <label class="text-muted" style="font-size:0.75rem; display:block;">Terakhir Login</label>
+                    <span><?= $user['last_login'] ? date('d-m-Y H:i', strtotime($user['last_login'])) . ' WIB' : '-' ?></span>
+                </div>
+
             </div>
         </div>
-        <p class="text-secondary mb-0">Silakan kembangkan fungsionalitas halaman ini di file <code>it/profile.php</code>
-            sesuai dengan kebutuhan modul.</p>
+
+        <!-- Panel Kanan: Info Akun Detail -->
+        <div class="col-lg-7 col-12">
+            <div class="card-box h-100">
+                <div class="d-flex align-items-center justify-content-between mb-4">
+                    <div>
+                        <h5 class="fw-bold mb-1">Data Profil Akun </h5>
+                    </div>
+                </div>
+
+                <div class="row g-3">
+                    <div class="col-12">
+                        <div class="p-3 rounded-3"
+                            style="background: var(--bg-glass); border: 1px solid var(--border-color);">
+                            <div class="d-flex align-items-center gap-3">
+                                <div class="stat-card-icon"
+                                    style="width:44px; height:44px; min-width:44px; font-size:1.1rem;">
+                                    <i class="bi bi-person-fill"></i>
+                                </div>
+                                <div>
+                                    <div class="text-muted" style="font-size:0.75rem;">Nama Lengkap</div>
+                                    <div class="fw-bold"><?= htmlspecialchars($user['nama_lengkap']) ?></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <div class="p-3 rounded-3"
+                            style="background: var(--bg-glass); border: 1px solid var(--border-color);">
+                            <div class="d-flex align-items-center gap-3">
+                                <div class="stat-card-icon"
+                                    style="width:44px; height:44px; min-width:44px; font-size:1.1rem;">
+                                    <i class="bi bi-envelope-fill"></i>
+                                </div>
+                                <div>
+                                    <div class="text-muted" style="font-size:0.75rem;">Email Karyawan</div>
+                                    <div class="fw-bold"><?= htmlspecialchars($user['email']) ?></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <div class="p-3 rounded-3"
+                            style="background: var(--bg-glass); border: 1px solid var(--border-color);">
+                            <div class="d-flex align-items-center gap-3">
+                                <div class="stat-card-icon"
+                                    style="width:44px; height:44px; min-width:44px; font-size:1.1rem;">
+                                    <i class="bi bi-shield-fill-check"></i>
+                                </div>
+                                <div>
+                                    <div class="text-muted" style="font-size:0.75rem;">Peran Akun</div>
+                                    <div class="fw-bold"><?= htmlspecialchars($user['role']) ?></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <div class="p-3 rounded-3"
+                            style="background: var(--bg-glass); border: 1px solid var(--border-color);">
+                            <div class="d-flex align-items-center gap-3">
+                                <div class="stat-card-icon success"
+                                    style="width:44px; height:44px; min-width:44px; font-size:1.1rem;">
+                                    <i class="bi bi-clock-history"></i>
+                                </div>
+                                <div>
+                                    <div class="text-muted" style="font-size:0.75rem;">Login Terakhir</div>
+                                    <div class="fw-bold">
+                                        <?= $user['last_login'] ? date('d-m-Y H:i', strtotime($user['last_login'])) . ' WIB' : 'Belum ada data' ?>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </main>
 
-<?php
-include "../includes/footer.php";
-?>
+<!-- ===== MODAL: Edit Profil ===== -->
+<div id="modalEditProfil" class="arp-modal-overlay" onclick="closeModalOutside(event, 'modalEditProfil')">
+    <div class="arp-modal-box">
+        <div class="arp-modal-header">
+            <div>
+                <h6 class="fw-bold mb-0">Edit Profil</h6>
+                <small class="text-muted">Perbarui informasi profil akun Anda.</small>
+            </div>
+            <button class="arp-modal-close" onclick="closeModal('modalEditProfil')">&times;</button>
+        </div>
+        <div class="arp-modal-body">
+            <form method="POST" action="profile.php">
+                <input type="hidden" name="action" value="edit_profil">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold fs-7 mb-2">Nama Lengkap *</label>
+                    <input type="text" name="nama_lengkap" class="form-control-custom"
+                        value="<?= htmlspecialchars($user['nama_lengkap']) ?>" required>
+                </div>
+                <div class="mb-4">
+                    <label class="form-label fw-semibold fs-7 mb-2">Email Karyawan</label>
+                    <input type="email" class="form-control-custom" value="<?= htmlspecialchars($user['email']) ?>"
+                        disabled style="opacity:0.6; cursor:not-allowed;">
+                    <small class="text-muted d-block mt-1">Email tidak dapat diubah sendiri. Hubungi Admin.</small>
+                </div>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn-secondary-custom flex-grow-1"
+                        onclick="closeModal('modalEditProfil')">Batal</button>
+                    <button type="submit" class="btn-primary-custom flex-grow-1"><i class="bi bi-save me-1"></i> Simpan
+                        Perubahan</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ===== MODAL: Ganti Kata Sandi ===== -->
+<div id="modalGantiPassword" class="arp-modal-overlay" onclick="closeModalOutside(event, 'modalGantiPassword')">
+    <div class="arp-modal-box">
+        <div class="arp-modal-header">
+            <div>
+                <h6 class="fw-bold mb-0">Perbarui Kata Sandi</h6>
+                <small class="text-muted">Pastikan kata sandi baru minimal 6 karakter.</small>
+            </div>
+            <button class="arp-modal-close" onclick="closeModal('modalGantiPassword')">&times;</button>
+        </div>
+        <div class="arp-modal-body">
+            <form method="POST" action="profile.php">
+                <input type="hidden" name="action" value="ganti_password">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold fs-7 mb-2">Kata Sandi Lama *</label>
+                    <input type="password" name="password_lama" class="form-control-custom" required
+                        placeholder="Masukkan kata sandi saat ini">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold fs-7 mb-2">Kata Sandi Baru *</label>
+                    <input type="password" name="password_baru" class="form-control-custom" required
+                        placeholder="Kata sandi baru (min. 6 karakter)">
+                </div>
+                <div class="mb-4">
+                    <label class="form-label fw-semibold fs-7 mb-2">Konfirmasi Kata Sandi Baru *</label>
+                    <input type="password" name="konfirmasi_baru" class="form-control-custom" required
+                        placeholder="Ulangi kata sandi baru">
+                </div>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn-secondary-custom flex-grow-1"
+                        onclick="closeModal('modalGantiPassword')">Batal</button>
+                    <button type="submit" class="btn-primary-custom flex-grow-1"><i class="bi bi-shield-lock me-1"></i>
+                        Simpan Kata Sandi</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<?php if ($open_modal_on_error): ?>
+    <script>document.addEventListener('DOMContentLoaded', () => openModal('<?= $open_modal_on_error ?>'));</script>
+<?php endif; ?>
+
+<?php include "../includes/footer.php"; ?>
