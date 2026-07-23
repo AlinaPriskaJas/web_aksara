@@ -5,15 +5,10 @@ require_once "../config/koneksi.php";
 if (session_status() === PHP_SESSION_NONE)
     session_start();
 
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'ahli_k3') {
+if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'it') {
     header("Location: ../login.php");
     exit;
 }
-
-$page_title = "Profil & Pengaturan Akun";
-include "../includes/header.php";
-include "../includes/sidebar.php";
-include "../includes/topbar.php";
 
 $current_user_id = $_SESSION['user_id'];
 $success_msg = "";
@@ -28,7 +23,7 @@ try {
     $user = null;
 }
 
-// Handle POST: edit profil atau ganti password
+// Handle POST: edit profil, upload/hapus foto, atau ganti password
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
@@ -43,11 +38,69 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $upd = $conn->prepare("UPDATE Users SET nama_lengkap = :nama WHERE id = :id");
                 $upd->execute(['nama' => $nama_lengkap, 'id' => $current_user_id]);
                 $success_msg = "Profil berhasil diperbarui!";
+                $_SESSION['nama_lengkap'] = $nama_lengkap;
                 // Refresh
                 $stmt->execute(['id' => $current_user_id]);
                 $user = $stmt->fetch();
             } catch (PDOException $e) {
                 $error_msg = "Gagal memperbarui profil: " . $e->getMessage();
+            }
+        }
+    } elseif ($action === 'upload_foto') {
+        if (!isset($_FILES['foto_profil']) || $_FILES['foto_profil']['error'] !== UPLOAD_ERR_OK) {
+            $error_msg = "Gagal mengunggah foto. Silakan coba lagi.";
+        } else {
+            $file = $_FILES['foto_profil'];
+            $allowed_ext = ['jpg', 'jpeg', 'png', 'webp'];
+            $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+            $max_size = 2 * 1024 * 1024; // 2MB
+
+            if (!in_array($ext, $allowed_ext)) {
+                $error_msg = "Format foto tidak didukung. Gunakan JPG, PNG, atau WEBP.";
+            } elseif ($file['size'] > $max_size) {
+                $error_msg = "Ukuran foto maksimal 2MB.";
+            } else {
+                $upload_dir = "../uploads/profil/";
+                if (!is_dir($upload_dir)) {
+                    mkdir($upload_dir, 0755, true);
+                }
+                $filename = $current_user_id . "_" . time() . "." . $ext;
+                $target_path = $upload_dir . $filename;
+
+                if (move_uploaded_file($file['tmp_name'], $target_path)) {
+                    if (!empty($user['foto_profil']) && is_file("../" . $user['foto_profil'])) {
+                        @unlink("../" . $user['foto_profil']);
+                    }
+                    $db_path = "uploads/profil/" . $filename;
+                    try {
+                        $upd = $conn->prepare("UPDATE Users SET foto_profil = :foto WHERE id = :id");
+                        $upd->execute(['foto' => $db_path, 'id' => $current_user_id]);
+                        $_SESSION['foto_profil'] = $db_path;
+                        $success_msg = "Foto profil berhasil diperbarui!";
+                        $stmt->execute(['id' => $current_user_id]);
+                        $user = $stmt->fetch();
+                    } catch (PDOException $e) {
+                        $error_msg = "Gagal menyimpan foto ke database.";
+                    }
+                } else {
+                    $error_msg = "Gagal menyimpan file foto di server.";
+                }
+            }
+        }
+    } elseif ($action === 'hapus_foto') {
+        if (!empty($user['foto_profil'])) {
+            if (is_file("../" . $user['foto_profil'])) {
+                @unlink("../" . $user['foto_profil']);
+            }
+            try {
+                $upd = $conn->prepare("UPDATE Users SET foto_profil = NULL WHERE id = :id");
+                $upd->execute(['id' => $current_user_id]);
+                $_SESSION['foto_profil'] = null;
+                $success_msg = "Foto profil dihapus. Avatar kembali ke inisial nama.";
+                $stmt->execute(['id' => $current_user_id]);
+                $user = $stmt->fetch();
+            } catch (PDOException $e) {
+                $error_msg = "Gagal menghapus foto profil.";
             }
         }
     } elseif ($action === 'ganti_password') {
@@ -80,9 +133,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // Decode modal untuk auto-open saat error
 $open_modal_on_error = '';
-if ($error_msg) {
-    $open_modal_on_error = (isset($_POST['action']) && $_POST['action'] === 'edit_profil') ? 'modalEditProfil' : 'modalGantiPassword';
+if ($error_msg && isset($_POST['action'])) {
+    if ($_POST['action'] === 'edit_profil') {
+        $open_modal_on_error = 'modalEditProfil';
+    } elseif ($_POST['action'] === 'ganti_password') {
+        $open_modal_on_error = 'modalGantiPassword';
+    }
 }
+
+// ⬇️ Header/sidebar/topbar BARU di-include DI SINI,
+//    setelah $_SESSION di atas sudah pasti ter-update duluan
+$page_title = "Profil & Pengaturan Akun";
+include "../includes/header.php";
+include "../includes/sidebar.php";
+include "../includes/topbar.php";
 ?>
 
 <main class="main-content">
@@ -115,9 +179,24 @@ if ($error_msg) {
         <!-- Kartu Profil (Tampilan Utama) -->
         <div class="col-lg-5 col-12">
             <div class="card-box text-center">
-                <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=256&auto=format&fit=crop"
-                    alt="Avatar" class="rounded-circle border border-primary border-2 p-1 mb-3"
-                    style="width: 110px; height:110px; object-fit: cover;">
+                <div class="profile-avatar-wrap">
+                    <?= arp_avatar_html($user['nama_lengkap'], $user['foto_profil'] ?? null, '../', 110) ?>
+                    <label class="avatar-camera-btn" for="inputFotoProfil" title="Ganti foto profil">
+                        <i class="bi bi-camera-fill"></i>
+                    </label>
+                </div>
+                <form id="formUploadFoto" method="POST" action="profile.php" enctype="multipart/form-data" class="d-none">
+                    <input type="hidden" name="action" value="upload_foto">
+                    <input type="file" id="inputFotoProfil" name="foto_profil" accept=".jpg,.jpeg,.png,.webp"
+                        onchange="document.getElementById('formUploadFoto').submit();">
+                </form>
+                <?php if (!empty($user['foto_profil'])): ?>
+                    <form method="POST" action="profile.php" class="mb-2"
+                        onsubmit="return confirm('Hapus foto profil dan kembali ke avatar inisial?');">
+                        <input type="hidden" name="action" value="hapus_foto">
+                        <button type="submit" class="avatar-remove-link">Hapus Foto</button>
+                    </form>
+                <?php endif; ?>
                 <h5 class="mb-1 fw-bold"><?= htmlspecialchars($user['nama_lengkap']) ?></h5>
                 <span class="badge bg-secondary mb-3 d-block" style="width:fit-content; margin:auto;">Peran:
                     <?= htmlspecialchars($user['role']) ?></span>
@@ -290,8 +369,34 @@ if ($error_msg) {
     </div>
 </div>
 
+<script>
+// ===== Modal Handler (openModal, closeModal, closeModalOutside) =====
+function openModal(id) {
+    const modal = document.getElementById(id);
+    if (modal) {
+        modal.classList.add('show');
+        document.body.style.overflow = 'hidden'; // cegah scroll di belakang modal
+    }
+}
+
+function closeModal(id) {
+    const modal = document.getElementById(id);
+    if (modal) {
+        modal.classList.remove('show');
+        document.body.style.overflow = '';
+    }
+}
+
+function closeModalOutside(event, id) {
+    // hanya tutup kalau yang diklik adalah overlay-nya sendiri, bukan isi modal
+    if (event.target.id === id) {
+        closeModal(id);
+    }
+}
+
 <?php if ($open_modal_on_error): ?>
-    <script>document.addEventListener('DOMContentLoaded', () => openModal('<?= $open_modal_on_error ?>'));</script>
+document.addEventListener('DOMContentLoaded', () => openModal('<?= $open_modal_on_error ?>'));
 <?php endif; ?>
+</script>
 
 <?php include "../includes/footer.php"; ?>

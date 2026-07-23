@@ -1,11 +1,11 @@
 <?php
-// ahlik3/cuti.php
+// it/cuti.php
 require_once "../config/koneksi.php";
 
 if (session_status() === PHP_SESSION_NONE)
     session_start();
 
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'ahli_k3') {
+if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'it') {
     header("Location: ../login.php");
     exit;
 }
@@ -19,6 +19,7 @@ $current_user_id = $_SESSION['user_id'];
 $success_msg = "";
 $error_msg = "";
 $current_year = date('Y');
+$active_tab = 'tabPanelCutiSaya';
 
 // Fetch or Initialize Leave Balance
 try {
@@ -37,81 +38,125 @@ try {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $jenis_cuti = $_POST['jenis_cuti'];
-    $tgl_mulai = $_POST['tgl_mulai'];
-    $tgl_selesai = $_POST['tgl_selesai'];
-    $alasan = $_POST['alasan'];
 
-    if (empty($jenis_cuti) || empty($tgl_mulai) || empty($tgl_selesai)) {
-        $error_msg = "Jenis Cuti, Tanggal Mulai, dan Tanggal Selesai wajib diisi!";
-    } else {
-        $start = new DateTime($tgl_mulai);
-        $end = new DateTime($tgl_selesai);
-        $diff = $start->diff($end)->format("%r%a");
-        $duration = intval($diff) + 1;
+    // ===== Aksi: Ajukan Cuti Sendiri =====
+    if (isset($_POST['action']) && $_POST['action'] === 'submit') {
+        $jenis_cuti = $_POST['jenis_cuti'];
+        $tgl_mulai = $_POST['tgl_mulai'];
+        $tgl_selesai = $_POST['tgl_selesai'];
+        $alasan = $_POST['alasan'];
 
-        if ($duration <= 0) {
-            $error_msg = "Tanggal Selesai harus sesudah atau sama dengan Tanggal Mulai!";
-        } elseif ($jenis_cuti === 'Cuti Tahunan' && $duration > $balance['sisa']) {
-            $error_msg = "Saldo cuti tahunan tidak mencukupi! Sisa saldo: " . $balance['sisa'] . " hari.";
+        if (empty($jenis_cuti) || empty($tgl_mulai) || empty($tgl_selesai)) {
+            $error_msg = "Jenis Cuti, Tanggal Mulai, dan Tanggal Selesai wajib diisi!";
         } else {
-            // Handle optional dokumen pendukung upload
-            $lampiran = "";
-            if (isset($_FILES['lampiran']) && $_FILES['lampiran']['error'] === UPLOAD_ERR_OK) {
-                $file = $_FILES['lampiran'];
-                $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-                if (in_array($ext, ['pdf', 'jpg', 'jpeg', 'png'])) {
-                    $dir = "../uploads/cuti/";
-                    if (!is_dir($dir))
-                        mkdir($dir, 0777, true);
-                    $fname = "cuti_" . $current_user_id . "_" . time() . "_" . uniqid() . "." . $ext;
-                    if (move_uploaded_file($file['tmp_name'], $dir . $fname)) {
-                        $lampiran = "uploads/cuti/" . $fname;
+            $start = new DateTime($tgl_mulai);
+            $end = new DateTime($tgl_selesai);
+            $diff = $start->diff($end)->format("%r%a");
+            $duration = intval($diff) + 1;
+
+            if ($duration <= 0) {
+                $error_msg = "Tanggal Selesai harus sesudah atau sama dengan Tanggal Mulai!";
+            } elseif ($jenis_cuti === 'Cuti Tahunan' && $duration > $balance['sisa']) {
+                $error_msg = "Saldo cuti tahunan tidak mencukupi! Sisa saldo: " . $balance['sisa'] . " hari.";
+            } else {
+                $lampiran = "";
+                if (isset($_FILES['lampiran']) && $_FILES['lampiran']['error'] === UPLOAD_ERR_OK) {
+                    $file = $_FILES['lampiran'];
+                    $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+                    if (in_array($ext, ['pdf', 'jpg', 'jpeg', 'png'])) {
+                        $dir = "../uploads/cuti/";
+                        if (!is_dir($dir))
+                            mkdir($dir, 0777, true);
+                        $fname = "cuti_" . $current_user_id . "_" . time() . "_" . uniqid() . "." . $ext;
+                        if (move_uploaded_file($file['tmp_name'], $dir . $fname)) {
+                            $lampiran = "uploads/cuti/" . $fname;
+                        } else {
+                            $error_msg = "Gagal mengunggah dokumen pendukung.";
+                        }
                     } else {
-                        $error_msg = "Gagal mengunggah dokumen pendukung.";
+                        $error_msg = "Format dokumen tidak didukung. Gunakan PDF, JPG, atau PNG.";
                     }
-                } else {
-                    $error_msg = "Format dokumen tidak didukung. Gunakan PDF, JPG, atau PNG.";
+                }
+
+                if (empty($error_msg)) {
+                    try {
+                        $conn->beginTransaction();
+
+                        $stmtApp = $conn->prepare("INSERT INTO Approval (jenis_pengajuan, ref_id, requester_id, level, status) VALUES ('Cuti', 0, :requester, 1, 'Menunggu')");
+                        $stmtApp->execute(['requester' => $current_user_id]);
+                        $approval_id = $conn->lastInsertId();
+
+                        $stmtCuti = $conn->prepare("INSERT INTO Cuti (user_id, jenis_cuti, tgl_mulai, tgl_selesai, total_durasi, alasan, lampiran, status, approval_id) VALUES (:user_id, :jenis, :start, :end, :duration, :alasan, :lampiran, 'Menunggu', :app_id)");
+                        $stmtCuti->execute([
+                            'user_id' => $current_user_id,
+                            'jenis' => $jenis_cuti,
+                            'start' => $tgl_mulai,
+                            'end' => $tgl_selesai,
+                            'duration' => $duration,
+                            'alasan' => $alasan,
+                            'lampiran' => $lampiran,
+                            'app_id' => $approval_id
+                        ]);
+
+                        $cuti_id = $conn->lastInsertId();
+                        $updApp = $conn->prepare("UPDATE Approval SET ref_id = :cuti_id WHERE id = :app_id");
+                        $updApp->execute(['cuti_id' => $cuti_id, 'app_id' => $approval_id]);
+
+                        $conn->commit();
+                        $success_msg = "Pengajuan cuti berhasil dikirim! Menunggu persetujuan.";
+                        $stmtBal->execute(['user_id' => $current_user_id, 'tahun' => $current_year]);
+                        $balance = $stmtBal->fetch();
+                    } catch (PDOException $e) {
+                        $conn->rollBack();
+                        $error_msg = "Gagal memproses pengajuan cuti: " . $e->getMessage();
+                    }
                 }
             }
+        }
 
-            if (empty($error_msg)) {
-            try {
-                $conn->beginTransaction();
+        // ===== Aksi: Proses Pengajuan Cuti Karyawan (Setujui/Tolak) =====
+    } elseif (isset($_POST['action']) && $_POST['action'] === 'process') {
+        $active_tab = 'tabPanelCutiKaryawan';
+        $cuti_id = $_POST['cuti_id'];
+        $status = $_POST['status']; // Disetujui, Ditolak
 
-                $stmtApp = $conn->prepare("INSERT INTO Approval (jenis_pengajuan, ref_id, requester_id, level, status) VALUES ('Cuti', 0, :requester, 1, 'Menunggu')");
-                $stmtApp->execute(['requester' => $current_user_id]);
-                $approval_id = $conn->lastInsertId();
+        try {
+            $conn->beginTransaction();
 
-                $stmtCuti = $conn->prepare("INSERT INTO Cuti (user_id, jenis_cuti, tgl_mulai, tgl_selesai, total_durasi, alasan, lampiran, status, approval_id) VALUES (:user_id, :jenis, :start, :end, :duration, :alasan, :lampiran, 'Menunggu', :app_id)");
-                $stmtCuti->execute([
-                    'user_id' => $current_user_id,
-                    'jenis' => $jenis_cuti,
-                    'start' => $tgl_mulai,
-                    'end' => $tgl_selesai,
-                    'duration' => $duration,
-                    'alasan' => $alasan,
-                    'lampiran' => $lampiran,
-                    'app_id' => $approval_id
-                ]);
+            $getCuti = $conn->prepare("SELECT * FROM Cuti WHERE id = :id");
+            $getCuti->execute(['id' => $cuti_id]);
+            $c = $getCuti->fetch();
 
-                $cuti_id = $conn->lastInsertId();
-                $updApp = $conn->prepare("UPDATE Approval SET ref_id = :cuti_id WHERE id = :app_id");
-                $updApp->execute(['cuti_id' => $cuti_id, 'app_id' => $approval_id]);
+            if ($c) {
+                if ($c['approval_id']) {
+                    $appStmt = $conn->prepare("UPDATE Approval SET status = :status, approver_id = :approver, tgl_aksi = NOW() WHERE id = :app_id");
+                    $appStmt->execute(['status' => $status, 'approver' => $current_user_id, 'app_id' => $c['approval_id']]);
+                }
+
+                $updStmt = $conn->prepare("UPDATE Cuti SET status = :status WHERE id = :id");
+                $updStmt->execute(['status' => $status, 'id' => $cuti_id]);
+
+                // Update saldo cuti jika disetujui dan Cuti Tahunan
+                if ($status === 'Disetujui' && $c['jenis_cuti'] === 'Cuti Tahunan') {
+                    $tahunCuti = date('Y', strtotime($c['tgl_mulai']));
+                    $updSaldo = $conn->prepare("UPDATE Cuti_Saldo SET terpakai = terpakai + :durasi WHERE user_id = :user_id AND tahun = :tahun");
+                    $updSaldo->execute(['durasi' => $c['total_durasi'], 'user_id' => $c['user_id'], 'tahun' => $tahunCuti]);
+                }
 
                 $conn->commit();
-                $success_msg = "Pengajuan cuti berhasil dikirim! Menunggu persetujuan Admin.";
-                $stmtBal->execute(['user_id' => $current_user_id, 'tahun' => $current_year]);
-                $balance = $stmtBal->fetch();
-            } catch (PDOException $e) {
+                $success_msg = "Pengajuan cuti #" . $cuti_id . " berhasil diperbarui ke status: " . $status;
+            } else {
                 $conn->rollBack();
-                $error_msg = "Gagal memproses pengajuan cuti: " . $e->getMessage();
+                $error_msg = "Data pengajuan cuti tidak ditemukan.";
             }
-            }
+        } catch (PDOException $e) {
+            $conn->rollBack();
+            $error_msg = "Terjadi kesalahan database: " . $e->getMessage();
         }
     }
 }
 
+// Riwayat cuti milik sendiri
 $leaves = [];
 try {
     $stmtHistory = $conn->prepare("SELECT * FROM Cuti WHERE user_id = :user_id ORDER BY created_at DESC");
@@ -119,6 +164,20 @@ try {
     $leaves = $stmtHistory->fetchAll();
 } catch (PDOException $e) {
     $leaves = [];
+}
+
+// Seluruh pengajuan cuti karyawan
+$all_leaves = [];
+try {
+    $stmtAll = $conn->query("
+        SELECT c.*, u.nama_lengkap, u.email
+        FROM Cuti c
+        JOIN Users u ON c.user_id = u.id
+        ORDER BY c.created_at DESC
+    ");
+    $all_leaves = $stmtAll->fetchAll();
+} catch (PDOException $e) {
+    $all_leaves = [];
 }
 ?>
 
@@ -173,8 +232,24 @@ try {
         </div>
     </div>
 
-    <!-- Content Card -->
-    <div class="card-box">
+    <!-- Tab Navigation -->
+    <div class="arp-tab-group">
+        <div class="arp-tab-nav">
+            <button type="button" class="arp-tab-btn<?= $active_tab === 'tabPanelCutiSaya' ? ' active' : '' ?>"
+                data-tab-target="tabPanelCutiSaya" onclick="switchTab('tabPanelCutiSaya', this)">
+                <i class="bi bi-calendar-check me-1"></i> Cuti Pribadi
+            </button>
+            <button type="button" class="arp-tab-btn<?= $active_tab === 'tabPanelCutiKaryawan' ? ' active' : '' ?>"
+                data-tab-target="tabPanelCutiKaryawan" onclick="switchTab('tabPanelCutiKaryawan', this)">
+                <i class="bi bi-people me-1"></i> Cuti Karyawan
+            </button>
+        </div>
+
+    <div class="row g-4">
+        <!-- Card 1: Riwayat Pengajuan Cuti Anda -->
+        <div class="col-12 arp-tab-panel" id="tabPanelCutiSaya"
+            <?= $active_tab === 'tabPanelCutiSaya' ? '' : 'style="display:none;"' ?>>
+        <div class="card-box mb-4">
         <div class="table-toolbar">
             <h5 class="table-toolbar-title fw-bold">Riwayat Pengajuan Cuti Anda</h5>
             <div class="table-toolbar-actions">
@@ -189,7 +264,6 @@ try {
             </div>
         </div>
 
-        <!-- Tabel Riwayat Cuti -->
         <div class="table-responsive-custom">
             <table class="table-custom" id="tabelCuti">
                 <thead>
@@ -247,6 +321,93 @@ try {
             </table>
         </div>
         <div class="pagination-custom" id="pagination-tabelCuti"></div>
+        </div>
+        </div>
+
+        <!-- Card 2: Data Riwayat Pengajuan Cuti Karyawan -->
+        <div class="col-12 arp-tab-panel" id="tabPanelCutiKaryawan"
+            <?= $active_tab === 'tabPanelCutiKaryawan' ? '' : 'style="display:none;"' ?>>
+            <div class="card-box">
+                <div class="table-toolbar">
+                    <h5 class="table-toolbar-title fw-bold">Data Riwayat Pengajuan Cuti Karyawan</h5>
+                    <div class="table-toolbar-actions">
+                        <div class="search-box-container">
+                            <i class="bi bi-search"></i>
+                            <input type="text" class="search-box" placeholder="Cari karyawan..."
+                                data-table-search="tabelCutiKaryawan" onkeyup="handleTableSearch('tabelCutiKaryawan')">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="table-responsive-custom">
+                    <table class="table-custom" id="tabelCutiKaryawan">
+                        <thead>
+                            <tr>
+                                <th>Karyawan</th>
+                                <th>Jenis Cuti</th>
+                                <th>Mulai</th>
+                                <th>Selesai</th>
+                                <th>Durasi</th>
+                                <th>Status</th>
+                                <th style="text-align:center;">Tindakan</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if (count($all_leaves) === 0): ?>
+                                <tr>
+                                    <td colspan="7" class="text-center py-3 text-muted">Belum ada pengajuan cuti karyawan.</td>
+                                </tr>
+                            <?php else: ?>
+                                <?php foreach ($all_leaves as $l): ?>
+                                    <tr>
+                                        <td>
+                                            <div class="fw-bold"><?= htmlspecialchars($l['nama_lengkap']) ?></div>
+                                            <small class="text-secondary"><?= htmlspecialchars($l['email']) ?></small>
+                                        </td>
+                                        <td><?= htmlspecialchars($l['jenis_cuti']) ?></td>
+                                        <td><?= date('d-m-Y', strtotime($l['tgl_mulai'])) ?></td>
+                                        <td><?= date('d-m-Y', strtotime($l['tgl_selesai'])) ?></td>
+                                        <td><strong><?= $l['total_durasi'] ?> Hari</strong></td>
+                                        <td>
+                                            <?php
+                                            $badgeClass = "badge-warning";
+                                            if ($l['status'] === 'Disetujui')
+                                                $badgeClass = "badge-success";
+                                            if ($l['status'] === 'Ditolak')
+                                                $badgeClass = "badge-danger";
+                                            ?>
+                                            <span class="<?= $badgeClass ?>"><?= htmlspecialchars($l['status']) ?></span>
+                                        </td>
+                                        <td style="text-align:center;">
+                                            <?php if ($l['status'] === 'Menunggu'): ?>
+                                                <form method="POST" action="cuti.php" style="display:inline-block;">
+                                                    <input type="hidden" name="action" value="process">
+                                                    <input type="hidden" name="cuti_id" value="<?= $l['id'] ?>">
+                                                    <input type="hidden" name="status" value="Disetujui">
+                                                    <button type="submit" class="btn-primary-custom"
+                                                        style="height:28px; padding:0 8px; font-size:0.75rem;">Setujui</button>
+                                                </form>
+                                                <form method="POST" action="cuti.php" style="display:inline-block;">
+                                                    <input type="hidden" name="action" value="process">
+                                                    <input type="hidden" name="cuti_id" value="<?= $l['id'] ?>">
+                                                    <input type="hidden" name="status" value="Ditolak">
+                                                    <button type="submit" class="btn-danger-custom"
+                                                        style="height:28px; padding:0 8px; font-size:0.75rem;">Tolak</button>
+                                                </form>
+                                            <?php else: ?>
+                                                <span class="text-muted">-</span>
+                                            <?php endif; ?>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="pagination-custom" id="pagination-tabelCutiKaryawan"></div>
+            </div>
+        </div>
+    </div>
     </div>
 </main>
 
@@ -263,6 +424,7 @@ try {
         </div>
         <div class="arp-modal-body">
             <form method="POST" action="cuti.php" enctype="multipart/form-data">
+                <input type="hidden" name="action" value="submit">
                 <div class="mb-3">
                     <label class="form-label fw-semibold fs-7 mb-2">Jenis Cuti *</label>
                     <select name="jenis_cuti" class="select-custom" required>
@@ -315,6 +477,7 @@ try {
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         initTablePagination('tabelCuti', 10);
+        initTablePagination('tabelCutiKaryawan', 10);
     });
 
     function hitungDurasiCuti() {

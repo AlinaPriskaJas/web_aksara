@@ -5,7 +5,7 @@ require_once "../config/koneksi.php";
 if (session_status() === PHP_SESSION_NONE)
     session_start();
 
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'ahli_k3') {
+if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'it') {
     header("Location: ../login.php");
     exit;
 }
@@ -547,6 +547,7 @@ if ($kodeTerpilih) {
     $bulanRomawi = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'][date('n') - 1];
     $preview_nomor = sprintf('%03d/%s/ARP/%s/%d', $counterPreview, $kodeTerpilih['kode'], $bulanRomawi, $tahun);
 }
+
 $tabel_item_punya_harga = false;
 foreach ($fields_tabel as $kolom) {
     if (isKolomHarga($kolom['field'])) {
@@ -687,8 +688,12 @@ include "../includes/topbar.php";
                                     </td>
                                     <td><?= e($s['jenis_surat_kode']) ?> <span
                                             class="text-secondary">(<?= e($s['kode_str']) ?>)</span></td>
-                                    <td style="white-space:normal; word-break:break-word; max-width:280px;"><?= e($s['perihal']) ?></td>
-                                    <td style="white-space:normal; word-break:break-word; max-width:200px;"><?= e($s['tujuan']) ?></td>
+                                    <td style="white-space:normal; word-break:break-word; max-width:280px;">
+                                        <?= e($s['perihal']) ?>
+                                    </td>
+                                    <td style="white-space:normal; word-break:break-word; max-width:200px;">
+                                        <?= e($s['tujuan']) ?>
+                                    </td>
                                     <td>
                                         <?php if ($suratMilikSaya): ?>
                                             <span class="badge-success">Saya</span>
@@ -719,7 +724,7 @@ include "../includes/topbar.php";
                                                         </button>
                                                     </form>
                                                 <?php elseif ($s['status'] === 'Menunggu Persetujuan'): ?>
-                                                    <span class="text-secondary text-xs">Menunggu persetujuan</span>
+                                                    <span class="text-secondary text-xs">Menunggu persetujuan admin</span>
                                                 <?php elseif ($s['status'] === 'Ditolak'): ?>
                                                     <form method="POST" action="surat.php" class="d-inline"
                                                         onsubmit="return confirm('Kembalikan surat ini ke Draft untuk direvisi?');">
@@ -846,8 +851,12 @@ include "../includes/topbar.php";
                                         <?php endif; ?>
                                     </td>
                                     <td><?= e($s['jenis_surat_kode']) ?></td>
-                                    <td style="white-space:normal; word-break:break-word; max-width:280px;"><?= e($s['perihal']) ?></td>
-                                    <td style="white-space:normal; word-break:break-word; max-width:200px;"><?= e($s['tujuan']) ?></td>
+                                    <td style="white-space:normal; word-break:break-word; max-width:280px;">
+                                        <?= e($s['perihal']) ?>
+                                    </td>
+                                    <td style="white-space:normal; word-break:break-word; max-width:200px;">
+                                        <?= e($s['tujuan']) ?>
+                                    </td>
                                     <td><?= !empty($s['tgl_dibuat']) ? date('d-m-Y', strtotime($s['tgl_dibuat'])) : '-' ?>
                                     </td>
                                     <td><span class="<?= badgeStatus($s['status'] ?? '') ?>"><?= e($s['status']) ?></span>
@@ -1154,7 +1163,7 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
                                                             <?php
                                                             $isHarga = isKolomHarga($kolom['field']);
                                                             $isQty = isKolomQty($kolom['field']);
-                                                            $placeholderKolom = $isHarga ? 'cth: 6055000' : ($isQty ? 'cth: 3 unit / 5 orang' : '');
+                                                            $placeholderKolom = $isHarga ? 'cth: 6055000' : ($isQty ? 'cth: 3 / 3 unit / 3 orang' : '');
                                                             ?>
                                                             <td>
                                                                 <input type="text"

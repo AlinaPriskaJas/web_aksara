@@ -8,7 +8,7 @@ require_once "../config/koneksi.php";
 if (session_status() === PHP_SESSION_NONE)
     session_start();
 
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'ahli_k3') {
+if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'it') {
     header("Location: ../login.php");
     exit;
 }
@@ -160,7 +160,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
                 }
             }
 
-            // ===== Reuse proses generate surat yang sudah ada =====
             // Perihal & Tujuan sekarang PRIORITAS diambil dari input manual di form
             // edit (perihal_manual / tujuan_manual). Kalau dikosongkan, baru fallback
             // ke hasil scan otomatis dari Word / data dinamis seperti sebelumnya.
@@ -174,7 +173,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
                 $dataForm, $items, $nomorBaru, $blocksData, $kode['nama'],
                 $tujuanManual !== '' ? $tujuanManual : null   // <-- BARU
             );
-
+            
             $perihalDariWord = extractPerihalFromDocxText(BASE_PATH . '/' . $fileHasilBaru);
             $perihalSimpan = $perihalManual !== ''
                 ? $perihalManual

@@ -1,5 +1,5 @@
 <?php
-// ahlik3/transportasi.php
+// admin/transportasi.php
 $page_title = "Manajemen Transportasi";
 include "../includes/header.php";
 include "../includes/sidebar.php";
@@ -7,13 +7,14 @@ include "../includes/topbar.php";
 require_once "../config/koneksi.php";
 
 // Authorization Check
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'ahli_k3') {
+if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'it') {
     header("Location: ../login.php");
     exit;
 }
 
 $success_msg = "";
 $error_msg = "";
+$active_tab = 'tabPanelKendaraan';
 
 // Handle Add/Edit/Status Update
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -40,6 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     } elseif (isset($_POST['action']) && $_POST['action'] === 'approve_loan') {
+        $active_tab = 'tabPanelPeminjaman';
         $loan_id = $_POST['loan_id'];
         $status = $_POST['status'];
 
@@ -97,9 +99,81 @@ $loans = $conn->query("
         </div>
     <?php endif; ?>
 
+    <!-- Tab Navigation -->
+    <div class="arp-tab-group">
+        <div class="arp-tab-nav">
+            <button type="button" class="arp-tab-btn<?= $active_tab === 'tabPanelKendaraan' ? ' active' : '' ?>"
+                data-tab-target="tabPanelKendaraan" onclick="switchTab('tabPanelKendaraan', this)">
+                <i class="bi bi-truck me-1"></i> Daftar Kendaraan
+            </button>
+            <button type="button" class="arp-tab-btn<?= $active_tab === 'tabPanelPeminjaman' ? ' active' : '' ?>"
+                data-tab-target="tabPanelPeminjaman" onclick="switchTab('tabPanelPeminjaman', this)">
+                <i class="bi bi-journal-text me-1"></i> Pengajuan Peminjaman
+            </button>
+        </div>
+
     <div class="row g-4">
+        <!-- Daftar Kendaraan -->
+        <div class="col-12 arp-tab-panel" id="tabPanelKendaraan" <?= $active_tab === 'tabPanelKendaraan' ? '' : 'style="display:none;"' ?>>
+            <div class="card-box">
+                <div class="table-toolbar">
+                    <h5 class="table-toolbar-title fw-bold">Daftar Kendaraan Operasional</h5>
+                    <div class="table-toolbar-actions">
+                        <div class="search-box-container">
+                            <i class="bi bi-search"></i>
+                            <input type="text" class="search-box" placeholder="Cari kendaraan..."
+                                data-table-search="tabelKendaraan" onkeyup="handleTableSearch('tabelKendaraan')">
+                        </div>
+                        <button class="btn-primary-custom" onclick="openModal('modalKendaraan')">
+                            <i class="bi bi-plus-lg"></i>Tambah / Update Kendaraan
+                        </button>
+                    </div>
+                </div>
+                <div class="table-responsive-custom">
+                    <table class="table-custom" id="tabelKendaraan">
+                        <thead>
+                            <tr>
+                                <th>Nama Kendaraan</th>
+                                <th>Plat Nomor</th>
+                                <th>Jenis</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if (count($vehicles) === 0): ?>
+                                <tr>
+                                    <td colspan="4" class="text-center py-4 text-muted">Belum ada armada terdaftar.</td>
+                                </tr>
+                            <?php else: ?>
+                                <?php foreach ($vehicles as $v): ?>
+                                    <tr>
+                                        <td><strong><?= htmlspecialchars($v['nama_kendaraan']) ?></strong></td>
+                                        <td><span class="badge bg-secondary"><?= htmlspecialchars($v['plat_nomor']) ?></span>
+                                        </td>
+                                        <td><?= htmlspecialchars($v['jenis'] ?: '-') ?></td>
+                                        <td>
+                                            <?php
+                                            $badgeClass = "badge-success";
+                                            if ($v['status_kendaraan'] === 'Dipakai')
+                                                $badgeClass = "badge-warning";
+                                            if ($v['status_kendaraan'] === 'Maintenance')
+                                                $badgeClass = "badge-danger";
+                                            ?>
+                                            <span
+                                                class="<?= $badgeClass ?>"><?= htmlspecialchars($v['status_kendaraan']) ?></span>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="pagination-custom" id="pagination-tabelKendaraan"></div>
+            </div>
+        </div>
+
         <!-- Pengajuan & Peminjaman -->
-        <div class="col-12">
+        <div class="col-12 arp-tab-panel" id="tabPanelPeminjaman" <?= $active_tab === 'tabPanelPeminjaman' ? '' : 'style="display:none;"' ?>>
             <div class="card-box">
                 <div class="table-toolbar">
                     <h5 class="table-toolbar-title fw-bold">Daftar Pengajuan Peminjaman Kendaraan</h5>
@@ -109,7 +183,7 @@ $loans = $conn->query("
                             <input type="text" class="search-box" placeholder="Cari pengajuan..."
                                 data-table-search="tabelPeminjaman" onkeyup="handleTableSearch('tabelPeminjaman')">
                         </div>
-                        <button class="btn-primary-custom" onclick="openModal('modalPeminjaman')">
+                        <button class="btn-secondary-custom" onclick="openModal('modalPeminjaman')">
                             <i class="bi bi-plus-lg"></i>Pengajuan Peminjaman
                         </button>
                     </div>
@@ -189,6 +263,53 @@ $loans = $conn->query("
                     </table>
                 </div>
                 <div class="pagination-custom" id="pagination-tabelPeminjaman"></div>
+            </div>
+        </div>
+    </div>
+    </div>
+
+    <!-- Modal: Tambah / Update Kendaraan -->
+    <div class="arp-modal-overlay" id="modalKendaraan" onclick="closeModalOutside(event, 'modalKendaraan')">
+        <div class="arp-modal-box" style="max-width:500px;">
+            <div class="arp-modal-header">
+                <div>
+                    <h5 class="fw-bold mb-0">Tambah / Update Kendaraan</h5>
+                    <small class="text-muted">Daftarkan atau perbarui data armada kendaraan</small>
+                </div>
+                <button class="arp-modal-close" onclick="closeModal('modalKendaraan')">&times;</button>
+            </div>
+            <div class="arp-modal-body">
+                <form method="POST" action="transportasi.php">
+                    <input type="hidden" name="action" value="save_vehicle">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold mb-2">Nama Kendaraan *</label>
+                        <input type="text" name="nama_kendaraan" class="form-control-custom"
+                            placeholder="Contoh: Toyota Avanza Silver" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold mb-2">Plat Nomor *</label>
+                        <input type="text" name="plat_nomor" class="form-control-custom"
+                            placeholder="Contoh: D 1234 ABC" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold mb-2">Jenis</label>
+                        <input type="text" name="jenis" class="form-control-custom"
+                            placeholder="Contoh: Mobil MPV / Motor">
+                    </div>
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold mb-2">Status Kendaraan</label>
+                        <select name="status_kendaraan" class="select-custom">
+                            <option value="Tersedia">Tersedia</option>
+                            <option value="Dipakai">Dipakai</option>
+                            <option value="Maintenance">Maintenance</option>
+                        </select>
+                    </div>
+                    <div class="d-flex gap-2 justify-content-end">
+                        <button type="button" class="btn-secondary-custom"
+                            onclick="closeModal('modalKendaraan')">Batal</button>
+                        <button type="submit" class="btn-primary-custom">Simpan Kendaraan</button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
