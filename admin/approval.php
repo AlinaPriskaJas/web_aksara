@@ -9,6 +9,12 @@ $admin_id = $_SESSION['user_id'] ?? 1;
 $page_title = "Approval Pengajuan Pemeriksaan";
 $flash = null;
 
+// ================== TAB AKTIF (Pemeriksaan / Surat) ==================
+$tab_aktif = $_GET['tab'] ?? 'pemeriksaan';
+if (!in_array($tab_aktif, ['pemeriksaan', 'surat'], true)) {
+    $tab_aktif = 'pemeriksaan';
+}
+
 // ================== PROSES SETUJUI / TOLAK PENGAJUAN ==================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['proses_approval'])) {
     $pengajuan_id = (int) ($_POST['pengajuan_id'] ?? 0);
@@ -88,6 +94,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['proses_approval'])) {
                 ]);
             }
 
+            // Beri tahu client (yang mengajukan) hasil verifikasinya lewat Notifikasi
+            try {
+                $stmtNotifClient = $conn->prepare("
+                    INSERT INTO Notifikasi (user_id, judul, pesan, modul_terkait, ref_id, sudah_dibaca)
+                    VALUES (:user_id, :judul, :pesan, 'Pengajuan_Pemeriksaan', :ref_id, 0)
+                ");
+                $stmtNotifClient->execute([
+                    ':user_id' => $row['diajukan_oleh'],
+                    ':judul'   => $decision === 'approve' ? 'Pengajuan Disetujui' : 'Pengajuan Ditolak',
+                    ':pesan'   => $decision === 'approve'
+                        ? 'Pengajuan pemeriksaan Anda telah diverifikasi dan disetujui Admin.'
+                        : 'Pengajuan pemeriksaan Anda ditolak Admin. Catatan: ' . ($catatan !== '' ? $catatan : '-'),
+                    ':ref_id'  => $pengajuan_id,
+                ]);
+            } catch (PDOException $e) {
+                // Jangan gagalkan proses approval hanya karena notifikasi gagal dibuat
+            }
+
             $conn->commit();
 
             $flash = [
@@ -105,6 +129,145 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['proses_approval'])) {
     $_SESSION['approval_flash'] = $flash;
     $redirect_status = $_GET['status'] ?? '';
     header("Location: approval.php" . ($redirect_status !== '' ? '?status=' . urlencode($redirect_status) : ''));
+    exit;
+}
+
+// ================== PROSES UBAH TANGGAL DIINGINKAN ==================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ubah_tanggal'])) {
+    $pengajuan_id = (int) ($_POST['pengajuan_id'] ?? 0);
+    $tanggal_baru = trim($_POST['tanggal_baru'] ?? '');
+
+    if ($pengajuan_id <= 0 || $tanggal_baru === '') {
+        $flash = ['type' => 'danger', 'message' => 'Tanggal baru wajib diisi.'];
+    } else {
+        try {
+            $stmt = $conn->prepare("
+                UPDATE Pengajuan_Pemeriksaan
+                SET tanggal_diinginkan = :tanggal
+                WHERE id = :id
+            ");
+            $stmt->execute([
+                ':tanggal' => $tanggal_baru,
+                ':id'      => $pengajuan_id,
+            ]);
+            $flash = ['type' => 'success', 'message' => 'Tanggal diinginkan berhasil diperbarui.'];
+        } catch (PDOException $e) {
+            $flash = ['type' => 'danger', 'message' => 'Gagal memperbarui tanggal: ' . $e->getMessage()];
+        }
+    }
+
+    $_SESSION['approval_flash'] = $flash;
+    $redirect_status = $_GET['status'] ?? '';
+    header("Location: approval.php" . ($redirect_status !== '' ? '?status=' . urlencode($redirect_status) : ''));
+    exit;
+}
+
+// ================== PROSES SETUJUI / TOLAK SURAT ==================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['proses_approval_surat'])) {
+    $surat_id = (int) ($_POST['surat_id'] ?? 0);
+    $decision = $_POST['decision'] ?? ''; // 'approve' | 'reject'
+    $catatan  = trim($_POST['catatan'] ?? '');
+
+    $status_map_surat = [
+        'approve' => 'Disetujui',
+        'reject'  => 'Ditolak',
+    ];
+
+    if ($surat_id <= 0 || !isset($status_map_surat[$decision])) {
+        $flash = ['type' => 'danger', 'message' => 'Permintaan tidak valid.'];
+    } elseif ($decision === 'reject' && $catatan === '') {
+        $flash = ['type' => 'danger', 'message' => 'Catatan wajib diisi saat menolak surat.'];
+    } else {
+        try {
+            $conn->beginTransaction();
+
+            $cekSurat = $conn->prepare("SELECT dibuat_oleh, status, nomor, perihal FROM surat WHERE id = :id FOR UPDATE");
+            $cekSurat->execute([':id' => $surat_id]);
+            $rowSurat = $cekSurat->fetch();
+
+            if (!$rowSurat) {
+                throw new RuntimeException("Data surat tidak ditemukan.");
+            }
+            if ($rowSurat['status'] !== 'Diajukan') {
+                throw new RuntimeException("Surat ini sudah diproses sebelumnya (" . $rowSurat['status'] . ").");
+            }
+
+            $status_surat_baru = $status_map_surat[$decision];
+
+            $updSurat = $conn->prepare("UPDATE surat SET status = :status WHERE id = :id");
+            $updSurat->execute([
+                ':status' => $status_surat_baru,
+                ':id'     => $surat_id,
+            ]);
+
+            $cekApprovalSurat = $conn->prepare("
+                SELECT id FROM Approval
+                WHERE jenis_pengajuan = 'Surat' AND ref_id = :ref_id AND status = 'Menunggu'
+                ORDER BY id DESC LIMIT 1
+            ");
+            $cekApprovalSurat->execute([':ref_id' => $surat_id]);
+            $approvalRowSurat = $cekApprovalSurat->fetch();
+
+            if ($approvalRowSurat) {
+                $updApprovalSurat = $conn->prepare("
+                    UPDATE Approval
+                    SET status = :status, approver_id = :approver_id, catatan = :catatan, tgl_aksi = NOW()
+                    WHERE id = :id
+                ");
+                $updApprovalSurat->execute([
+                    ':status'      => $status_surat_baru,
+                    ':approver_id' => $admin_id,
+                    ':catatan'     => $catatan !== '' ? $catatan : null,
+                    ':id'          => $approvalRowSurat['id'],
+                ]);
+            } else {
+                $insertApprovalSurat = $conn->prepare("
+                    INSERT INTO Approval (jenis_pengajuan, ref_id, requester_id, approver_id, level, status, catatan, tgl_aksi)
+                    VALUES ('Surat', :ref_id, :requester_id, :approver_id, 1, :status, :catatan, NOW())
+                ");
+                $insertApprovalSurat->execute([
+                    ':ref_id'       => $surat_id,
+                    ':requester_id' => $rowSurat['dibuat_oleh'],
+                    ':approver_id'  => $admin_id,
+                    ':status'       => $status_surat_baru,
+                    ':catatan'      => $catatan !== '' ? $catatan : null,
+                ]);
+            }
+
+            try {
+                $stmtNotifSurat = $conn->prepare("
+                    INSERT INTO Notifikasi (user_id, judul, pesan, modul_terkait, ref_id, sudah_dibaca)
+                    VALUES (:user_id, :judul, :pesan, 'Surat', :ref_id, 0)
+                ");
+                $stmtNotifSurat->execute([
+                    ':user_id' => $rowSurat['dibuat_oleh'],
+                    ':judul'   => $decision === 'approve' ? 'Surat Disetujui' : 'Surat Ditolak',
+                    ':pesan'   => $decision === 'approve'
+                        ? 'Surat "' . $rowSurat['perihal'] . '" telah disetujui Admin.'
+                        : 'Surat "' . $rowSurat['perihal'] . '" ditolak Admin. Catatan: ' . ($catatan !== '' ? $catatan : '-'),
+                    ':ref_id'  => $surat_id,
+                ]);
+            } catch (PDOException $e) {
+                // Jangan gagalkan proses approval hanya karena notifikasi gagal dibuat
+            }
+
+            $conn->commit();
+
+            $flash = [
+                'type' => 'success',
+                'message' => $decision === 'approve'
+                    ? 'Surat berhasil disetujui.'
+                    : 'Surat berhasil ditolak.',
+            ];
+        } catch (Exception $e) {
+            $conn->rollBack();
+            $flash = ['type' => 'danger', 'message' => 'Gagal memproses: ' . $e->getMessage()];
+        }
+    }
+
+    $_SESSION['approval_flash'] = $flash;
+    $redirect_status_surat = $_GET['status_surat'] ?? '';
+    header("Location: approval.php?tab=surat" . ($redirect_status_surat !== '' ? '&status_surat=' . urlencode($redirect_status_surat) : ''));
     exit;
 }
 
@@ -159,12 +322,6 @@ try {
 }
 
 // ================== AMBIL SEMUA UNIT PER PENGAJUAN (1 pengajuan bisa banyak unit) ==================
-// Ini WAJIB dijalankan SETELAH $daftar_pengajuan terisi, karena butuh daftar ID-nya.
-// Bidang diambil lewat JOIN ke jenis_objek_k3 + kategori_objek_k3 (bukan disalin manual),
-// supaya kolom Bidang & kolom Unit bisa dipisah tapi tetap sinkron per unit. jenis_pemeriksaan
-// SEKARANG diambil per unit juga (bukan cuma dari kolom lama di Pengajuan_Pemeriksaan), karena
-// 1 pengajuan bisa memuat unit dengan jenis pemeriksaan yang berbeda-beda (mis. unit A "Baru",
-// unit B "Berkala").
 $unit_per_pengajuan = [];
 if (!empty($daftar_pengajuan)) {
     try {
@@ -191,8 +348,6 @@ if (!empty($daftar_pengajuan)) {
     }
 }
 
-// Ambil daftar unit 1 pengajuan; fallback ke kolom lama (klasifikasi_objek_k3/jenis_objek/jenis_pemeriksaan)
-// kalau belum ada baris di Pengajuan_Pemeriksaan_Unit (data pengajuan lama sebelum fitur per-unit ini ada).
 function ambil_unit_pengajuan(array $p, array $unit_per_pengajuan): array
 {
     if (!empty($unit_per_pengajuan[$p['id']])) {
@@ -205,11 +360,6 @@ function ambil_unit_pengajuan(array $p, array $unit_per_pengajuan): array
     ]];
 }
 
-// ================== KELOMPOKKAN UNIT PER BIDANG ==================
-// Supaya rapi: unit-unit dari Bidang yang SAMA digabung jadi 1 grup (nggak diulang-ulang
-// teks Bidang-nya tiap baris), dan Bidang yang BEDA jelas terpisah blok-nya sendiri-sendiri
-// (nggak dicampur). Urutan grup mengikuti urutan kemunculan pertama tiap Bidang. Tiap unit
-// dalam grup membawa jenis pemeriksaannya masing-masing (bukan lagi 1 nilai untuk semua unit).
 function kelompokkan_unit_per_bidang(array $unit_list): array
 {
     $grup = [];
@@ -226,20 +376,6 @@ function kelompokkan_unit_per_bidang(array $unit_list): array
     return $grup;
 }
 
-// ================== RINGKASAN JENIS PEMERIKSAAN UNTUK 1 PENGAJUAN ==================
-// Dipakai di kolom "Jenis Pemeriksaan" pada tabel: kalau semua unit jenisnya sama,
-// tampil 1 nilai saja; kalau campuran (mis. ada yang Baru & ada yang Berkala),
-// tampilkan semua jenis yang muncul, dipisah koma.
-function ringkas_jenis_pemeriksaan(array $unit_list, ?string $fallback): string
-{
-    $jenis_unique = array_values(array_unique(array_filter(array_column($unit_list, 'jenis'))));
-    if (empty($jenis_unique)) {
-        return $fallback ?? '-';
-    }
-    return implode(', ', $jenis_unique);
-}
-
-// Singkatan jenis pemeriksaan supaya badge tidak terlalu lebar/memanjang di tabel.
 function singkat_jenis_pemeriksaan(?string $jenis): string
 {
     $map = [
@@ -268,30 +404,88 @@ function badge_class_status(string $status): string
     }
 }
 
+// ================== FILTER STATUS SURAT ==================
+$status_filter_surat = $_GET['status_surat'] ?? 'Diajukan';
+$valid_statuses_surat = ['Diajukan', 'Disetujui', 'Ditolak', 'Draft', 'Semua'];
+if (!in_array($status_filter_surat, $valid_statuses_surat, true)) {
+    $status_filter_surat = 'Diajukan';
+}
+
+$counts_surat = [
+    'Diajukan'  => 0,
+    'Disetujui' => 0,
+    'Ditolak'   => 0,
+    'Draft'     => 0,
+];
+try {
+    $stmtCountSurat = $conn->query("SELECT status, COUNT(*) AS jumlah FROM surat GROUP BY status");
+    foreach ($stmtCountSurat->fetchAll() as $c) {
+        if (isset($counts_surat[$c['status']])) {
+            $counts_surat[$c['status']] = (int) $c['jumlah'];
+        }
+    }
+} catch (PDOException $e) {
+    // biarkan default 0 jika query gagal
+}
+
+// ================== AMBIL DAFTAR SURAT ==================
+$daftar_surat = [];
+try {
+    $sqlSurat = "
+        SELECT s.*, u.nama_lengkap AS nama_pembuat, ks.nama AS nama_jenis_surat
+        FROM surat s
+        LEFT JOIN Users u ON s.dibuat_oleh = u.id
+        LEFT JOIN kode_surat ks ON s.kode_id = ks.id
+    ";
+    $paramsSurat = [];
+    if ($status_filter_surat !== 'Semua') {
+        $sqlSurat .= " WHERE s.status = :status ";
+        $paramsSurat[':status'] = $status_filter_surat;
+    }
+    $sqlSurat .= " ORDER BY s.created_at DESC";
+
+    $stmtSurat = $conn->prepare($sqlSurat);
+    $stmtSurat->execute($paramsSurat);
+    $daftar_surat = $stmtSurat->fetchAll();
+} catch (PDOException $e) {
+    $daftar_surat = [];
+}
+
+function badge_class_status_surat(string $status): string
+{
+    switch ($status) {
+        case 'Diajukan':
+            return 'badge-warning';
+        case 'Disetujui':
+            return 'badge-success';
+        case 'Ditolak':
+            return 'badge-danger';
+        case 'Draft':
+        default:
+            return 'badge-secondary';
+    }
+}
+
 include "../includes/header.php";
 include "../includes/sidebar.php";
 include "../includes/topbar.php";
 ?>
 
 <style>
-/* ================= RAPIKAN TABEL APPROVAL ================= */
-
-/* Lebar kolom DIKUNCI (table-layout: fixed) supaya baris tidak "loncat-loncat"
-   tergantung panjang teks; konten yang kepanjangan akan wrap rapi di dalam
-   lebar kolom yang sudah ditentukan, bukan mendorong kolom lain jadi berantakan. */
 .table-custom {
     table-layout: fixed;
     width: 100%;
 }
 .table-custom colgroup col.col-no       { width: 44px; }
-.table-custom colgroup col.col-tanggal  { width: 100px; }
+.table-custom colgroup col.col-tanggal  { width: 110px; }
 .table-custom colgroup col.col-perusahaan { width: 190px; }
 .table-custom colgroup col.col-pengaju  { width: 130px; }
-.table-custom colgroup col.col-unit     { width: 260px; }
-.table-custom colgroup col.col-jenis    { width: 150px; }
-.table-custom colgroup col.col-tgldiinginkan { width: 100px; }
+.table-custom colgroup col.col-unit     { width: 240px; }
+.table-custom colgroup col.col-jenis    { width: 140px; }
+/* Kolom Tgl. Diinginkan dilebarkan supaya muat tanggal + tombol ubah tanggal berdampingan */
+.table-custom colgroup col.col-tgldiinginkan { width: 170px; }
 .table-custom colgroup col.col-status   { width: 110px; }
-.table-custom colgroup col.col-aksi     { width: 170px; }
+.table-custom colgroup col.col-aksi     { width: 210px; }
 
 .table-custom th,
 .table-custom td {
@@ -316,7 +510,6 @@ include "../includes/topbar.php";
     margin-top: 2px;
 }
 
-/* ---- Blok Bidang & Unit: dirapikan jadi kartu kecil per Bidang ---- */
 .bidang-group {
     background: #f8fafc;
     border: 1px solid #eef1f5;
@@ -364,7 +557,6 @@ include "../includes/topbar.php";
     margin-top: 6px;
 }
 
-/* Badge jenis pemeriksaan per unit: warna dibedakan biar cepat dipindai matanya */
 .badge-jenis-unit {
     flex-shrink: 0;
     display: inline-block;
@@ -380,15 +572,43 @@ include "../includes/topbar.php";
 .badge-jenis-unit.jenis-khusus  { background: #fdf2f8; color: #be185d; }
 .badge-jenis-unit.jenis-lainnya { background: #f1f5f9; color: #475569; }
 
-/* Kolom "Jenis Pemeriksaan" (ringkasan): chip abu netral, wrap rapi kalau campuran jenis */
 .jenis-ringkasan {
     display: flex;
     flex-wrap: wrap;
     gap: 4px;
 }
-.jenis-ringkasan .badge-jenis-unit { }
 
-/* Tombol aksi: rata tengah vertikal & horizontal, tidak menempel ke tepi sel */
+/* ---- Sel Tgl. Diinginkan: tanggal + tombol ubah berdampingan ---- */
+.cell-tgl-diinginkan {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+}
+.cell-tgl-diinginkan .tgl-text {
+    white-space: nowrap;
+}
+.btn-ubah-tanggal {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    border: 1px solid #e2e8f0;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: #64748b;
+    font-size: 0.78rem;
+    transition: all .15s ease;
+}
+.btn-ubah-tanggal:hover {
+    background: #eef2ff;
+    border-color: #c7d2fe;
+    color: #4338ca;
+}
+
 .aksi-wrapper {
     display: flex;
     justify-content: center;
@@ -401,12 +621,43 @@ include "../includes/topbar.php";
     white-space: nowrap;
 }
 
-/* Zebra + hover biar mata gampang mengikuti 1 baris penuh ke kanan */
 .table-custom tbody tr:nth-child(even) {
     background: #fafbfc;
 }
 .table-custom tbody tr:hover {
     background: #f1f5f9;
+}
+
+/* ---- Tab navigasi Approval (Pemeriksaan / Surat) ---- */
+.nav-tabs-custom {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid #e2e8f0;
+    list-style: none;
+    padding: 0;
+    margin: 0 0 1.5rem 0;
+}
+.nav-tabs-custom .nav-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 18px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: #64748b;
+    text-decoration: none;
+    border-bottom: 2px solid transparent;
+    border-radius: 8px 8px 0 0;
+    transition: all .15s ease;
+}
+.nav-tabs-custom .nav-link:hover {
+    color: #4338ca;
+    background: #f8fafc;
+}
+.nav-tabs-custom .nav-link.active {
+    color: #4338ca;
+    border-bottom-color: #4338ca;
+    background: #eef2ff;
 }
 </style>
 
@@ -418,6 +669,21 @@ include "../includes/topbar.php";
             <div><?= htmlspecialchars($flash['message']) ?></div>
         </div>
     <?php endif; ?>
+
+    <ul class="nav nav-tabs-custom mb-4">
+        <li class="nav-item">
+            <a class="nav-link <?= $tab_aktif === 'pemeriksaan' ? 'active' : '' ?>" href="approval.php?tab=pemeriksaan">
+                <i class="bi bi-clipboard2-check"></i> Pengajuan Pemeriksaan
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link <?= $tab_aktif === 'surat' ? 'active' : '' ?>" href="approval.php?tab=surat">
+                <i class="bi bi-envelope-paper"></i> Surat
+            </a>
+        </li>
+    </ul>
+
+    <?php if ($tab_aktif === 'pemeriksaan'): ?>
 
     <div class="row g-4 mb-4">
         <div class="col-xl-3 col-md-6 col-12">
@@ -513,7 +779,6 @@ include "../includes/topbar.php";
                                     $jenis_unique = [$p['jenis_pemeriksaan']];
                                 }
 
-                                // Kelas warna badge berdasarkan jenis pemeriksaan (biar konsisten dgn CSS di atas)
                                 $kelas_jenis = function (?string $jenis): string {
                                     $map = [
                                         'Pemeriksaan Baru'    => 'jenis-baru',
@@ -527,7 +792,7 @@ include "../includes/topbar.php";
                             <tr>
                                 <td class="align-middle"><?= $i + 1 ?></td>
                                 <td class="align-middle"><?= htmlspecialchars(date('d M Y', strtotime($p['created_at']))) ?></td>
-                                <td class="cell-perusahaan">
+                                <td class="cell-perusahaan align-middle">
                                     <div class="nama-utama"><?= htmlspecialchars($p['nama_perusahaan'] ?? '-') ?></div>
                                     <?php if (!empty($p['nama_perusahaan_klien']) && $p['nama_perusahaan_klien'] !== $p['nama_perusahaan']): ?>
                                         <div class="sub-info">Data Klien: <?= htmlspecialchars($p['nama_perusahaan_klien']) ?></div>
@@ -536,7 +801,7 @@ include "../includes/topbar.php";
                                         <div class="sub-info"><?= htmlspecialchars($p['kode_klien']) ?></div>
                                     <?php endif; ?>
                                 </td>
-                                <td><?= htmlspecialchars($p['nama_pengaju'] ?? '-') ?></td>
+                                <td class="align-middle"><?= htmlspecialchars($p['nama_pengaju'] ?? '-') ?></td>
                                 <td>
                                     <?php foreach ($grup_bidang as $namaBidang => $daftarUnit): ?>
                                         <div class="bidang-group">
@@ -559,7 +824,7 @@ include "../includes/topbar.php";
                                         <div class="unit-count-note"><?= count($unit_list) ?> unit diajukan</div>
                                     <?php endif; ?>
                                 </td>
-                                <td>
+                                <td class="align-middle">
                                     <?php if (empty($jenis_unique)): ?>
                                         <span class="text-muted fs-7">-</span>
                                     <?php else: ?>
@@ -572,7 +837,15 @@ include "../includes/topbar.php";
                                         </div>
                                     <?php endif; ?>
                                 </td>
-                                <td class="align-middle"><?= $p['tanggal_diinginkan'] ? htmlspecialchars(date('d M Y', strtotime($p['tanggal_diinginkan']))) : '-' ?></td>
+                                <td class="align-middle">
+                                    <div class="cell-tgl-diinginkan">
+                                        <span class="tgl-text"><?= $p['tanggal_diinginkan'] ? htmlspecialchars(date('d M Y', strtotime($p['tanggal_diinginkan']))) : '-' ?></span>
+                                        <button type="button" class="btn-ubah-tanggal" title="Ubah Tanggal Diinginkan"
+                                            onclick="openUbahTanggalModal(<?= (int) $p['id'] ?>, '<?= htmlspecialchars($p['tanggal_diinginkan'] ?? '') ?>', '<?= htmlspecialchars(addslashes($p['nama_perusahaan'] ?? '-')) ?>')">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                    </div>
+                                </td>
                                 <td class="align-middle"><span class="<?= badge_class_status($p['status']) ?>"><?= htmlspecialchars($p['status']) ?></span></td>
                                 <td class="align-middle" style="text-align: center;">
                                     <?php if ($p['status'] === 'Menunggu Verifikasi'): ?>
@@ -599,6 +872,127 @@ include "../includes/topbar.php";
             </table>
         </div>
     </div>
+
+    <?php elseif ($tab_aktif === 'surat'): ?>
+
+    <div class="row g-4 mb-4">
+        <div class="col-xl-3 col-md-6 col-12">
+            <div class="stat-card">
+                <div class="stat-card-info">
+                    <span class="stat-card-title">Diajukan</span>
+                    <span class="stat-card-value"><?= $counts_surat['Diajukan'] ?></span>
+                </div>
+                <div class="stat-card-icon warning"><i class="bi bi-hourglass-split"></i></div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 col-12">
+            <div class="stat-card">
+                <div class="stat-card-info">
+                    <span class="stat-card-title">Disetujui</span>
+                    <span class="stat-card-value"><?= $counts_surat['Disetujui'] ?></span>
+                </div>
+                <div class="stat-card-icon"><i class="bi bi-check2-square"></i></div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 col-12">
+            <div class="stat-card">
+                <div class="stat-card-info">
+                    <span class="stat-card-title">Ditolak</span>
+                    <span class="stat-card-value"><?= $counts_surat['Ditolak'] ?></span>
+                </div>
+                <div class="stat-card-icon danger"><i class="bi bi-x-circle"></i></div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 col-12">
+            <div class="stat-card">
+                <div class="stat-card-info">
+                    <span class="stat-card-title">Draft</span>
+                    <span class="stat-card-value"><?= $counts_surat['Draft'] ?></span>
+                </div>
+                <div class="stat-card-icon"><i class="bi bi-file-earmark-text"></i></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card-box">
+        <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-3">
+            <h5 class="mb-0 fw-bold">Daftar Persetujuan Surat</h5>
+            <form method="GET" class="d-flex gap-2">
+                <input type="hidden" name="tab" value="surat">
+                <select class="select-custom" name="status_surat" style="width: 220px;" onchange="this.form.submit()">
+                    <?php foreach (['Diajukan', 'Disetujui', 'Ditolak', 'Draft', 'Semua'] as $opt): ?>
+                        <option value="<?= htmlspecialchars($opt) ?>" <?= $status_filter_surat === $opt ? 'selected' : '' ?>>
+                            <?= $opt === 'Semua' ? 'Semua Status' : htmlspecialchars($opt) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </form>
+        </div>
+
+        <div class="table-responsive-custom">
+            <table class="table-custom">
+                <colgroup>
+                    <col style="width: 44px;">
+                    <col style="width: 110px;">
+                    <col style="width: 140px;">
+                    <col style="width: 220px;">
+                    <col style="width: 150px;">
+                    <col style="width: 130px;">
+                    <col style="width: 110px;">
+                    <col style="width: 210px;">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th>No</th>
+                        <th>Tgl. Dibuat</th>
+                        <th>Nomor Surat</th>
+                        <th>Perihal</th>
+                        <th>Jenis Surat</th>
+                        <th>Dibuat Oleh</th>
+                        <th>Status</th>
+                        <th style="text-align: center;">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if (empty($daftar_surat)): ?>
+                        <tr>
+                            <td colspan="8" class="text-center text-muted py-4">Tidak ada data surat untuk status ini.</td>
+                        </tr>
+                    <?php else: ?>
+                        <?php foreach ($daftar_surat as $i => $s): ?>
+                            <tr>
+                                <td class="align-middle"><?= $i + 1 ?></td>
+                                <td class="align-middle"><?= htmlspecialchars(date('d M Y', strtotime($s['tgl_dibuat'] ?? $s['created_at']))) ?></td>
+                                <td class="align-middle"><?= htmlspecialchars($s['nomor'] ?? '-') ?></td>
+                                <td class="align-middle"><?= htmlspecialchars($s['perihal'] ?? '-') ?></td>
+                                <td class="align-middle"><?= htmlspecialchars($s['nama_jenis_surat'] ?? ($s['jenis_surat'] ?? '-')) ?></td>
+                                <td class="align-middle"><?= htmlspecialchars($s['nama_pembuat'] ?? '-') ?></td>
+                                <td class="align-middle"><span class="<?= badge_class_status_surat($s['status']) ?>"><?= htmlspecialchars($s['status']) ?></span></td>
+                                <td class="align-middle" style="text-align: center;">
+                                    <?php if ($s['status'] === 'Diajukan'): ?>
+                                        <div class="aksi-wrapper">
+                                            <button type="button" class="btn-primary-custom" style="height:32px; padding:0 12px; font-size:0.8rem;"
+                                                onclick="openApprovalModalSurat(<?= (int) $s['id'] ?>, 'approve', '<?= htmlspecialchars(addslashes($s['perihal'] ?? '-')) ?>')">
+                                                <i class="bi bi-check-lg"></i> Setujui
+                                            </button>
+                                            <button type="button" class="btn-secondary-custom" style="height:32px; padding:0 12px; font-size:0.8rem; color: var(--danger); border-color: var(--danger);"
+                                                onclick="openApprovalModalSurat(<?= (int) $s['id'] ?>, 'reject', '<?= htmlspecialchars(addslashes($s['perihal'] ?? '-')) ?>')">
+                                                <i class="bi bi-x-lg"></i> Tolak
+                                            </button>
+                                        </div>
+                                    <?php else: ?>
+                                        <span class="text-muted fs-7">-</span>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <?php endif; ?>
 </main>
 
 <div class="modal fade modal-custom" id="modalApproval" tabindex="-1" aria-hidden="true">
@@ -621,6 +1015,62 @@ include "../includes/topbar.php";
                 <div class="modal-footer">
                     <button type="button" class="btn-secondary-custom" data-bs-dismiss="modal">Batal</button>
                     <button type="submit" name="proses_approval" class="btn-primary-custom" id="modalApprovalSubmit">Setujui</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Ubah Tanggal Diinginkan -->
+<div class="modal fade modal-custom" id="modalUbahTanggal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form action="approval.php<?= $status_filter !== 'Menunggu Verifikasi' ? '?status=' . urlencode($status_filter) : '' ?>" method="POST">
+                <div class="modal-header">
+                    <h5 class="modal-title">Ubah Tanggal Diinginkan</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-3">Perusahaan: <strong id="modalUbahTanggalNamaKlien">-</strong></p>
+
+                    <input type="hidden" name="pengajuan_id" id="modalUbahTanggalPengajuanId" value="">
+
+                    <label class="form-label fw-semibold fs-7 mb-2">Tanggal Diinginkan Baru</label>
+                    <div class="date-input-wrapper">
+                        <i class="bi bi-calendar-week"></i>
+                        <input type="date" class="form-control-custom" name="tanggal_baru" id="modalUbahTanggalInput" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary-custom" data-bs-dismiss="modal">Batal</button>
+                    <button type="submit" name="ubah_tanggal" class="btn-primary-custom">Simpan Tanggal</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Approval Surat -->
+<div class="modal fade modal-custom" id="modalApprovalSurat" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form action="approval.php?tab=surat<?= $status_filter_surat !== 'Diajukan' ? '&status_surat=' . urlencode($status_filter_surat) : '' ?>" method="POST">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalApprovalSuratTitle">Setujui Surat</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-3">Perihal: <strong id="modalApprovalSuratPerihal">-</strong></p>
+
+                    <input type="hidden" name="surat_id" id="modalApprovalSuratId" value="">
+                    <input type="hidden" name="decision" id="modalApprovalSuratDecision" value="">
+
+                    <label class="form-label fw-semibold fs-7 mb-2" id="modalApprovalSuratCatatanLabel">Catatan (opsional)</label>
+                    <textarea class="textarea-custom" name="catatan" id="modalApprovalSuratCatatan" placeholder="Tulis catatan untuk pembuat surat..."></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary-custom" data-bs-dismiss="modal">Batal</button>
+                    <button type="submit" name="proses_approval_surat" class="btn-primary-custom" id="modalApprovalSuratSubmit">Setujui</button>
                 </div>
             </form>
         </div>
@@ -652,6 +1102,42 @@ function openApprovalModal(pengajuanId, decision, namaKlien) {
     }
 
     const modal = new bootstrap.Modal(document.getElementById('modalApproval'));
+    modal.show();
+}
+
+function openUbahTanggalModal(pengajuanId, tanggalSekarang, namaKlien) {
+    document.getElementById('modalUbahTanggalPengajuanId').value = pengajuanId;
+    document.getElementById('modalUbahTanggalInput').value = tanggalSekarang;
+    document.getElementById('modalUbahTanggalNamaKlien').textContent = namaKlien;
+
+    const modal = new bootstrap.Modal(document.getElementById('modalUbahTanggal'));
+    modal.show();
+}
+
+function openApprovalModalSurat(suratId, decision, perihal) {
+    document.getElementById('modalApprovalSuratId').value = suratId;
+    document.getElementById('modalApprovalSuratDecision').value = decision;
+    document.getElementById('modalApprovalSuratPerihal').textContent = perihal;
+
+    const title = document.getElementById('modalApprovalSuratTitle');
+    const submitBtn = document.getElementById('modalApprovalSuratSubmit');
+    const catatanLabel = document.getElementById('modalApprovalSuratCatatanLabel');
+    const catatanInput = document.getElementById('modalApprovalSuratCatatan');
+    catatanInput.value = '';
+
+    if (decision === 'approve') {
+        title.textContent = 'Setujui Surat';
+        submitBtn.textContent = 'Setujui';
+        catatanLabel.textContent = 'Catatan (opsional)';
+        catatanInput.required = false;
+    } else {
+        title.textContent = 'Tolak Surat';
+        submitBtn.textContent = 'Tolak Surat';
+        catatanLabel.textContent = 'Alasan Penolakan (wajib diisi)';
+        catatanInput.required = true;
+    }
+
+    const modal = new bootstrap.Modal(document.getElementById('modalApprovalSurat'));
     modal.show();
 }
 </script>

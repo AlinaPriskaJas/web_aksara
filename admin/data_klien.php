@@ -24,6 +24,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
 
             if ($stmt->rowCount() > 0) {
                 $flash = ['type' => 'success', 'message' => 'Akun client berhasil ditautkan ke data perusahaan.'];
+
+                // Beri tahu client bahwa akunnya sudah ditautkan ke data perusahaan
+                try {
+                    $stmtNamaKlien = $conn->prepare("SELECT nama_perusahaan FROM Data_Klien WHERE id = :id");
+                    $stmtNamaKlien->execute([':id' => $klien_id]);
+                    $namaPerusahaanKlien = $stmtNamaKlien->fetchColumn() ?: '-';
+
+                    $stmtNotifTautkan = $conn->prepare("
+                        INSERT INTO Notifikasi (user_id, judul, pesan, modul_terkait, ref_id, sudah_dibaca)
+                        VALUES (:user_id, :judul, :pesan, 'Data_Klien', :ref_id, 0)
+                    ");
+                    $stmtNotifTautkan->execute([
+                        ':user_id' => $user_id,
+                        ':judul'   => 'Akun Berhasil Ditautkan',
+                        ':pesan'   => 'Akun Anda telah ditautkan ke data perusahaan "' . $namaPerusahaanKlien . '" oleh Admin.',
+                        ':ref_id'  => $klien_id,
+                    ]);
+                } catch (PDOException $e) {
+                    // Jangan gagalkan proses tautan hanya karena notifikasi gagal dibuat
+                }
             } else {
                 $flash = ['type' => 'danger', 'message' => 'Data perusahaan tersebut sudah ditautkan ke akun lain. Pilih perusahaan lain atau buat baru.'];
             }
@@ -78,9 +98,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
                 ':pic_email'       => $pic_email,
                 ':user_id'         => $user_id,
             ]);
+            $klien_id_baru = (int) $conn->lastInsertId();
 
             $conn->commit();
             $flash = ['type' => 'success', 'message' => "Data perusahaan baru ($kode_klien) berhasil dibuat dan ditautkan ke akun client."];
+
+            // Beri tahu client bahwa akunnya sudah ditautkan ke data perusahaan baru
+            try {
+                $stmtNotifTautkanBaru = $conn->prepare("
+                    INSERT INTO Notifikasi (user_id, judul, pesan, modul_terkait, ref_id, sudah_dibaca)
+                    VALUES (:user_id, :judul, :pesan, 'Data_Klien', :ref_id, 0)
+                ");
+                $stmtNotifTautkanBaru->execute([
+                    ':user_id' => $user_id,
+                    ':judul'   => 'Akun Berhasil Ditautkan',
+                    ':pesan'   => 'Akun Anda telah ditautkan ke data perusahaan "' . $nama_perusahaan . '" (' . $kode_klien . ') oleh Admin.',
+                    ':ref_id'  => $klien_id_baru,
+                ]);
+            } catch (PDOException $e) {
+                // Jangan gagalkan proses tautan hanya karena notifikasi gagal dibuat
+            }
         } catch (PDOException $e) {
             $conn->rollBack();
             $flash = ['type' => 'danger', 'message' => 'Gagal membuat data perusahaan: ' . $e->getMessage()];
@@ -174,6 +211,83 @@ include "../includes/header.php";
 include "../includes/sidebar.php";
 include "../includes/topbar.php";
 ?>
+
+<style>
+/* ---- Sub-tab di dalam form (Data Perusahaan / Data PIC) ---- */
+.subtab-nav {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid #e2e8f0;
+    list-style: none;
+    padding: 0;
+    margin: 0 0 1rem 0;
+}
+.subtab-nav .subtab-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #64748b;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    border-radius: 8px 8px 0 0;
+    cursor: pointer;
+    transition: all .15s ease;
+}
+.subtab-nav .subtab-btn:hover {
+    color: #4338ca;
+    background: #f8fafc;
+}
+.subtab-nav .subtab-btn.active {
+    color: #4338ca;
+    border-bottom-color: #4338ca;
+    background: #eef2ff;
+}
+
+/* ---- Tab utama modal Tautkan: "Pilih Perusahaan yang Sudah Ada" / "Buat Perusahaan Baru" ---- */
+.maintab-nav {
+    display: flex;
+    gap: 4px;
+    border-bottom: 2px solid #e2e8f0;
+    list-style: none;
+    padding: 0;
+    margin: 0 0 1.25rem 0;
+}
+.maintab-nav .nav-item {
+    flex: 1;
+}
+.maintab-nav .nav-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    padding: 10px 14px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #64748b;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    border-radius: 8px 8px 0 0;
+    cursor: pointer;
+    transition: all .15s ease;
+    text-align: center;
+}
+.maintab-nav .nav-link:hover {
+    color: #4338ca;
+    background: #f8fafc;
+}
+.maintab-nav .nav-link.active {
+    color: #4338ca;
+    border-bottom-color: #4338ca;
+    background: #eef2ff;
+}
+</style>
 
 <main class="main-content">
 
@@ -300,12 +414,16 @@ include "../includes/topbar.php";
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <ul class="nav nav-tabs mb-3" id="tabTautkan">
+                <ul class="maintab-nav" id="tabTautkan">
                     <li class="nav-item">
-                        <button class="nav-link active" type="button" onclick="gantiTabTautkan('existing')" id="btnTabExisting">Pilih Perusahaan yang Sudah Ada</button>
+                        <button class="nav-link active" type="button" onclick="gantiTabTautkan('existing')" id="btnTabExisting">
+                            <i class="bi bi-search"></i> Pilih Perusahaan yang Sudah Ada
+                        </button>
                     </li>
                     <li class="nav-item">
-                        <button class="nav-link" type="button" onclick="gantiTabTautkan('baru')" id="btnTabBaru">Buat Perusahaan Baru</button>
+                        <button class="nav-link" type="button" onclick="gantiTabTautkan('baru')" id="btnTabBaru">
+                            <i class="bi bi-plus-lg"></i> Buat Perusahaan Baru
+                        </button>
                     </li>
                 </ul>
 
@@ -340,24 +458,40 @@ include "../includes/topbar.php";
                     <input type="hidden" name="aksi" value="tautkan_baru">
                     <input type="hidden" name="user_id" id="tautkanBaruUserId" value="">
 
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold fs-7 mb-2">Nama Perusahaan *</label>
-                        <input type="text" name="nama_perusahaan" class="form-control-custom" required>
+                    <ul class="subtab-nav">
+                        <li>
+                            <button type="button" class="subtab-btn active" data-subtab-group="baru" data-subtab="perusahaan" onclick="gantiSubTab('baru', 'perusahaan')">
+                                <i class="bi bi-building"></i> Data Perusahaan
+                            </button>
+                        </li>
+                        <li>
+                            <button type="button" class="subtab-btn" data-subtab-group="baru" data-subtab="pic" onclick="gantiSubTab('baru', 'pic')">
+                                <i class="bi bi-person-vcard"></i> Data PIC
+                            </button>
+                        </li>
+                    </ul>
+
+                    <div data-subtab-group="baru" data-subtab-panel="perusahaan" class="subtab-panel">
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold fs-7 mb-2">Nama Perusahaan *</label>
+                            <input type="text" name="nama_perusahaan" class="form-control-custom" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold fs-7 mb-2">Alamat</label>
+                            <textarea class="textarea-custom" name="alamat"></textarea>
+                        </div>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold fs-7 mb-2">Alamat</label>
-                        <textarea class="textarea-custom" name="alamat"></textarea>
-                    </div>
-                    <div class="row g-3 mb-3">
-                        <div class="col-md-4">
+
+                    <div data-subtab-group="baru" data-subtab-panel="pic" class="subtab-panel" style="display:none;">
+                        <div class="mb-3">
                             <label class="form-label fw-semibold fs-7 mb-2">Nama PIC</label>
                             <input type="text" name="pic_nama" class="form-control-custom">
                         </div>
-                        <div class="col-md-4">
+                        <div class="mb-3">
                             <label class="form-label fw-semibold fs-7 mb-2">WhatsApp PIC</label>
                             <input type="text" name="pic_whatsapp" class="form-control-custom">
                         </div>
-                        <div class="col-md-4">
+                        <div class="mb-3">
                             <label class="form-label fw-semibold fs-7 mb-2">Email PIC</label>
                             <input type="email" name="pic_email" class="form-control-custom">
                         </div>
@@ -387,31 +521,47 @@ include "../includes/topbar.php";
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold fs-7 mb-2">Nama Perusahaan *</label>
-                        <input type="text" name="nama_perusahaan" id="editNamaPerusahaan" class="form-control-custom" required>
+                    <ul class="subtab-nav">
+                        <li>
+                            <button type="button" class="subtab-btn active" data-subtab-group="edit" data-subtab="perusahaan" onclick="gantiSubTab('edit', 'perusahaan')">
+                                <i class="bi bi-building"></i> Data Perusahaan
+                            </button>
+                        </li>
+                        <li>
+                            <button type="button" class="subtab-btn" data-subtab-group="edit" data-subtab="pic" onclick="gantiSubTab('edit', 'pic')">
+                                <i class="bi bi-person-vcard"></i> Data PIC
+                            </button>
+                        </li>
+                    </ul>
+
+                    <div data-subtab-group="edit" data-subtab-panel="perusahaan" class="subtab-panel">
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold fs-7 mb-2">Nama Perusahaan *</label>
+                            <input type="text" name="nama_perusahaan" id="editNamaPerusahaan" class="form-control-custom" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold fs-7 mb-2">Alamat</label>
+                            <textarea class="textarea-custom" name="alamat" id="editAlamat"></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold fs-7 mb-2">Status</label>
+                            <select class="select-custom" name="status" id="editStatus">
+                                <option value="Aktif">Aktif</option>
+                                <option value="Non-aktif">Non-aktif</option>
+                            </select>
+                        </div>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold fs-7 mb-2">Alamat</label>
-                        <textarea class="textarea-custom" name="alamat" id="editAlamat"></textarea>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold fs-7 mb-2">Status</label>
-                        <select class="select-custom" name="status" id="editStatus">
-                            <option value="Aktif">Aktif</option>
-                            <option value="Non-aktif">Non-aktif</option>
-                        </select>
-                    </div>
-                    <div class="row g-3">
-                        <div class="col-md-4">
+
+                    <div data-subtab-group="edit" data-subtab-panel="pic" class="subtab-panel" style="display:none;">
+                        <div class="mb-3">
                             <label class="form-label fw-semibold fs-7 mb-2">Nama PIC</label>
                             <input type="text" name="pic_nama" id="editPicNama" class="form-control-custom">
                         </div>
-                        <div class="col-md-4">
+                        <div class="mb-3">
                             <label class="form-label fw-semibold fs-7 mb-2">WhatsApp PIC</label>
                             <input type="text" name="pic_whatsapp" id="editPicWhatsapp" class="form-control-custom">
                         </div>
-                        <div class="col-md-4">
+                        <div class="mb-3">
                             <label class="form-label fw-semibold fs-7 mb-2">Email PIC</label>
                             <input type="email" name="pic_email" id="editPicEmail" class="form-control-custom">
                         </div>
@@ -432,6 +582,7 @@ function openTautkanModal(userId, namaAkun) {
     document.getElementById('tautkanExistingUserId').value = userId;
     document.getElementById('tautkanBaruUserId').value = userId;
     gantiTabTautkan('existing');
+    gantiSubTab('baru', 'perusahaan');
     new bootstrap.Modal(document.getElementById('modalTautkan')).show();
 }
 
@@ -454,6 +605,16 @@ function gantiTabTautkan(tab) {
     }
 }
 
+// Sub-tab generik: dipakai untuk memisahkan "Data Perusahaan" & "Data PIC" di dalam form
+function gantiSubTab(group, tab) {
+    document.querySelectorAll('.subtab-btn[data-subtab-group="' + group + '"]').forEach(function (btn) {
+        btn.classList.toggle('active', btn.dataset.subtab === tab);
+    });
+    document.querySelectorAll('.subtab-panel[data-subtab-group="' + group + '"]').forEach(function (panel) {
+        panel.style.display = (panel.dataset.subtabPanel === tab) ? 'block' : 'none';
+    });
+}
+
 function openEditModal(data) {
     document.getElementById('editKlienId').value = data.klien_id;
     document.getElementById('editNamaPerusahaan').value = data.nama_perusahaan || '';
@@ -462,6 +623,7 @@ function openEditModal(data) {
     document.getElementById('editPicNama').value = data.pic_nama || '';
     document.getElementById('editPicWhatsapp').value = data.pic_whatsapp || '';
     document.getElementById('editPicEmail').value = data.pic_email || '';
+    gantiSubTab('edit', 'perusahaan');
     new bootstrap.Modal(document.getElementById('modalEditKlien')).show();
 }
 </script>
