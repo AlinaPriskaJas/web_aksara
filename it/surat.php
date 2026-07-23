@@ -145,7 +145,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
                 ?? $dataForm['nama_perusahaan']
                 ?? $dataForm['nama_perusahaan_tujuan']
                 ?? $dataForm['item_nama_perusahaan']
-                ?? $dataForm['nama_perusahaan_pihak_pertama']
                 ?? '-';
 
             $statusInput = trim($_POST['status'] ?? '') ?: 'Draft';
@@ -493,9 +492,11 @@ $file_template_hilang = $kodeTerpilih && !is_file(BASE_PATH . '/' . $kodeTerpili
 $auto_fields_template = ($kodeTerpilih && !$file_template_hilang && $kodeTerpilih['format'] === 'word_pdf')
     ? scanAutoFieldsFromDocx(BASE_PATH . '/' . $kodeTerpilih['file_path'])
     : [];
+$ada_total = in_array('total', $auto_fields_template, true);
+$ada_ppn = in_array('ppn', $auto_fields_template, true);
 $ada_pph23 = in_array('pph_23', $auto_fields_template, true);
-
-$ada_ringkasan_total = !empty(array_intersect(['total', 'ppn', 'total_bayar'], $auto_fields_template));
+$ada_total_bayar = in_array('total_bayar', $auto_fields_template, true);
+$ada_ringkasan_total = $ada_total || $ada_ppn || $ada_pph23 || $ada_total_bayar;
 
 $nilai_dinamis = [];
 foreach ($fields_dinamis as $f) {
@@ -689,11 +690,9 @@ include "../includes/topbar.php";
                                     <td><?= e($s['jenis_surat_kode']) ?> <span
                                             class="text-secondary">(<?= e($s['kode_str']) ?>)</span></td>
                                     <td style="white-space:normal; word-break:break-word; max-width:280px;">
-                                        <?= e($s['perihal']) ?>
-                                    </td>
+                                        <?= e($s['perihal']) ?></td>
                                     <td style="white-space:normal; word-break:break-word; max-width:200px;">
-                                        <?= e($s['tujuan']) ?>
-                                    </td>
+                                        <?= e($s['tujuan']) ?></td>
                                     <td>
                                         <?php if ($suratMilikSaya): ?>
                                             <span class="badge-success">Saya</span>
@@ -852,11 +851,9 @@ include "../includes/topbar.php";
                                     </td>
                                     <td><?= e($s['jenis_surat_kode']) ?></td>
                                     <td style="white-space:normal; word-break:break-word; max-width:280px;">
-                                        <?= e($s['perihal']) ?>
-                                    </td>
+                                        <?= e($s['perihal']) ?></td>
                                     <td style="white-space:normal; word-break:break-word; max-width:200px;">
-                                        <?= e($s['tujuan']) ?>
-                                    </td>
+                                        <?= e($s['tujuan']) ?></td>
                                     <td><?= !empty($s['tgl_dibuat']) ? date('d-m-Y', strtotime($s['tgl_dibuat'])) : '-' ?>
                                     </td>
                                     <td><span class="<?= badgeStatus($s['status'] ?? '') ?>"><?= e($s['status']) ?></span>
@@ -1163,7 +1160,7 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
                                                             <?php
                                                             $isHarga = isKolomHarga($kolom['field']);
                                                             $isQty = isKolomQty($kolom['field']);
-                                                            $placeholderKolom = $isHarga ? 'cth: 6055000' : ($isQty ? 'cth: 3 / 3 unit / 3 orang' : '');
+                                                            $placeholderKolom = $isHarga ? 'cth: 6055000' : ($isQty ? 'cth: 3 unit / 5 orang' : '');
                                                             ?>
                                                             <td>
                                                                 <input type="text"
@@ -1454,22 +1451,29 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
                             </div>
 
                             <?php if ($ada_ringkasan_total): ?>
-                                <div id="blok-ringkasan-total" data-ada-pph23="<?= $ada_pph23 ? '1' : '0' ?>">
-                                    <div class="ringkasan-total-row">
-                                        <span>Total</span><span id="preview-total" style="font-family:monospace;">Rp. 0</span>
-                                    </div>
-                                    <div class="ringkasan-total-row">
-                                        <span>PPN (11%)</span><span id="preview-ppn" style="font-family:monospace;">Rp. 0</span>
-                                    </div>
+                                <div id="blok-ringkasan-total" data-ada-pph23="<?= $ada_pph23 ? '1' : '0' ?>"
+                                    data-ada-ppn="<?= $ada_ppn ? '1' : '0' ?>">
+                                    <?php if ($ada_total): ?>
+                                        <div class="ringkasan-total-row">
+                                            <span>Total</span><span id="preview-total" style="font-family:monospace;">Rp. 0</span>
+                                        </div>
+                                    <?php endif; ?>
+                                    <?php if ($ada_ppn): ?>
+                                        <div class="ringkasan-total-row">
+                                            <span>PPN (11%)</span><span id="preview-ppn" style="font-family:monospace;">Rp. 0</span>
+                                        </div>
+                                    <?php endif; ?>
                                     <?php if ($ada_pph23): ?>
                                         <div class="ringkasan-total-row">
                                             <span>PPH 23 (2%)</span><span id="preview-pph" style="font-family:monospace;">Rp. 0</span>
                                         </div>
                                     <?php endif; ?>
-                                    <div class="ringkasan-total-row total-bayar">
-                                        <span>Total Bayar</span><span id="preview-total-bayar" style="font-family:monospace;">Rp.
-                                            0</span>
-                                    </div>
+                                    <?php if ($ada_total_bayar): ?>
+                                        <div class="ringkasan-total-row total-bayar">
+                                            <span>Total Bayar</span><span id="preview-total-bayar" style="font-family:monospace;">Rp.
+                                                0</span>
+                                        </div>
+                                    <?php endif; ?>
                                 </div>
 
                                 <script>

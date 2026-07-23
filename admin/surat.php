@@ -1158,14 +1158,11 @@ $file_template_hilang = $kodeTerpilih && !is_file(BASE_PATH . '/' . $kodeTerpili
 $auto_fields_template = ($kodeTerpilih && !$file_template_hilang && $kodeTerpilih['format'] === 'word_pdf')
     ? scanAutoFieldsFromDocx(BASE_PATH . '/' . $kodeTerpilih['file_path'])
     : [];
+$ada_total = in_array('total', $auto_fields_template, true);
+$ada_ppn = in_array('ppn', $auto_fields_template, true);
 $ada_pph23 = in_array('pph_23', $auto_fields_template, true);
-// Panel "Ringkasan Total" (Total/PPN/PPH/Total Bayar) HANYA ditampilkan kalau
-// template Word memang benar-benar punya salah satu placeholder ini
-// (dibaca langsung dari isi dokumen lewat scanAutoFieldsFromDocx()).
-// Sebelumnya panel ini ikut muncul hanya karena tabel item punya kolom
-// harga, walau template tidak punya ${total}/${ppn}/${total_bayar} sama
-// sekali -- itu yang bikin box "Rp. 0" nongol padahal tidak relevan.
-$ada_ringkasan_total = !empty(array_intersect(['total', 'ppn', 'total_bayar'], $auto_fields_template));
+$ada_total_bayar = in_array('total_bayar', $auto_fields_template, true);
+$ada_ringkasan_total = $ada_total || $ada_ppn || $ada_pph23 || $ada_total_bayar;
 
 $nilai_dinamis = [];
 foreach ($fields_dinamis as $f) {
@@ -2218,22 +2215,29 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
                             </div>
 
                             <?php if ($ada_ringkasan_total): ?>
-                                <div id="blok-ringkasan-total" data-ada-pph23="<?= $ada_pph23 ? '1' : '0' ?>">
-                                    <div class="ringkasan-total-row">
-                                        <span>Total</span><span id="preview-total" style="font-family:monospace;">Rp. 0</span>
-                                    </div>
-                                    <div class="ringkasan-total-row">
-                                        <span>PPN (11%)</span><span id="preview-ppn" style="font-family:monospace;">Rp. 0</span>
-                                    </div>
+                                <div id="blok-ringkasan-total" data-ada-pph23="<?= $ada_pph23 ? '1' : '0' ?>"
+                                    data-ada-ppn="<?= $ada_ppn ? '1' : '0' ?>">
+                                    <?php if ($ada_total): ?>
+                                        <div class="ringkasan-total-row">
+                                            <span>Total</span><span id="preview-total" style="font-family:monospace;">Rp. 0</span>
+                                        </div>
+                                    <?php endif; ?>
+                                    <?php if ($ada_ppn): ?>
+                                        <div class="ringkasan-total-row">
+                                            <span>PPN (11%)</span><span id="preview-ppn" style="font-family:monospace;">Rp. 0</span>
+                                        </div>
+                                    <?php endif; ?>
                                     <?php if ($ada_pph23): ?>
                                         <div class="ringkasan-total-row">
                                             <span>PPH 23 (2%)</span><span id="preview-pph" style="font-family:monospace;">Rp. 0</span>
                                         </div>
                                     <?php endif; ?>
-                                    <div class="ringkasan-total-row total-bayar">
-                                        <span>Total Bayar</span><span id="preview-total-bayar" style="font-family:monospace;">Rp.
-                                            0</span>
-                                    </div>
+                                    <?php if ($ada_total_bayar): ?>
+                                        <div class="ringkasan-total-row total-bayar">
+                                            <span>Total Bayar</span><span id="preview-total-bayar" style="font-family:monospace;">Rp.
+                                                0</span>
+                                        </div>
+                                    <?php endif; ?>
                                 </div>
 
                                 <script>
