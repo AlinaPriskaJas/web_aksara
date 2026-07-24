@@ -132,27 +132,123 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['proses_approval'])) {
     exit;
 }
 
-// ================== PROSES UBAH TANGGAL DIINGINKAN ==================
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ubah_tanggal'])) {
-    $pengajuan_id = (int) ($_POST['pengajuan_id'] ?? 0);
-    $tanggal_baru = trim($_POST['tanggal_baru'] ?? '');
+// ================== PROSES EDIT PENGAJUAN (semua kolom, bukan cuma tanggal) ==================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_pengajuan'])) {
+    $pengajuan_id      = (int) ($_POST['pengajuan_id'] ?? 0);
+    $nama_perusahaan   = trim($_POST['nama_perusahaan'] ?? '');
+    $diajukan_oleh     = (int) ($_POST['diajukan_oleh'] ?? 0);
+    $tanggal_baru      = trim($_POST['tanggal_diinginkan'] ?? '');
 
-    if ($pengajuan_id <= 0 || $tanggal_baru === '') {
-        $flash = ['type' => 'danger', 'message' => 'Tanggal baru wajib diisi.'];
+    $unit_id_raw    = $_POST['unit_id'] ?? [];
+    $unit_nama_raw  = $_POST['unit_nama'] ?? [];
+    $unit_jenis_raw = $_POST['unit_jenis'] ?? [];
+    $unit_hapus_raw = $_POST['unit_hapus'] ?? '';
+
+    $unit_id_raw    = is_array($unit_id_raw) ? $unit_id_raw : [];
+    $unit_nama_raw  = is_array($unit_nama_raw) ? $unit_nama_raw : [];
+    $unit_jenis_raw = is_array($unit_jenis_raw) ? $unit_jenis_raw : [];
+
+    // Susun baris unit yang masih valid (nama tidak kosong)
+    $unit_rows = [];
+    foreach ($unit_nama_raw as $idx => $nama) {
+        $nama = trim((string) $nama);
+        if ($nama === '') continue;
+        $unit_rows[] = [
+            'id'    => isset($unit_id_raw[$idx]) ? (int) $unit_id_raw[$idx] : 0,
+            'nama'  => $nama,
+            'jenis' => trim((string) ($unit_jenis_raw[$idx] ?? '')),
+        ];
+    }
+
+    // ID unit lama yang dihapus user lewat tombol "Hapus" di modal
+    $unit_hapus_ids = array_filter(array_map('intval', explode(',', $unit_hapus_raw)));
+
+    if ($pengajuan_id <= 0 || $nama_perusahaan === '' || $diajukan_oleh <= 0 || $tanggal_baru === '') {
+        $flash = ['type' => 'danger', 'message' => 'Nama Perusahaan, Diajukan Oleh, dan Tanggal Diinginkan wajib diisi.'];
+    } elseif (empty($unit_rows)) {
+        $flash = ['type' => 'danger', 'message' => 'Minimal harus ada 1 unit/objek yang diperiksa.'];
     } else {
         try {
-            $stmt = $conn->prepare("
+            $conn->beginTransaction();
+
+            $cekPengajuan = $conn->prepare("SELECT id FROM Pengajuan_Pemeriksaan WHERE id = :id FOR UPDATE");
+            $cekPengajuan->execute([':id' => $pengajuan_id]);
+            if (!$cekPengajuan->fetch()) {
+                throw new RuntimeException("Data pengajuan tidak ditemukan.");
+            }
+
+            $cekUser = $conn->prepare("SELECT id FROM Users WHERE id = :id");
+            $cekUser->execute([':id' => $diajukan_oleh]);
+            if (!$cekUser->fetch()) {
+                throw new RuntimeException("Pengaju yang dipilih tidak valid.");
+            }
+
+            // Ringkasan/legacy: kolom jenis_pemeriksaan & jenis_objek di Pengajuan_Pemeriksaan
+            // mengikuti unit pertama (urutan teratas) agar halaman lain yang masih baca kolom ini tetap konsisten.
+            $unit_utama = $unit_rows[0];
+
+            $updPengajuan = $conn->prepare("
                 UPDATE Pengajuan_Pemeriksaan
-                SET tanggal_diinginkan = :tanggal
+                SET nama_perusahaan   = :nama_perusahaan,
+                    diajukan_oleh     = :diajukan_oleh,
+                    tanggal_diinginkan = :tanggal,
+                    jenis_pemeriksaan = :jenis_pemeriksaan,
+                    jenis_objek       = :jenis_objek
                 WHERE id = :id
             ");
-            $stmt->execute([
-                ':tanggal' => $tanggal_baru,
-                ':id'      => $pengajuan_id,
+            $updPengajuan->execute([
+                ':nama_perusahaan'   => $nama_perusahaan,
+                ':diajukan_oleh'     => $diajukan_oleh,
+                ':tanggal'           => $tanggal_baru,
+                ':jenis_pemeriksaan' => $unit_utama['jenis'] !== '' ? $unit_utama['jenis'] : null,
+                ':jenis_objek'       => $unit_utama['nama'],
+                ':id'                => $pengajuan_id,
             ]);
-            $flash = ['type' => 'success', 'message' => 'Tanggal diinginkan berhasil diperbarui.'];
-        } catch (PDOException $e) {
-            $flash = ['type' => 'danger', 'message' => 'Gagal memperbarui tanggal: ' . $e->getMessage()];
+
+            // Hapus unit yang dibuang user (kalau ada)
+            if (!empty($unit_hapus_ids)) {
+                $placeholders = implode(',', array_fill(0, count($unit_hapus_ids), '?'));
+                $delUnit = $conn->prepare("
+                    DELETE FROM Pengajuan_Pemeriksaan_Unit
+                    WHERE pengajuan_id = ? AND id IN ($placeholders)
+                ");
+                $delUnit->execute(array_merge([$pengajuan_id], $unit_hapus_ids));
+            }
+
+            $updUnit = $conn->prepare("
+                UPDATE Pengajuan_Pemeriksaan_Unit
+                SET nama_unit = :nama_unit, jenis_pemeriksaan = :jenis_pemeriksaan, urutan = :urutan
+                WHERE id = :id AND pengajuan_id = :pengajuan_id
+            ");
+            $insUnit = $conn->prepare("
+                INSERT INTO Pengajuan_Pemeriksaan_Unit (pengajuan_id, id_jenis, nama_unit, jenis_pemeriksaan, urutan)
+                VALUES (:pengajuan_id, NULL, :nama_unit, :jenis_pemeriksaan, :urutan)
+            ");
+
+            foreach ($unit_rows as $urutan => $unit) {
+                if ($unit['id'] > 0) {
+                    $updUnit->execute([
+                        ':nama_unit'         => $unit['nama'],
+                        ':jenis_pemeriksaan' => $unit['jenis'] !== '' ? $unit['jenis'] : null,
+                        ':urutan'            => $urutan,
+                        ':id'                => $unit['id'],
+                        ':pengajuan_id'      => $pengajuan_id,
+                    ]);
+                } else {
+                    $insUnit->execute([
+                        ':pengajuan_id'      => $pengajuan_id,
+                        ':nama_unit'         => $unit['nama'],
+                        ':jenis_pemeriksaan' => $unit['jenis'] !== '' ? $unit['jenis'] : null,
+                        ':urutan'            => $urutan,
+                    ]);
+                }
+            }
+
+            $conn->commit();
+            $flash = ['type' => 'success', 'message' => 'Pengajuan berhasil diperbarui.'];
+        } catch (Exception $e) {
+            $conn->rollBack();
+            $flash = ['type' => 'danger', 'message' => 'Gagal memperbarui pengajuan: ' . $e->getMessage()];
         }
     }
 
@@ -328,7 +424,7 @@ if (!empty($daftar_pengajuan)) {
         $ids = array_column($daftar_pengajuan, 'id');
         $placeholders = implode(',', array_fill(0, count($ids), '?'));
         $stmtUnit = $conn->prepare("
-            SELECT pu.pengajuan_id, pu.nama_unit, pu.jenis_pemeriksaan, k.nama_kategori AS bidang
+            SELECT pu.id, pu.pengajuan_id, pu.nama_unit, pu.jenis_pemeriksaan, k.nama_kategori AS bidang
             FROM Pengajuan_Pemeriksaan_Unit pu
             LEFT JOIN jenis_objek_k3 j ON j.id_jenis = pu.id_jenis
             LEFT JOIN kategori_objek_k3 k ON k.id_kategori = j.id_kategori
@@ -338,6 +434,7 @@ if (!empty($daftar_pengajuan)) {
         $stmtUnit->execute($ids);
         foreach ($stmtUnit->fetchAll() as $u) {
             $unit_per_pengajuan[$u['pengajuan_id']][] = [
+                'id'     => (int) $u['id'],
                 'bidang' => $u['bidang'],
                 'unit'   => $u['nama_unit'],
                 'jenis'  => $u['jenis_pemeriksaan'],
@@ -354,6 +451,7 @@ function ambil_unit_pengajuan(array $p, array $unit_per_pengajuan): array
         return $unit_per_pengajuan[$p['id']];
     }
     return [[
+        'id'     => 0,
         'bidang' => $p['klasifikasi_objek_k3'] ?? null,
         'unit'   => $p['jenis_objek'] ?? null,
         'jenis'  => $p['jenis_pemeriksaan'] ?? null,
@@ -374,6 +472,35 @@ function kelompokkan_unit_per_bidang(array $unit_list): array
         ];
     }
     return $grup;
+}
+
+function get_enum_values(PDO $conn, string $table, string $column): array
+{
+    try {
+        $stmt = $conn->prepare("SHOW COLUMNS FROM `$table` LIKE :column");
+        $stmt->execute([':column' => $column]);
+        $col = $stmt->fetch();
+        if (!$col || !preg_match("/^enum\((.*)\)$/i", $col['Type'], $matches)) {
+            return [];
+        }
+        return str_getcsv($matches[1], ',', "'");
+    } catch (PDOException $e) {
+        return [];
+    }
+}
+
+// ================== DATA PENDUKUNG UNTUK MODAL EDIT PENGAJUAN ==================
+$daftar_users_pengaju = [];
+try {
+    $stmtUsers = $conn->query("SELECT id, nama_lengkap, role FROM Users ORDER BY nama_lengkap ASC");
+    $daftar_users_pengaju = $stmtUsers->fetchAll();
+} catch (PDOException $e) {
+    $daftar_users_pengaju = [];
+}
+
+$daftar_jenis_pemeriksaan_opsi = get_enum_values($conn, 'Pengajuan_Pemeriksaan_Unit', 'jenis_pemeriksaan');
+if (empty($daftar_jenis_pemeriksaan_opsi)) {
+    $daftar_jenis_pemeriksaan_opsi = ['Pemeriksaan Baru', 'Pemeriksaan Berkala', 'Pemeriksaan Ulang', 'Pemeriksaan Khusus'];
 }
 
 function singkat_jenis_pemeriksaan(?string $jenis): string
@@ -838,18 +965,33 @@ include "../includes/topbar.php";
                                     <?php endif; ?>
                                 </td>
                                 <td class="align-middle">
-                                    <div class="cell-tgl-diinginkan">
-                                        <span class="tgl-text"><?= $p['tanggal_diinginkan'] ? htmlspecialchars(date('d M Y', strtotime($p['tanggal_diinginkan']))) : '-' ?></span>
-                                        <button type="button" class="btn-ubah-tanggal" title="Ubah Tanggal Diinginkan"
-                                            onclick="openUbahTanggalModal(<?= (int) $p['id'] ?>, '<?= htmlspecialchars($p['tanggal_diinginkan'] ?? '') ?>', '<?= htmlspecialchars(addslashes($p['nama_perusahaan'] ?? '-')) ?>')">
-                                            <i class="bi bi-pencil"></i>
-                                        </button>
-                                    </div>
+                                    <span class="tgl-text"><?= $p['tanggal_diinginkan'] ? htmlspecialchars(date('d M Y', strtotime($p['tanggal_diinginkan']))) : '-' ?></span>
                                 </td>
                                 <td class="align-middle"><span class="<?= badge_class_status($p['status']) ?>"><?= htmlspecialchars($p['status']) ?></span></td>
                                 <td class="align-middle" style="text-align: center;">
-                                    <?php if ($p['status'] === 'Menunggu Verifikasi'): ?>
-                                        <div class="aksi-wrapper">
+                                    <?php
+                                        $edit_payload = json_encode([
+                                            'id'                 => (int) $p['id'],
+                                            'nama_perusahaan'    => $p['nama_perusahaan'] ?? '',
+                                            'diajukan_oleh'      => (int) ($p['diajukan_oleh'] ?? 0),
+                                            'tanggal_diinginkan' => $p['tanggal_diinginkan'] ?? '',
+                                            'units'              => array_map(function ($u) {
+                                                return [
+                                                    'id'    => (int) ($u['id'] ?? 0),
+                                                    'nama'  => $u['unit'] ?? '',
+                                                    'jenis' => $u['jenis'] ?? '',
+                                                ];
+                                            }, $unit_list),
+                                        ], JSON_UNESCAPED_UNICODE);
+                                    ?>
+                                    <div class="aksi-wrapper">
+                                        <button type="button" class="btn-secondary-custom btn-edit-pengajuan" style="height:32px; padding:0 12px; font-size:0.8rem;"
+                                            title="Edit Pengajuan"
+                                            data-edit='<?= htmlspecialchars($edit_payload, ENT_QUOTES, 'UTF-8') ?>'
+                                            onclick="openEditPengajuanModal(this)">
+                                            <i class="bi bi-pencil"></i> Edit
+                                        </button>
+                                        <?php if ($p['status'] === 'Menunggu Verifikasi'): ?>
                                             <button type="button" class="btn-primary-custom" style="height:32px; padding:0 12px; font-size:0.8rem;"
                                                 onclick="openApprovalModal(<?= (int) $p['id'] ?>, 'approve', '<?= htmlspecialchars(addslashes($p['nama_perusahaan'] ?? '-')) ?>')">
                                                 <i class="bi bi-check-lg"></i> Setujui
@@ -858,12 +1000,12 @@ include "../includes/topbar.php";
                                                 onclick="openApprovalModal(<?= (int) $p['id'] ?>, 'reject', '<?= htmlspecialchars(addslashes($p['nama_perusahaan'] ?? '-')) ?>')">
                                                 <i class="bi bi-x-lg"></i> Tolak
                                             </button>
-                                        </div>
-                                    <?php else: ?>
-                                        <span class="text-muted fs-7">
-                                            <?= !empty($p['catatan_admin']) ? htmlspecialchars($p['catatan_admin']) : '-' ?>
-                                        </span>
-                                    <?php endif; ?>
+                                        <?php else: ?>
+                                            <span class="text-muted fs-7 d-block w-100 mt-1">
+                                                <?= !empty($p['catatan_admin']) ? htmlspecialchars($p['catatan_admin']) : '-' ?>
+                                            </span>
+                                        <?php endif; ?>
+                                    </div>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -1021,29 +1163,56 @@ include "../includes/topbar.php";
     </div>
 </div>
 
-<!-- Modal Ubah Tanggal Diinginkan -->
-<div class="modal fade modal-custom" id="modalUbahTanggal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
+<!-- Modal Edit Pengajuan (semua kolom) -->
+<div class="modal fade modal-custom" id="modalEditPengajuan" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content">
-            <form action="approval.php<?= $status_filter !== 'Menunggu Verifikasi' ? '?status=' . urlencode($status_filter) : '' ?>" method="POST">
+            <form action="approval.php<?= $status_filter !== 'Menunggu Verifikasi' ? '?status=' . urlencode($status_filter) : '' ?>" method="POST" id="formEditPengajuan">
                 <div class="modal-header">
-                    <h5 class="modal-title">Ubah Tanggal Diinginkan</h5>
+                    <h5 class="modal-title">Edit Pengajuan Pemeriksaan</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="mb-3">Perusahaan: <strong id="modalUbahTanggalNamaKlien">-</strong></p>
+                    <input type="hidden" name="pengajuan_id" id="editPengajuanId" value="">
+                    <input type="hidden" name="unit_hapus" id="editUnitHapus" value="">
 
-                    <input type="hidden" name="pengajuan_id" id="modalUbahTanggalPengajuanId" value="">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-7">
+                            <label class="form-label fw-semibold fs-7 mb-2">Nama Perusahaan</label>
+                            <input type="text" class="form-control-custom" name="nama_perusahaan" id="editNamaPerusahaan" required>
+                        </div>
+                        <div class="col-md-5">
+                            <label class="form-label fw-semibold fs-7 mb-2">Diajukan Oleh</label>
+                            <select class="select-custom w-100" name="diajukan_oleh" id="editDiajukanOleh" required>
+                                <?php foreach ($daftar_users_pengaju as $u): ?>
+                                    <option value="<?= (int) $u['id'] ?>"><?= htmlspecialchars($u['nama_lengkap']) ?> (<?= htmlspecialchars($u['role']) ?>)</option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                    </div>
 
-                    <label class="form-label fw-semibold fs-7 mb-2">Tanggal Diinginkan Baru</label>
-                    <div class="date-input-wrapper">
-                        <i class="bi bi-calendar-week"></i>
-                        <input type="date" class="form-control-custom" name="tanggal_baru" id="modalUbahTanggalInput" required>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold fs-7 mb-2">Tanggal Diinginkan</label>
+                        <div class="date-input-wrapper">
+                            <i class="bi bi-calendar-week"></i>
+                            <input type="date" class="form-control-custom" name="tanggal_diinginkan" id="editTanggalDiinginkan" required>
+                        </div>
+                    </div>
+
+                    <div class="mb-2 d-flex align-items-center justify-content-between">
+                        <label class="form-label fw-semibold fs-7 mb-0">Bidang / Unit yang Diperiksa</label>
+                        <button type="button" class="btn-secondary-custom" style="height:30px; padding:0 10px; font-size:0.78rem;" onclick="tambahBarisUnitEdit()">
+                            <i class="bi bi-plus-lg"></i> Tambah Unit
+                        </button>
+                    </div>
+                    <div id="editUnitRows"></div>
+                    <div class="form-text fs-8 text-muted mt-1">
+                        Kategori/Bidang unit mengikuti data master dan tidak berubah otomatis saat nama unit diedit bebas.
                     </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn-secondary-custom" data-bs-dismiss="modal">Batal</button>
-                    <button type="submit" name="ubah_tanggal" class="btn-primary-custom">Simpan Tanggal</button>
+                    <button type="submit" name="edit_pengajuan" class="btn-primary-custom">Simpan Perubahan</button>
                 </div>
             </form>
         </div>
@@ -1105,12 +1274,72 @@ function openApprovalModal(pengajuanId, decision, namaKlien) {
     modal.show();
 }
 
-function openUbahTanggalModal(pengajuanId, tanggalSekarang, namaKlien) {
-    document.getElementById('modalUbahTanggalPengajuanId').value = pengajuanId;
-    document.getElementById('modalUbahTanggalInput').value = tanggalSekarang;
-    document.getElementById('modalUbahTanggalNamaKlien').textContent = namaKlien;
+// ================== EDIT PENGAJUAN (semua kolom) ==================
+const jenisPemeriksaanOptions = <?= json_encode($daftar_jenis_pemeriksaan_opsi, JSON_UNESCAPED_UNICODE) ?>;
 
-    const modal = new bootstrap.Modal(document.getElementById('modalUbahTanggal'));
+function escapeHtmlAttr(str) {
+    const div = document.createElement('div');
+    div.textContent = str || '';
+    return div.innerHTML;
+}
+
+function buatOpsiJenisPemeriksaan(selected) {
+    let html = '<option value="">- Jenis Pemeriksaan -</option>';
+    jenisPemeriksaanOptions.forEach(function (opt) {
+        html += '<option value="' + escapeHtmlAttr(opt) + '"' + (opt === selected ? ' selected' : '') + '>' + escapeHtmlAttr(opt) + '</option>';
+    });
+    return html;
+}
+
+function buatBarisUnitEdit(unit) {
+    unit = unit || { id: 0, nama: '', jenis: '' };
+    const wrapper = document.createElement('div');
+    wrapper.className = 'edit-unit-row d-flex gap-2 align-items-start mb-2';
+    wrapper.innerHTML =
+        '<input type="hidden" name="unit_id[]" value="' + (unit.id || 0) + '">' +
+        '<input type="text" class="form-control-custom" name="unit_nama[]" placeholder="Nama Unit / Objek" style="flex:2;" value="' + escapeHtmlAttr(unit.nama) + '" required>' +
+        '<select class="select-custom" name="unit_jenis[]" style="flex:1;">' + buatOpsiJenisPemeriksaan(unit.jenis) + '</select>' +
+        '<button type="button" class="btn-secondary-custom" style="height:38px; padding:0 10px; color:var(--danger); border-color:var(--danger);" ' +
+        'onclick="hapusBarisUnitEdit(this, ' + (unit.id || 0) + ')" title="Hapus unit ini"><i class="bi bi-trash"></i></button>';
+    return wrapper;
+}
+
+function tambahBarisUnitEdit() {
+    document.getElementById('editUnitRows').appendChild(buatBarisUnitEdit());
+}
+
+function hapusBarisUnitEdit(btn, unitId) {
+    const rows = document.getElementById('editUnitRows');
+    if (rows.children.length <= 1) {
+        alert('Minimal harus ada 1 unit/objek yang diperiksa.');
+        return;
+    }
+    if (unitId) {
+        const hiddenHapus = document.getElementById('editUnitHapus');
+        const existing = hiddenHapus.value ? hiddenHapus.value.split(',').filter(Boolean) : [];
+        existing.push(String(unitId));
+        hiddenHapus.value = existing.join(',');
+    }
+    btn.closest('.edit-unit-row').remove();
+}
+
+function openEditPengajuanModal(btn) {
+    const data = JSON.parse(btn.getAttribute('data-edit'));
+
+    document.getElementById('editPengajuanId').value = data.id;
+    document.getElementById('editNamaPerusahaan').value = data.nama_perusahaan || '';
+    document.getElementById('editDiajukanOleh').value = data.diajukan_oleh || '';
+    document.getElementById('editTanggalDiinginkan').value = data.tanggal_diinginkan || '';
+    document.getElementById('editUnitHapus').value = '';
+
+    const rowsContainer = document.getElementById('editUnitRows');
+    rowsContainer.innerHTML = '';
+    const units = (data.units && data.units.length) ? data.units : [{ id: 0, nama: '', jenis: '' }];
+    units.forEach(function (u) {
+        rowsContainer.appendChild(buatBarisUnitEdit(u));
+    });
+
+    const modal = new bootstrap.Modal(document.getElementById('modalEditPengajuan'));
     modal.show();
 }
 
