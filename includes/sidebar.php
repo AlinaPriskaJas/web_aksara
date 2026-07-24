@@ -39,7 +39,6 @@ switch ($current_role) {
                 ['label' => 'Absensi', 'url' => 'absensi.php', 'icon' => 'bi-calendar-check'],
                 ['label' => 'Laporan', 'url' => 'laporan.php', 'icon' => 'bi-file-earmark-bar-graph'],
                 ['label' => 'Dokumen Digital', 'url' => 'digital.php', 'icon' => 'bi-file-pdf'],
-                ['label' => 'Print Center', 'url' => 'print.php', 'icon' => 'bi-printer'],
                 ['label' => 'Surat', 'url' => 'surat.php', 'icon' => 'bi-envelope'],
                 ['label' => 'Cuti', 'url' => 'cuti.php', 'icon' => 'bi-calendar-x'],
                 ['label' => 'Insiden', 'url' => 'insiden.php', 'icon' => 'bi-exclamation-triangle'],
