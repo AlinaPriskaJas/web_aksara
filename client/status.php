@@ -172,7 +172,7 @@ include "../includes/topbar.php";
         <?php if (!$klien_id): ?>
             <div class="alert alert-danger-custom mb-0">
                 <i class="bi bi-exclamation-triangle-fill fs-5"></i>
-                <div>Akun Anda belum terhubung dengan data perusahaan klien. Hubungi Admin.</div>
+                <div>Akun Anda belum terhubung dengan data perusahaan klien. Lengkapi terlebih dahulu data Anda pada Profile.Lalu hubungi Admin untuk menautkan akun.</div>
             </div>
         <?php elseif (empty($daftar_pengajuan)): ?>
             <p class="text-muted fs-7 mb-0">
