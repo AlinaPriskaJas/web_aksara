@@ -93,17 +93,7 @@
 
                 </li>
 
-                <li class="nav-item">
-
-                    <a class="nav-link" href="panduan.php">
-
-                        Panduan
-
-                    </a>
-
-                </li>
-
-
+              
                 <li class="nav-item">
 
                     <a class="nav-link" href="kontak.php">

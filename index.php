@@ -56,9 +56,9 @@
 
                     </a>
 
-                    <a href="#" class="btn btn-second">
+                    <a href="panduan.php" class="btn btn-second">
 
-                        Lihat Fitur
+                        Panduan
 
                     </a>
 
