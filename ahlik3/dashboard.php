@@ -216,7 +216,7 @@ function severityBadge($sev)
 <main class="main-content">
 
     <!-- Greeting -->
-   <div class="mb-4">
+    <div class="mb-4">
         <h4 class="fw-bold mb-1"><?= htmlspecialchars($sapaan) ?>, <?= htmlspecialchars($nama_user) ?></h4>
         <p class="text-secondary mb-0">Rekap kondisi sistem & operasional perusahaan hari ini, <?= date('d M Y') ?></p>
     </div>
@@ -311,14 +311,18 @@ function severityBadge($sev)
                 <?php if (array_sum($hasilData) === 0): ?>
                     <p class="text-muted text-center py-5 mb-0">Belum ada data hasil pemeriksaan.</p>
                 <?php else: ?>
-                    <canvas id="chartHasil" height="220"></canvas>
+                    <div style="max-width: 260px; margin: 0 auto;">
+                        <canvas id="chartHasil"></canvas>
+                    </div>
                 <?php endif; ?>
             </div>
         </div>
         <div class="col-lg-7 col-12">
             <div class="card-box h-100">
                 <h5 class="mb-3 fw-bold">Tren Jadwal Pemeriksaan (6 Bulan Terakhir)</h5>
-                <canvas id="chartJadwal" height="220"></canvas>
+                <div style="height: 200px;">
+                    <canvas id="chartJadwal"></canvas>
+                </div>
             </div>
         </div>
     </div>
@@ -516,7 +520,7 @@ document.addEventListener('DOMContentLoaded', function () {
             },
             options: {
                 responsive: true,
-                maintainAspectRatio: true,
+                maintainAspectRatio: false,
                 plugins: { legend: { display: false } },
                 scales: {
                     y: { beginAtZero: true, ticks: { stepSize: 1 } }

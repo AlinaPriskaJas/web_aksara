@@ -271,13 +271,17 @@ try {
         <div class="col-lg-5 col-12">
             <div class="card-box h-100">
                 <h5 class="mb-3 fw-bold">Distribusi User per Role</h5>
-                <canvas id="chartUsers" height="220"></canvas>
+                <div style="max-width: 260px; margin: 0 auto;">
+                    <canvas id="chartUsers"></canvas>
+                </div>
             </div>
         </div>
         <div class="col-lg-7 col-12">
             <div class="card-box h-100">
                 <h5 class="mb-3 fw-bold">Aktivitas Sistem (7 Hari Terakhir)</h5>
-                <canvas id="chartAktivitas" height="220"></canvas>
+                <div style="height: 200px;">
+                    <canvas id="chartAktivitas"></canvas>
+                </div>
             </div>
         </div>
     </div>
@@ -366,6 +370,7 @@ try {
                             class="bi bi-arrow-right"></i></a>
                 </div>
             </div>
+
         </div>
 
         <!-- Sidebar Widgets -->
@@ -513,7 +518,7 @@ try {
                 },
                 options: {
                     responsive: true,
-                    maintainAspectRatio: true,
+                    maintainAspectRatio: false,
                     plugins: { legend: { display: false } },
                     scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
                 }
