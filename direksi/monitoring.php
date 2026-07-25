@@ -310,7 +310,7 @@ include "../includes/topbar.php";
                             <thead>
                                 <tr>
                                     <th>Nama</th>
-                                    <th>Role</th>
+                                    <th>Status</th>
                                     <th class="text-center">Jatah Tahunan</th>
                                     <th class="text-center">Terpakai</th>
                                     <th class="text-center">Sisa Cuti</th>

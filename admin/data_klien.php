@@ -213,40 +213,6 @@ include "../includes/topbar.php";
 ?>
 
 <style>
-/* ---- Sub-tab di dalam form (Data Perusahaan / Data PIC) ---- */
-.subtab-nav {
-    display: flex;
-    gap: 4px;
-    border-bottom: 1px solid #e2e8f0;
-    list-style: none;
-    padding: 0;
-    margin: 0 0 1rem 0;
-}
-.subtab-nav .subtab-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 16px;
-    font-size: 0.82rem;
-    font-weight: 600;
-    color: #64748b;
-    background: transparent;
-    border: none;
-    border-bottom: 2px solid transparent;
-    border-radius: 8px 8px 0 0;
-    cursor: pointer;
-    transition: all .15s ease;
-}
-.subtab-nav .subtab-btn:hover {
-    color: #4338ca;
-    background: #f8fafc;
-}
-.subtab-nav .subtab-btn.active {
-    color: #4338ca;
-    border-bottom-color: #4338ca;
-    background: #eef2ff;
-}
-
 /* ---- Tab utama modal Tautkan: "Pilih Perusahaan yang Sudah Ada" / "Buat Perusahaan Baru" ---- */
 .maintab-nav {
     display: flex;
@@ -458,42 +424,40 @@ include "../includes/topbar.php";
                     <input type="hidden" name="aksi" value="tautkan_baru">
                     <input type="hidden" name="user_id" id="tautkanBaruUserId" value="">
 
-                    <ul class="subtab-nav">
-                        <li>
-                            <button type="button" class="subtab-btn active" data-subtab-group="baru" data-subtab="perusahaan" onclick="gantiSubTab('baru', 'perusahaan')">
-                                <i class="bi bi-building"></i> Data Perusahaan
+                    <div class="arp-tab-group">
+                        <div class="arp-tab-nav">
+                            <button type="button" class="arp-tab-btn active" data-subtab-group="baru" data-subtab="perusahaan" onclick="gantiSubTab('baru', 'perusahaan')">
+                                <i class="bi bi-building me-1"></i> Data Perusahaan
                             </button>
-                        </li>
-                        <li>
-                            <button type="button" class="subtab-btn" data-subtab-group="baru" data-subtab="pic" onclick="gantiSubTab('baru', 'pic')">
-                                <i class="bi bi-person-vcard"></i> Data PIC
+                            <button type="button" class="arp-tab-btn" data-subtab-group="baru" data-subtab="pic" onclick="gantiSubTab('baru', 'pic')">
+                                <i class="bi bi-person-vcard me-1"></i> Data PIC
                             </button>
-                        </li>
-                    </ul>
+                        </div>
 
-                    <div data-subtab-group="baru" data-subtab-panel="perusahaan" class="subtab-panel">
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold fs-7 mb-2">Nama Perusahaan *</label>
-                            <input type="text" name="nama_perusahaan" class="form-control-custom" required>
+                        <div data-subtab-group="baru" data-subtab-panel="perusahaan" class="arp-tab-panel">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold fs-7 mb-2">Nama Perusahaan *</label>
+                                <input type="text" name="nama_perusahaan" class="form-control-custom" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold fs-7 mb-2">Alamat</label>
+                                <textarea class="textarea-custom" name="alamat"></textarea>
+                            </div>
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold fs-7 mb-2">Alamat</label>
-                            <textarea class="textarea-custom" name="alamat"></textarea>
-                        </div>
-                    </div>
 
-                    <div data-subtab-group="baru" data-subtab-panel="pic" class="subtab-panel" style="display:none;">
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold fs-7 mb-2">Nama PIC</label>
-                            <input type="text" name="pic_nama" class="form-control-custom">
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold fs-7 mb-2">WhatsApp PIC</label>
-                            <input type="text" name="pic_whatsapp" class="form-control-custom">
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold fs-7 mb-2">Email PIC</label>
-                            <input type="email" name="pic_email" class="form-control-custom">
+                        <div data-subtab-group="baru" data-subtab-panel="pic" class="arp-tab-panel" style="display:none;">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold fs-7 mb-2">Nama PIC</label>
+                                <input type="text" name="pic_nama" class="form-control-custom">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold fs-7 mb-2">WhatsApp PIC</label>
+                                <input type="text" name="pic_whatsapp" class="form-control-custom">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold fs-7 mb-2">Email PIC</label>
+                                <input type="email" name="pic_email" class="form-control-custom">
+                            </div>
                         </div>
                     </div>
 
@@ -521,49 +485,47 @@ include "../includes/topbar.php";
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <ul class="subtab-nav">
-                        <li>
-                            <button type="button" class="subtab-btn active" data-subtab-group="edit" data-subtab="perusahaan" onclick="gantiSubTab('edit', 'perusahaan')">
-                                <i class="bi bi-building"></i> Data Perusahaan
+                    <div class="arp-tab-group">
+                        <div class="arp-tab-nav">
+                            <button type="button" class="arp-tab-btn active" data-subtab-group="edit" data-subtab="perusahaan" onclick="gantiSubTab('edit', 'perusahaan')">
+                                <i class="bi bi-building me-1"></i> Data Perusahaan
                             </button>
-                        </li>
-                        <li>
-                            <button type="button" class="subtab-btn" data-subtab-group="edit" data-subtab="pic" onclick="gantiSubTab('edit', 'pic')">
-                                <i class="bi bi-person-vcard"></i> Data PIC
+                            <button type="button" class="arp-tab-btn" data-subtab-group="edit" data-subtab="pic" onclick="gantiSubTab('edit', 'pic')">
+                                <i class="bi bi-person-vcard me-1"></i> Data PIC
                             </button>
-                        </li>
-                    </ul>
+                        </div>
 
-                    <div data-subtab-group="edit" data-subtab-panel="perusahaan" class="subtab-panel">
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold fs-7 mb-2">Nama Perusahaan *</label>
-                            <input type="text" name="nama_perusahaan" id="editNamaPerusahaan" class="form-control-custom" required>
+                        <div data-subtab-group="edit" data-subtab-panel="perusahaan" class="arp-tab-panel">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold fs-7 mb-2">Nama Perusahaan *</label>
+                                <input type="text" name="nama_perusahaan" id="editNamaPerusahaan" class="form-control-custom" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold fs-7 mb-2">Alamat</label>
+                                <textarea class="textarea-custom" name="alamat" id="editAlamat"></textarea>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold fs-7 mb-2">Status</label>
+                                <select class="select-custom" name="status" id="editStatus">
+                                    <option value="Aktif">Aktif</option>
+                                    <option value="Non-aktif">Non-aktif</option>
+                                </select>
+                            </div>
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold fs-7 mb-2">Alamat</label>
-                            <textarea class="textarea-custom" name="alamat" id="editAlamat"></textarea>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold fs-7 mb-2">Status</label>
-                            <select class="select-custom" name="status" id="editStatus">
-                                <option value="Aktif">Aktif</option>
-                                <option value="Non-aktif">Non-aktif</option>
-                            </select>
-                        </div>
-                    </div>
 
-                    <div data-subtab-group="edit" data-subtab-panel="pic" class="subtab-panel" style="display:none;">
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold fs-7 mb-2">Nama PIC</label>
-                            <input type="text" name="pic_nama" id="editPicNama" class="form-control-custom">
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold fs-7 mb-2">WhatsApp PIC</label>
-                            <input type="text" name="pic_whatsapp" id="editPicWhatsapp" class="form-control-custom">
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold fs-7 mb-2">Email PIC</label>
-                            <input type="email" name="pic_email" id="editPicEmail" class="form-control-custom">
+                        <div data-subtab-group="edit" data-subtab-panel="pic" class="arp-tab-panel" style="display:none;">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold fs-7 mb-2">Nama PIC</label>
+                                <input type="text" name="pic_nama" id="editPicNama" class="form-control-custom">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold fs-7 mb-2">WhatsApp PIC</label>
+                                <input type="text" name="pic_whatsapp" id="editPicWhatsapp" class="form-control-custom">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold fs-7 mb-2">Email PIC</label>
+                                <input type="email" name="pic_email" id="editPicEmail" class="form-control-custom">
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -605,12 +567,13 @@ function gantiTabTautkan(tab) {
     }
 }
 
-// Sub-tab generik: dipakai untuk memisahkan "Data Perusahaan" & "Data PIC" di dalam form
+// Sub-tab: dipakai untuk memisahkan "Data Perusahaan" & "Data PIC" di dalam form,
+// mengikuti pola arp-tab-btn / arp-tab-panel seperti di ahlik3/surat.php
 function gantiSubTab(group, tab) {
-    document.querySelectorAll('.subtab-btn[data-subtab-group="' + group + '"]').forEach(function (btn) {
+    document.querySelectorAll('.arp-tab-btn[data-subtab-group="' + group + '"]').forEach(function (btn) {
         btn.classList.toggle('active', btn.dataset.subtab === tab);
     });
-    document.querySelectorAll('.subtab-panel[data-subtab-group="' + group + '"]').forEach(function (panel) {
+    document.querySelectorAll('.arp-tab-panel[data-subtab-group="' + group + '"]').forEach(function (panel) {
         panel.style.display = (panel.dataset.subtabPanel === tab) ? 'block' : 'none';
     });
 }

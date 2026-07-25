@@ -199,126 +199,141 @@ $mutations = $conn->query("
         </div>
     <?php endif; ?>
 
-    <div class="row g-4">
-        <!-- Inventory List -->
-        <div class="col-12">
-            <div class="card-box">
-                <div class="table-toolbar">
-                    <h5 class="table-toolbar-title fw-bold">Daftar Stok Inventaris Perusahaan</h5>
-                    <div class="table-toolbar-actions">
-                        <div class="search-box-container">
-                            <i class="bi bi-search"></i>
-                            <input type="text" class="search-box" placeholder="Cari barang..."
-                                data-table-search="tabelStok" onkeyup="handleTableSearch('tabelStok')">
-                        </div>
-                        <button class="btn-primary-custom" onclick="openModal('modalTambahBarang')">
-                                <i class="bi bi-plus-lg"></i>Tambah Barang Baru
-                        </button>
-                    </div>
-                </div>
-                <div class="table-responsive-custom">
-                    <table class="table-custom" id="tabelStok">
-                        <thead>
-                            <tr>
-                                <th>Kode</th>
-                                <th>Nama Barang</th>
-                                <th>Kategori / Jenis</th>
-                                <th>Stok Sistem</th>
-                                <th>Rak</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php if (count($items) === 0): ?>
-                                <tr>
-                                    <td colspan="6" class="text-center py-4 text-muted">Belum ada barang di gudang.</td>
-                                </tr>
-                            <?php else: ?>
-                                <?php foreach ($items as $it): ?>
-                                    <tr>
-                                        <td><strong><?= htmlspecialchars($it['kode_barang']) ?></strong></td>
-                                        <td><?= htmlspecialchars($it['nama_barang']) ?></td>
-                                        <td><?= htmlspecialchars($it['nama_kategori']) ?> /
-                                            <?= htmlspecialchars($it['nama_jenis']) ?>
-                                        </td>
-                                        <td><strong><?= htmlspecialchars($it['stok_sistem']) ?></strong>
-                                            <?= htmlspecialchars($it['satuan']) ?></td>
-                                        <td><?= htmlspecialchars($it['lokasi_rak'] ?: '-') ?></td>
-                                        <td>
-                                            <?php if ($it['stok_sistem'] <= $it['stok_minimum']): ?>
-                                                <span class="badge-danger">Stok Tipis</span>
-                                            <?php else: ?>
-                                                <span class="badge-success">Aman</span>
-                                            <?php endif; ?>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            <?php endif; ?>
-                        </tbody>
-                    </table>
-                </div>
-                <div class="pagination-custom" id="pagination-tabelStok"></div>
-            </div>
+    <!-- Tab Navigation -->
+    <div class="arp-tab-group">
+        <div class="arp-tab-nav">
+            <button type="button" class="arp-tab-btn<?= $active_tab === 'tabPanelStok' ? ' active' : '' ?>"
+                data-tab-target="tabPanelStok" onclick="switchTab('tabPanelStok', this)">
+                <i class="bi bi-box-seam me-1"></i> Daftar Stok
+            </button>
+            <button type="button" class="arp-tab-btn<?= $active_tab === 'tabPanelMutasi' ? ' active' : '' ?>"
+                data-tab-target="tabPanelMutasi" onclick="switchTab('tabPanelMutasi', this)">
+                <i class="bi bi-clock-history me-1"></i> Riwayat Mutasi
+            </button>
         </div>
 
-        <!-- Recent Mutation Log -->
-        <div class="col-12">
-            <div class="card-box">
-                <div class="table-toolbar">
-                    <h5 class="table-toolbar-title fw-bold">Riwayat Mutasi Stok (Masuk/Keluar)</h5>
-                    <div class="table-toolbar-actions">
-                        <div class="search-box-container">
-                            <i class="bi bi-search"></i>
-                            <input type="text" class="search-box" placeholder="Cari mutasi..."
-                                data-table-search="tabelMutasi" onkeyup="handleTableSearch('tabelMutasi')">
+        <div class="row g-4">
+            <!-- Inventory List -->
+            <div class="col-12 arp-tab-panel" id="tabPanelStok" <?= $active_tab === 'tabPanelStok' ? '' : 'style="display:none;"' ?>>
+                <div class="card-box">
+                    <div class="table-toolbar">
+                        <h5 class="table-toolbar-title fw-bold">Daftar Stok Inventaris Perusahaan</h5>
+                        <div class="table-toolbar-actions">
+                            <div class="search-box-container">
+                                <i class="bi bi-search"></i>
+                                <input type="text" class="search-box" placeholder="Cari barang..."
+                                    data-table-search="tabelStok" onkeyup="handleTableSearch('tabelStok')">
+                            </div>
+                            <button class="btn-primary-custom" onclick="openModal('modalTambahBarang')">
+                                <i class="bi bi-plus-lg"></i>Tambah Barang Baru
+                            </button>
                         </div>
-                        <button class="btn-primary-custom" onclick="openModal('modalMutasi')">
-                            <i class="bi bi-plus-lg"></i>Catat Mutasi / Stock Opname
-                        </button>
                     </div>
-                </div>
-                <div class="table-responsive-custom">
-                    <table class="table-custom" id="tabelMutasi">
-                        <thead>
-                            <tr>
-                                <th>Tanggal</th>
-                                <th>Barang</th>
-                                <th>Jenis Mutasi</th>
-                                <th>Jumlah</th>
-                                <th>Keterangan</th>
-                                <th>Operator</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php if (count($mutations) === 0): ?>
+                    <div class="table-responsive-custom">
+                        <table class="table-custom" id="tabelStok">
+                            <thead>
                                 <tr>
-                                    <td colspan="6" class="text-center py-4 text-muted">Belum ada log mutasi.</td>
+                                    <th>Kode</th>
+                                    <th>Nama Barang</th>
+                                    <th>Kategori / Jenis</th>
+                                    <th>Stok Sistem</th>
+                                    <th>Rak</th>
+                                    <th>Status</th>
                                 </tr>
-                            <?php else: ?>
-                                <?php foreach ($mutations as $m): ?>
+                            </thead>
+                            <tbody>
+                                <?php if (count($items) === 0): ?>
                                     <tr>
-                                        <td><?= date('d-m-Y', strtotime($m['tanggal'])) ?></td>
-                                        <td><strong><?= htmlspecialchars($m['nama_barang']) ?></strong></td>
-                                        <td>
-                                            <?php
-                                            $badgeClass = "badge-success";
-                                            if ($m['jenis_mutasi'] === 'Keluar')
-                                                $badgeClass = "badge-danger";
-                                            if ($m['jenis_mutasi'] === 'Penyesuaian Opname')
-                                                $badgeClass = "badge-warning";
-                                            ?>
-                                            <span class="<?= $badgeClass ?>"><?= htmlspecialchars($m['jenis_mutasi']) ?></span>
-                                        </td>
-                                        <td><?= htmlspecialchars($m['jumlah']) ?></td>
-                                        <td><?= htmlspecialchars($m['keterangan'] ?: '-') ?></td>
-                                        <td><?= htmlspecialchars($m['operator']) ?></td>
+                                        <td colspan="6" class="text-center py-4 text-muted">Belum ada barang di gudang.</td>
                                     </tr>
-                                <?php endforeach; ?>
-                            <?php endif; ?>
-                        </tbody>
-                    </table>
+                                <?php else: ?>
+                                    <?php foreach ($items as $it): ?>
+                                        <tr>
+                                            <td><strong><?= htmlspecialchars($it['kode_barang']) ?></strong></td>
+                                            <td><?= htmlspecialchars($it['nama_barang']) ?></td>
+                                            <td><?= htmlspecialchars($it['nama_kategori']) ?> /
+                                                <?= htmlspecialchars($it['nama_jenis']) ?>
+                                            </td>
+                                            <td><strong><?= htmlspecialchars($it['stok_sistem']) ?></strong>
+                                                <?= htmlspecialchars($it['satuan']) ?></td>
+                                            <td><?= htmlspecialchars($it['lokasi_rak'] ?: '-') ?></td>
+                                            <td>
+                                                <?php if ($it['stok_sistem'] <= $it['stok_minimum']): ?>
+                                                    <span class="badge-danger">Stok Tipis</span>
+                                                <?php else: ?>
+                                                    <span class="badge-success">Aman</span>
+                                                <?php endif; ?>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="pagination-custom" id="pagination-tabelStok"></div>
                 </div>
-                <div class="pagination-custom" id="pagination-tabelMutasi"></div>
+            </div>
+
+            <!-- Recent Mutation Log -->
+            <div class="col-12 arp-tab-panel" id="tabPanelMutasi" <?= $active_tab === 'tabPanelMutasi' ? '' : 'style="display:none;"' ?>>
+                <div class="card-box">
+                    <div class="table-toolbar">
+                        <h5 class="table-toolbar-title fw-bold">Riwayat Mutasi Stok (Masuk/Keluar)</h5>
+                        <div class="table-toolbar-actions">
+                            <div class="search-box-container">
+                                <i class="bi bi-search"></i>
+                                <input type="text" class="search-box" placeholder="Cari mutasi..."
+                                    data-table-search="tabelMutasi" onkeyup="handleTableSearch('tabelMutasi')">
+                            </div>
+                            <button class="btn-primary-custom" onclick="openModal('modalMutasi')">
+                                <i class="bi bi-plus-lg"></i>Catat Mutasi / Stock Opname
+                            </button>
+                        </div>
+                    </div>
+                    <div class="table-responsive-custom">
+                        <table class="table-custom" id="tabelMutasi">
+                            <thead>
+                                <tr>
+                                    <th>Tanggal</th>
+                                    <th>Barang</th>
+                                    <th>Jenis Mutasi</th>
+                                    <th>Jumlah</th>
+                                    <th>Keterangan</th>
+                                    <th>Operator</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php if (count($mutations) === 0): ?>
+                                    <tr>
+                                        <td colspan="6" class="text-center py-4 text-muted">Belum ada log mutasi.</td>
+                                    </tr>
+                                <?php else: ?>
+                                    <?php foreach ($mutations as $m): ?>
+                                        <tr>
+                                            <td><?= date('d-m-Y', strtotime($m['tanggal'])) ?></td>
+                                            <td><strong><?= htmlspecialchars($m['nama_barang']) ?></strong></td>
+                                            <td>
+                                                <?php
+                                                $badgeClass = "badge-success";
+                                                if ($m['jenis_mutasi'] === 'Keluar')
+                                                    $badgeClass = "badge-danger";
+                                                if ($m['jenis_mutasi'] === 'Penyesuaian Opname')
+                                                    $badgeClass = "badge-warning";
+                                                ?>
+                                                <span
+                                                    class="<?= $badgeClass ?>"><?= htmlspecialchars($m['jenis_mutasi']) ?></span>
+                                            </td>
+                                            <td><?= htmlspecialchars($m['jumlah']) ?></td>
+                                            <td><?= htmlspecialchars($m['keterangan'] ?: '-') ?></td>
+                                            <td><?= htmlspecialchars($m['operator']) ?></td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="pagination-custom" id="pagination-tabelMutasi"></div>
+                </div>
             </div>
         </div>
     </div>
@@ -452,13 +467,6 @@ $mutations = $conn->query("
     </div>
 </main>
 
-
-<script>
-    document.addEventListener('DOMContentLoaded', function () {
-        initTablePagination('tabelStok', 10);
-        initTablePagination('tabelMutasi', 10);
-    });
-</script>
 
 <script>
     document.addEventListener('DOMContentLoaded', function () {

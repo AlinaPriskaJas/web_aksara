@@ -754,38 +754,6 @@ include "../includes/topbar.php";
 .table-custom tbody tr:hover {
     background: #f1f5f9;
 }
-
-/* ---- Tab navigasi Approval (Pemeriksaan / Surat) ---- */
-.nav-tabs-custom {
-    display: flex;
-    gap: 4px;
-    border-bottom: 1px solid #e2e8f0;
-    list-style: none;
-    padding: 0;
-    margin: 0 0 1.5rem 0;
-}
-.nav-tabs-custom .nav-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 10px 18px;
-    font-size: 0.88rem;
-    font-weight: 600;
-    color: #64748b;
-    text-decoration: none;
-    border-bottom: 2px solid transparent;
-    border-radius: 8px 8px 0 0;
-    transition: all .15s ease;
-}
-.nav-tabs-custom .nav-link:hover {
-    color: #4338ca;
-    background: #f8fafc;
-}
-.nav-tabs-custom .nav-link.active {
-    color: #4338ca;
-    border-bottom-color: #4338ca;
-    background: #eef2ff;
-}
 </style>
 
 <main class="main-content">
@@ -797,20 +765,20 @@ include "../includes/topbar.php";
         </div>
     <?php endif; ?>
 
-    <ul class="nav nav-tabs-custom mb-4">
-        <li class="nav-item">
-            <a class="nav-link <?= $tab_aktif === 'pemeriksaan' ? 'active' : '' ?>" href="approval.php?tab=pemeriksaan">
-                <i class="bi bi-clipboard2-check"></i> Pengajuan Pemeriksaan
-            </a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link <?= $tab_aktif === 'surat' ? 'active' : '' ?>" href="approval.php?tab=surat">
-                <i class="bi bi-envelope-paper"></i> Surat
-            </a>
-        </li>
-    </ul>
+    <div class="arp-tab-group">
+        <div class="arp-tab-nav">
+            <button type="button" class="arp-tab-btn<?= $tab_aktif === 'pemeriksaan' ? ' active' : '' ?>"
+                data-tab-target="tabPanelPemeriksaan" onclick="switchTab('tabPanelPemeriksaan', this)">
+                <i class="bi bi-clipboard2-check me-1"></i> Pengajuan Pemeriksaan
+            </button>
+            <button type="button" class="arp-tab-btn<?= $tab_aktif === 'surat' ? ' active' : '' ?>"
+                data-tab-target="tabPanelSurat" onclick="switchTab('tabPanelSurat', this)">
+                <i class="bi bi-envelope-paper me-1"></i> Surat
+            </button>
+        </div>
 
-    <?php if ($tab_aktif === 'pemeriksaan'): ?>
+        <!-- ============================== TAB: PENGAJUAN PEMERIKSAAN ============================== -->
+        <div class="col-12 arp-tab-panel" id="tabPanelPemeriksaan" <?= $tab_aktif === 'pemeriksaan' ? '' : 'style="display:none;"' ?>>
 
     <div class="row g-4 mb-4">
         <div class="col-xl-3 col-md-6 col-12">
@@ -855,6 +823,7 @@ include "../includes/topbar.php";
         <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-3">
             <h5 class="mb-0 fw-bold">Daftar Pengajuan Pemeriksaan</h5>
             <form method="GET" class="d-flex gap-2">
+                <input type="hidden" name="tab" value="pemeriksaan">
                 <select class="select-custom" name="status" style="width: 220px;" onchange="this.form.submit()">
                     <?php foreach (['Menunggu Verifikasi', 'Diverifikasi', 'Dijadwalkan', 'Ditolak', 'Selesai', 'Semua'] as $opt): ?>
                         <option value="<?= htmlspecialchars($opt) ?>" <?= $status_filter === $opt ? 'selected' : '' ?>>
@@ -1015,7 +984,10 @@ include "../includes/topbar.php";
         </div>
     </div>
 
-    <?php elseif ($tab_aktif === 'surat'): ?>
+        </div>
+
+        <!-- ============================== TAB: SURAT ============================== -->
+        <div class="col-12 arp-tab-panel" id="tabPanelSurat" <?= $tab_aktif === 'surat' ? '' : 'style="display:none;"' ?>>
 
     <div class="row g-4 mb-4">
         <div class="col-xl-3 col-md-6 col-12">
@@ -1134,7 +1106,9 @@ include "../includes/topbar.php";
         </div>
     </div>
 
-    <?php endif; ?>
+        </div>
+
+    </div>
 </main>
 
 <div class="modal fade modal-custom" id="modalApproval" tabindex="-1" aria-hidden="true">
