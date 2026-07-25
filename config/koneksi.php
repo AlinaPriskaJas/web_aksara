@@ -1,6 +1,13 @@
 <?php
 // config/koneksi.php
 
+// Set timezone PHP ke WIB (Asia/Jakarta) supaya semua fungsi date()/time()
+// di seluruh halaman (absensi, cuti, surat, dsb) konsisten dengan jam lokal
+// Indonesia. Tanpa baris ini, PHP memakai timezone default server (sering
+// UTC), sehingga jam_masuk/jam_pulang absensi bisa selisih beberapa jam
+// dari jam asli saat user check-in/check-out.
+date_default_timezone_set('Asia/Jakarta');
+
 // Database configurations
 $host = "localhost";
 $username = "root";
@@ -14,6 +21,10 @@ try {
     $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     // Set default fetch mode to associative array
     $conn->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+    // Samakan timezone koneksi MySQL dengan WIB, supaya kolom yang pakai
+    // DEFAULT CURRENT_TIMESTAMP (created_at, dll — diisi oleh MySQL sendiri,
+    // bukan oleh PHP) juga konsisten dengan jam lokal Indonesia.
+    $conn->exec("SET time_zone = '+07:00'");
 } catch (PDOException $e) {
     // In production, log error and show a generic message. Here we'll output for debugging
     die("Koneksi database gagal: " . $e->getMessage());
@@ -68,4 +79,3 @@ try {
     // Biarkan saja kalau gagal; halaman yang memakainya sudah fallback ke kolom lama.
 }
 ?>
-

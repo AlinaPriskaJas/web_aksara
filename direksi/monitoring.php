@@ -32,14 +32,19 @@ $total_karyawan    = safe_count($conn, "SELECT COUNT(*) FROM Users WHERE role NO
 $jadwal_berjalan   = safe_count($conn, "SELECT COUNT(*) FROM Jadwal_Pemeriksaan WHERE status IN ('Terjadwal','Berlangsung') AND tanggal >= CURDATE()");
 $kendaraan_dipakai = safe_count($conn, "SELECT COUNT(*) FROM Kendaraan WHERE status_kendaraan = 'Dipakai'");
 
-// ================== ABSENSI HARI INI ==================
+// ================== REKAP ABSENSI HARIAN (SELURUH KARYAWAN) ==================
+// Filter tanggal (default hari ini), bisa dipilih tanggal lain lewat query string ?tgl=YYYY-MM-DD
+$tgl_rekap = isset($_GET['tgl']) && $_GET['tgl'] !== '' ? $_GET['tgl'] : date('Y-m-d');
+if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $tgl_rekap)) {
+    $tgl_rekap = date('Y-m-d');
+}
+
 $absensi_hari_ini = safe_query($conn, "
-    SELECT a.status_kehadiran, u.nama_lengkap, a.jam_masuk, a.lokasi_masuk
+    SELECT a.*, u.nama_lengkap, u.role
     FROM Absensi a LEFT JOIN Users u ON a.user_id = u.id
-    WHERE a.tanggal = CURDATE()
+    WHERE a.tanggal = :tgl
     ORDER BY a.jam_masuk DESC
-    LIMIT 8
-");
+", ['tgl' => $tgl_rekap]);
 
 // ================== JADWAL PEMERIKSAAN TERDEKAT ==================
 $jadwal_terdekat = safe_query($conn, "
@@ -143,32 +148,76 @@ include "../includes/topbar.php";
     </div>
 
     <div class="row g-4 mb-4">
-        <div class="col-lg-6 col-12">
-            <div class="card-box h-100">
-                <h5 class="fw-bold mb-3">Absensi Hari Ini</h5>
+        <div class="col-12">
+            <div class="card-box">
+                <div class="table-toolbar">
+                    <h5 class="table-toolbar-title fw-bold">Rekap Absensi Harian (Seluruh Karyawan)</h5>
+                    <div class="table-toolbar-actions">
+                        <form method="GET" action="monitoring.php" class="d-flex align-items-center gap-2">
+                            <input type="date" name="tgl" class="form-control-custom" value="<?= htmlspecialchars($tgl_rekap) ?>" onchange="this.form.submit()">
+                        </form>
+                        <div class="search-box-container">
+                            <i class="bi bi-search"></i>
+                            <input type="text" class="search-box" placeholder="Cari nama karyawan..."
+                                data-table-search="tabelRekapAbsensi" onkeyup="handleTableSearch('tabelRekapAbsensi')">
+                        </div>
+                    </div>
+                </div>
+
+                <p class="text-secondary fs-7 mb-3">
+                    Menampilkan absensi tanggal <strong><?= date('d-m-Y', strtotime($tgl_rekap)) ?></strong>
+                    (<?= count($absensi_hari_ini) ?> dari <?= $total_karyawan ?> karyawan)
+                </p>
+
                 <?php if (empty($absensi_hari_ini)): ?>
-                    <p class="text-secondary fs-7 mb-0">Belum ada data absensi hari ini.</p>
+                    <p class="text-secondary fs-7 mb-0">Belum ada data absensi pada tanggal ini.</p>
                 <?php else: ?>
                     <div class="table-responsive-custom">
-                        <table class="table-custom">
-                            <thead><tr><th>Nama</th><th>Jam Masuk</th><th>Status</th></tr></thead>
+                        <table class="table-custom" id="tabelRekapAbsensi">
+                            <thead>
+                                <tr>
+                                    <th>Nama</th>
+                                    <th>Role</th>
+                                    <th>Jam Masuk</th>
+                                    <th>Jam Pulang</th>
+                                    <th>Status</th>
+                                    <th>Lokasi Masuk</th>
+                                    <th class="text-center">Bukti</th>
+                                </tr>
+                            </thead>
                             <tbody>
                                 <?php foreach ($absensi_hari_ini as $a): ?>
                                     <tr>
                                         <td><?= htmlspecialchars($a['nama_lengkap'] ?? '-') ?></td>
-                                        <td><?= htmlspecialchars(substr($a['jam_masuk'], 0, 5)) ?></td>
+                                        <td><?= htmlspecialchars($a['role'] ?? '-') ?></td>
+                                        <td><?= htmlspecialchars(substr($a['jam_masuk'], 0, 5)) ?> WIB</td>
+                                        <td><?= $a['jam_pulang'] ? htmlspecialchars(substr($a['jam_pulang'], 0, 5)) . ' WIB' : '<span class="text-muted">Belum Checkout</span>' ?></td>
                                         <td><span class="<?= badge_kehadiran($a['status_kehadiran']) ?> fs-7"><?= htmlspecialchars($a['status_kehadiran']) ?></span></td>
+                                        <td><?= htmlspecialchars($a['lokasi_masuk'] ?? '-') ?></td>
+                                        <td class="text-center">
+                                            <?php if (!empty($a['bukti_foto']) && $a['bukti_foto'] !== 'input_manual_admin'): ?>
+                                                <button type="button" class="btn-icon-bukti"
+                                                    onclick="tampilkanBuktiFoto('../<?= htmlspecialchars($a['bukti_foto']) ?>')"
+                                                    title="Lihat Bukti Foto">
+                                                    <i class="bi bi-image"></i>
+                                                </button>
+                                            <?php else: ?>
+                                                <span class="text-muted">-</span>
+                                            <?php endif; ?>
+                                        </td>
                                     </tr>
                                 <?php endforeach; ?>
                             </tbody>
                         </table>
                     </div>
+                    <div class="pagination-custom" id="pagination-tabelRekapAbsensi"></div>
                 <?php endif; ?>
-                <a href="absensi.php" class="fs-7 fw-semibold text-decoration-none d-inline-block mt-2">Lihat rekap absensi &rarr;</a>
             </div>
         </div>
+    </div>
 
-        <div class="col-lg-6 col-12">
+    <div class="row g-4 mb-4">
+        <div class="col-12">
             <div class="card-box h-100">
                 <h5 class="fw-bold mb-3">Jadwal Pemeriksaan Terdekat</h5>
                 <?php if (empty($jadwal_terdekat)): ?>
@@ -252,6 +301,12 @@ include "../includes/topbar.php";
         </div>
     </div>
 </main>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        initTablePagination('tabelRekapAbsensi', 10);
+    });
+</script>
 
 <?php
 include "../includes/footer.php";
