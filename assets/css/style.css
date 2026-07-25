@@ -387,7 +387,7 @@ body{
 
 /* Topbar responsive: defaultnya .col-md-6 bakal numpuk 2 baris di HP
    (baris 1 "Bandung, Jawa Barat" rata kiri, baris 2 kontak rata kanan
-   karena class text-end) — jadi kelihatan berantakan/nggak sejajar.
+   karena class text-end) - jadi kelihatan berantakan/nggak sejajar.
    Di bawah breakpoint md, matikan text-end lalu jadikan flex row biar
    dua-duanya sejajar di baris yang sama, rata tengah & rapat. */
    @media(max-width:767.98px){
@@ -457,13 +457,7 @@ body{
 }
 
 /*================ NAVBAR RESPONSIVE (BURGER MENU) =================*/
-/* Breakpoint-nya ikut class "navbar-expand-lg" di includes/navbar.php (991.98px).
-   Defaultnya Bootstrap bikin .navbar-collapse melebar penuh & mendorong isi
-   halaman ke bawah saat di-klik (makanya kelihatan "loncat ke atas halaman").
-   Di sini kita ubah jadi dropdown kecil yang nempel di kanan bawah tombol
-   burger, mengambang di atas konten (position:absolute), jadi konten halaman
-   tidak ikut terdorong turun. */
-   @media(max-width:991.98px){
+@media(max-width:991.98px){
 
     .navbar .container{
         position:relative;
@@ -880,7 +874,7 @@ footer{
 
 .preview{
     height:340px;
-    margin-top:36px;
+    margin-top:35px;
 }
 
 .preview-text{
