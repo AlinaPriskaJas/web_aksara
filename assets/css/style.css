@@ -385,6 +385,36 @@ body{
     font-size:14px;
 }
 
+/* Topbar responsive: defaultnya .col-md-6 bakal numpuk 2 baris di HP
+   (baris 1 "Bandung, Jawa Barat" rata kiri, baris 2 kontak rata kanan
+   karena class text-end) — jadi kelihatan berantakan/nggak sejajar.
+   Di bawah breakpoint md, matikan text-end lalu jadikan flex row biar
+   dua-duanya sejajar di baris yang sama, rata tengah & rapat. */
+   @media(max-width:767.98px){
+
+    .topbar .row{
+        display:flex;
+        flex-wrap:wrap;
+        justify-content:center;
+        align-items:center;
+        gap:4px 14px;
+        text-align:center;
+    }
+
+    .topbar .col-md-6{
+        width:auto;
+        max-width:100%;
+        flex:0 0 auto;
+    }
+
+    .topbar .col-md-6.text-end{
+        text-align:center!important;
+    }
+
+    .topbar{
+        font-size:12.5px;
+    }
+}
 .navbar{
     background:#fff;
     box-shadow:0 3px 10px rgba(0,0,0,.08);
@@ -424,6 +454,69 @@ body{
 .btn-login:hover{
     background:#248564;
     color:#fff;
+}
+
+/*================ NAVBAR RESPONSIVE (BURGER MENU) =================*/
+/* Breakpoint-nya ikut class "navbar-expand-lg" di includes/navbar.php (991.98px).
+   Defaultnya Bootstrap bikin .navbar-collapse melebar penuh & mendorong isi
+   halaman ke bawah saat di-klik (makanya kelihatan "loncat ke atas halaman").
+   Di sini kita ubah jadi dropdown kecil yang nempel di kanan bawah tombol
+   burger, mengambang di atas konten (position:absolute), jadi konten halaman
+   tidak ikut terdorong turun. */
+   @media(max-width:991.98px){
+
+    .navbar .container{
+        position:relative;
+    }
+
+    .navbar-toggler{
+        border:none;
+        box-shadow:none!important;
+    }
+
+    .navbar-collapse{
+        position:absolute;
+        top:100%;
+        right:0;
+        left:auto;
+        width:260px;
+        max-width:85vw;
+        margin-top:10px;
+        background:#fff;
+        border-radius:12px;
+        box-shadow:0 14px 34px rgba(0,0,0,.15);
+        padding:14px 18px;
+        z-index:1050;
+    }
+
+    .navbar-collapse .navbar-nav{
+        align-items:flex-start!important;
+    }
+
+    .navbar-collapse .nav-item{
+        width:100%;
+    }
+
+    .navbar-collapse .nav-link{
+        margin-right:0;
+        padding:10px 0;
+        width:100%;
+        border-bottom:1px solid #eee;
+    }
+
+    .navbar-collapse .nav-item:last-child .nav-link{
+        border-bottom:none;
+    }
+
+    .navbar-collapse .btn-login{
+        display:inline-block;
+        margin-top:8px;
+        text-align:center;
+    }
+
+    .navbar-collapse.ms-auto{
+        margin-left:0!important;
+    }
 }
 
 .hero{
@@ -787,6 +880,7 @@ footer{
 
 .preview{
     height:340px;
+    margin-top:36px;
 }
 
 .preview-text{
