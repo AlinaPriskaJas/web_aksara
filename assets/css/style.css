@@ -1780,7 +1780,8 @@ body.landing-page {
     color:#248564;
 }
 
-.login-card .input-group-custom input{
+.login-card .input-group-custom input,
+.login-card .input-group-custom select{
     flex:1;
     border:none;
     background:transparent;
@@ -1789,6 +1790,21 @@ body.landing-page {
     outline:none;
     color:#222;
     min-width:0;
+}
+
+/* Select punya tampilan bawaan browser sendiri (border, panah, dsb) yang bikin
+   tumpang tindih dengan pill .input-group-custom. appearance:none menghapus
+   tampilan bawaan itu, lalu kita gambar ulang panahnya pakai background-image
+   supaya tetap kelihatan sebagai dropdown, bukan cuma teks polos. */
+.login-card .input-group-custom select{
+    appearance:none;
+    -webkit-appearance:none;
+    -moz-appearance:none;
+    cursor:pointer;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1l5 5 5-5' stroke='%23555' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+    background-repeat:no-repeat;
+    background-position:right 16px center;
+    padding-right:38px;
 }
 
 .login-card .input-group-custom input::placeholder{

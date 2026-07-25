@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once "config/koneksi.php";
+require_once "includes/client_helper.php";
 
 $error = "";
 
@@ -64,6 +65,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $password_hash,
                     $role
                 ]);
+
+                // Untuk akun client: langsung buat & tautkan baris Data_Klien kosong.
+                // Nama perusahaan, alamat, dan data PIC akan diisi SENDIRI oleh
+                // client di halaman profil, bukan diketik ulang oleh admin,
+                // supaya tidak ada risiko admin salah input data perusahaan.
+                if ($role === 'client') {
+                    $new_user_id = (int) $conn->lastInsertId();
+                    arp_buat_data_klien_kosong($conn, $new_user_id);
+                }
 
                 header("Location: login.php?registrasi=sukses");
                 exit;

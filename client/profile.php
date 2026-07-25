@@ -1,6 +1,7 @@
 <?php
 // client/profile.php
 require_once "../config/koneksi.php";
+require_once "../includes/client_helper.php";
 
 if (session_status() === PHP_SESSION_NONE)
     session_start();
@@ -35,6 +36,11 @@ try {
 
 // Nama yang dipakai untuk inisial avatar = nama perusahaan, bukan nama PIC
 $nama_untuk_avatar = $data_klien['nama_perusahaan'] ?? ($user['nama_lengkap'] ?? 'Klien');
+
+// Apakah data perusahaan sudah lengkap diisi oleh client sendiri?
+// Selama belum lengkap, client wajib melengkapinya dulu di halaman ini
+// sebelum admin bisa memverifikasi/mengaktifkan akunnya.
+$klien_lengkap = arp_klien_lengkap($data_klien);
 
 // Handle POST: upload/hapus foto akun
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -104,34 +110,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $pic_whatsapp    = trim($_POST['pic_whatsapp'] ?? '');
         $pic_email       = trim($_POST['pic_email'] ?? '');
 
-        if ($nama_perusahaan === '') {
-            $error_msg = "Nama perusahaan tidak boleh kosong!";
-        } elseif ($pic_email !== '' && !filter_var($pic_email, FILTER_VALIDATE_EMAIL)) {
+        // Semua kolom wajib diisi LENGKAP oleh client sendiri, supaya admin
+        // tidak perlu (dan tidak berisiko salah) mengetik ulang data perusahaan.
+        if ($nama_perusahaan === '' || $alamat === '' || $pic_nama === '' || $pic_whatsapp === '' || $pic_email === '') {
+            $error_msg = "Semua kolom data perusahaan wajib diisi lengkap sebelum disimpan!";
+        } elseif (!filter_var($pic_email, FILTER_VALIDATE_EMAIL)) {
             $error_msg = "Format email PIC tidak valid!";
-        } elseif (!$data_klien) {
-            $error_msg = "Data perusahaan belum tertaut ke akun ini. Hubungi admin.";
         } else {
-            try {
-                $upd = $conn->prepare("
-                    UPDATE Data_Klien
-                    SET nama_perusahaan = :nama_perusahaan, alamat = :alamat,
-                        pic_nama = :pic_nama, pic_whatsapp = :pic_whatsapp, pic_email = :pic_email
-                    WHERE user_id = :uid
-                ");
-                $upd->execute([
-                    'nama_perusahaan' => $nama_perusahaan,
-                    'alamat'          => $alamat,
-                    'pic_nama'        => $pic_nama,
-                    'pic_whatsapp'    => $pic_whatsapp,
-                    'pic_email'       => $pic_email,
-                    'uid'             => $current_user_id,
-                ]);
-                $success_msg = "Data perusahaan berhasil diperbarui!";
-                $stmtKlien->execute(['uid' => $current_user_id]);
-                $data_klien = $stmtKlien->fetch();
-                $nama_untuk_avatar = $data_klien['nama_perusahaan'] ?? ($user['nama_lengkap'] ?? 'Klien');
-            } catch (PDOException $e) {
-                $error_msg = "Gagal menyimpan perubahan: " . $e->getMessage();
+            // Kalau akun ini (mis. akun lama) belum punya baris Data_Klien sama
+            // sekali, buatkan dulu secara otomatis lalu tautkan ke akun ini -
+            // client mengisi datanya sendiri, admin tidak perlu turun tangan.
+            if (!$data_klien) {
+                $klien_id_baru = arp_buat_data_klien_kosong($conn, $current_user_id);
+                if ($klien_id_baru) {
+                    $stmtKlien->execute(['uid' => $current_user_id]);
+                    $data_klien = $stmtKlien->fetch();
+                }
+            }
+
+            if (!$data_klien) {
+                $error_msg = "Gagal menyiapkan data perusahaan. Silakan coba lagi atau hubungi admin.";
+            } else {
+                try {
+                    $upd = $conn->prepare("
+                        UPDATE Data_Klien
+                        SET nama_perusahaan = :nama_perusahaan, alamat = :alamat,
+                            pic_nama = :pic_nama, pic_whatsapp = :pic_whatsapp, pic_email = :pic_email
+                        WHERE user_id = :uid
+                    ");
+                    $upd->execute([
+                        'nama_perusahaan' => $nama_perusahaan,
+                        'alamat'          => $alamat,
+                        'pic_nama'        => $pic_nama,
+                        'pic_whatsapp'    => $pic_whatsapp,
+                        'pic_email'       => $pic_email,
+                        'uid'             => $current_user_id,
+                    ]);
+                    $success_msg = "Data perusahaan berhasil disimpan! Admin akan memverifikasi dan mengaktifkan akun Anda.";
+                    $stmtKlien->execute(['uid' => $current_user_id]);
+                    $data_klien = $stmtKlien->fetch();
+                    $nama_untuk_avatar = $data_klien['nama_perusahaan'] ?? ($user['nama_lengkap'] ?? 'Klien');
+                    $klien_lengkap = arp_klien_lengkap($data_klien);
+                } catch (PDOException $e) {
+                    $error_msg = "Gagal menyimpan perubahan: " . $e->getMessage();
+                }
             }
         }
     } elseif ($action === 'ganti_password') {
@@ -181,6 +203,18 @@ include "../includes/topbar.php";
         </div>
     <?php endif; ?>
 
+    <?php if (!$klien_lengkap): ?>
+        <div class="alert alert-danger-custom align-items-center mb-4">
+            <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+            <div>
+                <strong>Lengkapi Data Perusahaan Anda Terlebih Dahulu.</strong>
+                Sebelum akun dapat diaktifkan dan digunakan sepenuhnya, mohon isi seluruh data perusahaan
+                (Nama Perusahaan, Alamat, dan data PIC) pada form di bawah ini dengan benar.
+                Data ini diisi langsung oleh Anda agar tidak terjadi kesalahan input oleh Admin.
+            </div>
+        </div>
+    <?php endif; ?>
+
     <div class="row g-4">
         <!-- Kartu Avatar Perusahaan -->
         <div class="col-lg-4 col-12">
@@ -203,8 +237,12 @@ include "../includes/topbar.php";
                         <button type="submit" class="avatar-remove-link">Hapus Foto</button>
                     </form>
                 <?php endif; ?>
-                <h5 class="mb-1 fw-bold"><?= htmlspecialchars($data_klien['nama_perusahaan'] ?? '-') ?></h5>
-                <span class="badge-success"><?= htmlspecialchars($data_klien['status'] ?? '-') ?></span>
+                <h5 class="mb-1 fw-bold"><?= htmlspecialchars(($data_klien['nama_perusahaan'] ?? '') !== '' ? $data_klien['nama_perusahaan'] : 'Belum Diisi') ?></h5>
+                <?php if ($klien_lengkap): ?>
+                    <span class="badge-success"><?= htmlspecialchars($data_klien['status'] ?? '-') ?></span>
+                <?php else: ?>
+                    <span class="badge-danger">Data Belum Lengkap</span>
+                <?php endif; ?>
             </div>
         </div>
 
@@ -222,24 +260,33 @@ include "../includes/topbar.php";
                             <input type="text" class="form-control-custom" value="<?= htmlspecialchars($data_klien['kode_klien'] ?? '') ?>" readonly>
                         </div>
                         <div class="col-md-6 col-12">
-                            <label class="form-label fw-semibold fs-7 mb-2">Nama Perusahaan</label>
-                            <input type="text" class="form-control-custom" name="nama_perusahaan" value="<?= htmlspecialchars($data_klien['nama_perusahaan'] ?? '') ?>">
+                            <label class="form-label fw-semibold fs-7 mb-2">Nama Perusahaan <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control-custom" name="nama_perusahaan" required
+                                placeholder="Contoh: PT Sejahtera Abadi"
+                                value="<?= htmlspecialchars($data_klien['nama_perusahaan'] ?? '') ?>">
                         </div>
                         <div class="col-12">
-                            <label class="form-label fw-semibold fs-7 mb-2">Alamat</label>
-                            <textarea class="textarea-custom" name="alamat"><?= htmlspecialchars($data_klien['alamat'] ?? '') ?></textarea>
+                            <label class="form-label fw-semibold fs-7 mb-2">Alamat <span class="text-danger">*</span></label>
+                            <textarea class="textarea-custom" name="alamat" required
+                                placeholder="Alamat lengkap perusahaan"><?= htmlspecialchars($data_klien['alamat'] ?? '') ?></textarea>
                         </div>
                         <div class="col-md-6 col-12">
-                            <label class="form-label fw-semibold fs-7 mb-2">Nama PIC</label>
-                            <input type="text" class="form-control-custom" name="pic_nama" value="<?= htmlspecialchars($data_klien['pic_nama'] ?? '') ?>">
+                            <label class="form-label fw-semibold fs-7 mb-2">Nama PIC <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control-custom" name="pic_nama" required
+                                placeholder="Nama penanggung jawab / kontak"
+                                value="<?= htmlspecialchars($data_klien['pic_nama'] ?? '') ?>">
                         </div>
                         <div class="col-md-6 col-12">
-                            <label class="form-label fw-semibold fs-7 mb-2">No. WhatsApp PIC</label>
-                            <input type="text" class="form-control-custom" name="pic_whatsapp" value="<?= htmlspecialchars($data_klien['pic_whatsapp'] ?? '') ?>">
+                            <label class="form-label fw-semibold fs-7 mb-2">No. WhatsApp PIC <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control-custom" name="pic_whatsapp" required
+                                placeholder="Contoh: 08123456789"
+                                value="<?= htmlspecialchars($data_klien['pic_whatsapp'] ?? '') ?>">
                         </div>
                         <div class="col-12">
-                            <label class="form-label fw-semibold fs-7 mb-2">Email PIC</label>
-                            <input type="email" class="form-control-custom" name="pic_email" value="<?= htmlspecialchars($data_klien['pic_email'] ?? '') ?>">
+                            <label class="form-label fw-semibold fs-7 mb-2">Email PIC <span class="text-danger">*</span></label>
+                            <input type="email" class="form-control-custom" name="pic_email" required
+                                placeholder="email@perusahaan.com"
+                                value="<?= htmlspecialchars($data_klien['pic_email'] ?? '') ?>">
                         </div>
                         <div class="col-12 d-flex justify-content-end gap-3 mt-2">
                             <button type="reset" class="btn-secondary-custom">Reset</button>

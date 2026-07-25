@@ -78,6 +78,33 @@ $sertifikat_kritis = safe_query($conn, "
     LIMIT 6
 ");
 
+// ================== SISA CUTI SELURUH KARYAWAN ==================
+// Direksi perlu memantau sisa saldo cuti tahunan semua karyawan (bukan cuma
+// miliknya sendiri). Tahun bisa dipilih lewat query string ?tahun_cuti=YYYY,
+// default tahun berjalan. Pakai LEFT JOIN + COALESCE supaya karyawan yang
+// belum punya baris Cuti_Saldo (belum pernah ambil cuti tahun ini) tetap
+// tampil dengan jatah default 12 hari / 0 terpakai, tanpa perlu INSERT dulu.
+$tahun_cuti = isset($_GET['tahun_cuti']) ? (int) $_GET['tahun_cuti'] : (int) date('Y');
+if ($tahun_cuti < 2020 || $tahun_cuti > 2100) {
+    $tahun_cuti = (int) date('Y');
+}
+
+$sisa_cuti_karyawan = safe_query($conn, "
+    SELECT
+        u.id, u.nama_lengkap, u.role,
+        COALESCE(cs.jatah_tahunan, 12) AS jatah_tahunan,
+        COALESCE(cs.terpakai, 0)       AS terpakai,
+        COALESCE(cs.sisa, 12)          AS sisa
+    FROM Users u
+    LEFT JOIN Cuti_Saldo cs ON cs.user_id = u.id AND cs.tahun = :tahun
+    WHERE u.role NOT IN ('client')
+    ORDER BY u.nama_lengkap ASC
+", ['tahun' => $tahun_cuti]);
+
+// Daftar tahun untuk dropdown pilihan (tahun berjalan +/- beberapa tahun)
+$tahun_sekarang_cuti = (int) date('Y');
+$opsi_tahun_cuti = range($tahun_sekarang_cuti + 1, $tahun_sekarang_cuti - 3);
+
 function badge_kehadiran(string $status): string
 {
     switch ($status) {
@@ -95,6 +122,13 @@ function badge_kendaraan(string $status): string
         case 'Maintenance': return 'badge-danger';
         default:            return 'badge-secondary';
     }
+}
+// Sisa cuti tipis (<=2 hari) = merah (kritis), <=5 hari = kuning (perlu diawasi), selebihnya hijau (aman)
+function badge_sisa_cuti(int $sisa): string
+{
+    if ($sisa <= 2) return 'badge-danger';
+    if ($sisa <= 5) return 'badge-warning';
+    return 'badge-success';
 }
 
 include "../includes/header.php";
@@ -177,7 +211,7 @@ include "../includes/topbar.php";
                             <thead>
                                 <tr>
                                     <th>Nama</th>
-                                    <th>Role</th>
+                                    <th>Status</th>
                                     <th>Jam Masuk</th>
                                     <th>Jam Pulang</th>
                                     <th>Status</th>
@@ -237,6 +271,67 @@ include "../includes/topbar.php";
                             </li>
                         <?php endforeach; ?>
                     </ul>
+                <?php endif; ?>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <div class="col-12">
+            <div class="card-box">
+                <div class="table-toolbar">
+                    <h5 class="table-toolbar-title fw-bold">Sisa Cuti Karyawan</h5>
+                    <div class="table-toolbar-actions">
+                        <form method="GET" action="monitoring.php" class="d-flex align-items-center gap-2">
+                            <select name="tahun_cuti" class="select-custom" onchange="this.form.submit()">
+                                <?php foreach ($opsi_tahun_cuti as $th): ?>
+                                    <option value="<?= $th ?>" <?= $th === $tahun_cuti ? 'selected' : '' ?>>Tahun <?= $th ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </form>
+                        <div class="search-box-container">
+                            <i class="bi bi-search"></i>
+                            <input type="text" class="search-box" placeholder="Cari nama karyawan..."
+                                data-table-search="tabelSisaCuti" onkeyup="handleTableSearch('tabelSisaCuti')">
+                        </div>
+                    </div>
+                </div>
+
+                <p class="text-secondary fs-7 mb-3">
+                    Rekap saldo cuti tahunan seluruh karyawan untuk tahun <strong><?= $tahun_cuti ?></strong>
+                    (<?= count($sisa_cuti_karyawan) ?> karyawan)
+                </p>
+
+                <?php if (empty($sisa_cuti_karyawan)): ?>
+                    <p class="text-secondary fs-7 mb-0">Belum ada data karyawan.</p>
+                <?php else: ?>
+                    <div class="table-responsive-custom">
+                        <table class="table-custom" id="tabelSisaCuti">
+                            <thead>
+                                <tr>
+                                    <th>Nama</th>
+                                    <th>Role</th>
+                                    <th class="text-center">Jatah Tahunan</th>
+                                    <th class="text-center">Terpakai</th>
+                                    <th class="text-center">Sisa Cuti</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($sisa_cuti_karyawan as $c): ?>
+                                    <tr>
+                                        <td><?= htmlspecialchars($c['nama_lengkap']) ?></td>
+                                        <td><?= htmlspecialchars($c['role']) ?></td>
+                                        <td class="text-center"><?= (int) $c['jatah_tahunan'] ?> Hari</td>
+                                        <td class="text-center"><?= (int) $c['terpakai'] ?> Hari</td>
+                                        <td class="text-center">
+                                            <span class="<?= badge_sisa_cuti((int) $c['sisa']) ?> fs-7"><?= (int) $c['sisa'] ?> Hari</span>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="pagination-custom" id="pagination-tabelSisaCuti"></div>
                 <?php endif; ?>
             </div>
         </div>
@@ -305,6 +400,7 @@ include "../includes/topbar.php";
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         initTablePagination('tabelRekapAbsensi', 10);
+        initTablePagination('tabelSisaCuti', 10);
     });
 </script>
 
