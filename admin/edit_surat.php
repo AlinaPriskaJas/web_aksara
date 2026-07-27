@@ -1036,4 +1036,212 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
             </div>
 </main>
 
+
+<script>
+    // ==========================================
+    // AUTOCOMPLETE NAMA PERUSAHAAN (Data_Klien)
+    // Endpoint AJAX diarahkan ke surat.php (satu folder yang sama),
+    // karena edit_surat.php tidak punya endpoint ajax=cari_klien sendiri.
+    // ==========================================
+    (function () {
+        let timerCari = null;
+        let boxAktif = null;
+        let inputAktif = null;
+
+        function tutupSaran() {
+            if (boxAktif) {
+                boxAktif.remove();
+                boxAktif = null;
+            }
+            inputAktif = null;
+        }
+
+        function buatBoxSaran(input) {
+            tutupSaran();
+            const box = document.createElement('div');
+            box.className = 'arp-autocomplete-box';
+            box.style.cssText = `
+            position:absolute; z-index:2000; background:#fff;
+            border:1px solid var(--border-color,#e2e8f0); border-radius:8px;
+            box-shadow:0 8px 20px rgba(0,0,0,0.12);
+            max-height:220px; overflow-y:auto; font-size:0.85rem;
+        `;
+            document.body.appendChild(box);
+            posisikanBox(box, input);
+            boxAktif = box;
+            inputAktif = input;
+            return box;
+        }
+
+        function posisikanBox(box, input) {
+            const rect = input.getBoundingClientRect();
+            box.style.left = (rect.left + window.scrollX) + 'px';
+            box.style.top = (rect.bottom + window.scrollY + 4) + 'px';
+            box.style.width = rect.width + 'px';
+        }
+
+        function tampilkanSaran(input, daftar) {
+            const box = buatBoxSaran(input);
+            if (!daftar.length) {
+                box.innerHTML = '<div style="padding:10px 14px; color:var(--text-secondary,#64748b);">Tidak ada perusahaan cocok ditemukan.</div>';
+                return;
+            }
+            daftar.forEach(function (klien) {
+                const item = document.createElement('div');
+                item.style.cssText = 'padding:10px 14px; cursor:pointer; border-bottom:1px solid #f1f5f9;';
+                item.innerHTML = '<div style="font-weight:600; color:var(--text-primary,#1e293b);">' +
+                    escapeHtmlAC(klien.nama_perusahaan) + '</div>' +
+                    (klien.pic_nama ? '<div style="color:var(--text-secondary,#64748b); font-size:0.78rem;">PIC: ' + escapeHtmlAC(klien.pic_nama) + '</div>' : '');
+                item.addEventListener('mouseenter', function () { item.style.background = '#f8fafc'; });
+                item.addEventListener('mouseleave', function () { item.style.background = '#fff'; });
+                item.addEventListener('mousedown', function (e) {
+                    e.preventDefault();
+                    clearTimeout(timerCari);
+
+                    input.value = klien.nama_perusahaan;
+                    input.dataset.acJustPicked = '1';
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                    input.dispatchEvent(new Event('change', { bubbles: true }));
+
+                    isiAlamatOtomatis(input, klien.alamat);
+
+                    tutupSaran();
+                    input.blur();
+                });
+                box.appendChild(item);
+            });
+        }
+
+        function escapeHtmlAC(str) {
+            return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        function cariKlien(input) {
+            if (input.dataset.acJustPicked === '1') {
+                input.dataset.acJustPicked = '0';
+                tutupSaran();
+                return;
+            }
+
+            const q = input.value.trim();
+            if (q.length < 1) {
+                tutupSaran();
+                return;
+            }
+            // PENTING: fetch ke surat.php (bukan edit_surat.php), karena
+            // endpoint ajax=cari_klien ada di surat.php (satu folder admin/).
+            fetch('surat.php?ajax=cari_klien&q=' + encodeURIComponent(q))
+                .then(function (res) { return res.json(); })
+                .then(function (data) {
+                    if (document.activeElement === input) {
+                        tampilkanSaran(input, data);
+                    }
+                })
+                .catch(function () { tutupSaran(); });
+        }
+
+        function cariFieldAlamatTerkait(inputPerusahaan) {
+            const wadah =
+                inputPerusahaan.closest('tr.baris-item') ||
+                inputPerusahaan.closest('.blok-baris') ||
+                inputPerusahaan.closest('form') ||
+                document;
+
+            let kandidat = wadah.querySelectorAll('input[name^="dinamis["], textarea[name^="dinamis["]');
+            let cocokKuat = null;
+            let cocokLemah = null;
+
+            kandidat.forEach(function (el) {
+                const nama = (el.getAttribute('name') || '').toLowerCase();
+                if (nama.indexOf('alamat') === -1) return;
+                if (nama.indexOf('perusahaan') !== -1 && !cocokKuat) {
+                    cocokKuat = el;
+                } else if (!cocokLemah) {
+                    cocokLemah = el;
+                }
+            });
+
+            if (cocokKuat) return cocokKuat;
+            if (cocokLemah) return cocokLemah;
+
+            let cocokKolom = null;
+            wadah.querySelectorAll('input[data-kolom], textarea[data-kolom]').forEach(function (el) {
+                const nama = (el.getAttribute('data-kolom') || '').toLowerCase();
+                if (nama.indexOf('alamat') !== -1 && !cocokKolom) {
+                    cocokKolom = el;
+                }
+            });
+            return cocokKolom;
+        }
+
+        function isiAlamatOtomatis(inputPerusahaan, alamat) {
+            if (!alamat) return;
+            const fieldAlamat = cariFieldAlamatTerkait(inputPerusahaan);
+            if (!fieldAlamat) return;
+
+            fieldAlamat.value = alamat;
+            fieldAlamat.dispatchEvent(new Event('input', { bubbles: true }));
+            fieldAlamat.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        function pasangAutocomplete(input) {
+            if (input.dataset.acTerpasang === '1') return;
+            input.dataset.acTerpasang = '1';
+            input.dataset.acJustPicked = '0';
+            input.setAttribute('autocomplete', 'off');
+
+            input.addEventListener('input', function () {
+                clearTimeout(timerCari);
+                timerCari = setTimeout(function () { cariKlien(input); }, 300);
+            });
+            input.addEventListener('focus', function () {
+                if (input.dataset.acJustPicked === '1') return;
+                if (input.value.trim().length >= 1) cariKlien(input);
+            });
+            input.addEventListener('blur', function () {
+                setTimeout(tutupSaran, 150);
+            });
+            window.addEventListener('scroll', function () {
+                if (inputAktif === input && boxAktif) posisikanBox(boxAktif, input);
+            }, true);
+        }
+
+        function pasangKeSemuaFieldPerusahaan(root) {
+            root = root || document;
+            root.querySelectorAll('input[name^="dinamis["]').forEach(function (input) {
+                const namaField = (input.getAttribute('name') || '').toLowerCase();
+                if (namaField.indexOf('perusahaan') !== -1) {
+                    pasangAutocomplete(input);
+                }
+            });
+            root.querySelectorAll('input[data-kolom]').forEach(function (input) {
+                const namaKolom = (input.getAttribute('data-kolom') || '').toLowerCase();
+                if (namaKolom.indexOf('perusahaan') !== -1) {
+                    pasangAutocomplete(input);
+                }
+            });
+            // Field "Tujuan" manual di edit_surat.php
+            root.querySelectorAll('input[name="tujuan_manual"]').forEach(pasangAutocomplete);
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            pasangKeSemuaFieldPerusahaan(document);
+        });
+
+        const observerFieldBaru = new MutationObserver(function (mutations) {
+            mutations.forEach(function (m) {
+                m.addedNodes.forEach(function (node) {
+                    if (node.nodeType === 1) {
+                        pasangKeSemuaFieldPerusahaan(node);
+                    }
+                });
+            });
+        });
+        document.addEventListener('DOMContentLoaded', function () {
+            observerFieldBaru.observe(document.body, { childList: true, subtree: true });
+        });
+    })();
+</script>
+
+
 <?php include "../includes/footer.php"; ?>
