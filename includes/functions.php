@@ -43,10 +43,10 @@ function resolveNomorSurat(PDO $pdo, int $kode_id, ?string $noUrutManual = null)
     $bulanRomawi = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'][date('n') - 1];
     $nomorLengkap = sprintf('%03d/%s/ARP/%s/%d', (int) $noUrutManual, $kode, $bulanRomawi, $tahun);
 
-    $cek = $pdo->prepare("SELECT id FROM surat WHERE nomor = ?");
-    $cek->execute([$nomorLengkap]);
+    $cek = $pdo->prepare("SELECT id FROM surat WHERE nomor = ? AND kode_id = ?");
+    $cek->execute([$nomorLengkap, $kode_id]);
     if ($cek->fetch()) {
-        throw new RuntimeException("Nomor surat \"{$nomorLengkap}\" sudah digunakan surat lain. Gunakan nomor urut lain atau kosongkan untuk otomatis.");
+        throw new RuntimeException("Nomor surat \"{$nomorLengkap}\" sudah digunakan surat lain untuk jenis surat ini. Gunakan nomor urut lain atau kosongkan untuk otomatis.");
     }
 
     return $nomorLengkap;
