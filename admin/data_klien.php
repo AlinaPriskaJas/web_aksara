@@ -167,6 +167,136 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
     exit;
 }
 
+// ================== PROSES: IMPORT DATA KLIEN DARI FILE (.xlsx / .csv) ==================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['aksi'] === 'import_klien') {
+    require_once "../includes/functions.php";
+
+    $total = 0; $berhasil = 0; $gagal = 0; $duplikat = 0;
+    $daftarError = [];
+    $namaFileAsli = $_FILES['file_import']['name'] ?? '-';
+
+    if (!isset($_FILES['file_import']) || $_FILES['file_import']['error'] !== UPLOAD_ERR_OK) {
+        $flash = ['type' => 'danger', 'message' => 'File import wajib dipilih.'];
+    } else {
+        $ext = strtolower(pathinfo($_FILES['file_import']['name'], PATHINFO_EXTENSION));
+        if (!in_array($ext, ['xlsx', 'csv'], true)) {
+            $flash = ['type' => 'danger', 'message' => 'Format file tidak didukung. Gunakan .xlsx atau .csv.'];
+        } else {
+            try {
+                $baris = bacaBarisSpreadsheet($_FILES['file_import']['tmp_name'], $ext);
+                if (empty($baris)) {
+                    throw new RuntimeException('File kosong / tidak ada data.');
+                }
+
+                // ---- Baca baris header (baris pertama) & petakan hanya kolom yang dikenali ----
+                $headerRow = array_shift($baris);
+                $petaHeader = petaHeaderImportKlien();
+                $kolomTerpakai = []; // ['A' => 'nama_perusahaan', 'C' => 'pic_nama', ...]
+                foreach ($headerRow as $kolomHuruf => $teksHeader) {
+                    $key = normalisasiHeaderKlien((string) $teksHeader);
+                    if (isset($petaHeader[$key])) {
+                        $kolomTerpakai[$kolomHuruf] = $petaHeader[$key];
+                    }
+                    // Header yang tidak dikenali sengaja dilewati (tidak dipetakan)
+                }
+
+                if (!in_array('nama_perusahaan', $kolomTerpakai, true)) {
+                    throw new RuntimeException('Kolom "NAMA PERUSAHAAN" tidak ditemukan di file. Pastikan header sesuai template.');
+                }
+
+                $total = count($baris);
+                $conn->beginTransaction();
+
+                $urutan = (int) $conn->query("SELECT COUNT(*) FROM Data_Klien")->fetchColumn();
+                $cekDuplikat = $conn->prepare("SELECT id FROM Data_Klien WHERE LOWER(nama_perusahaan) = LOWER(:nama) LIMIT 1");
+                $cekKode     = $conn->prepare("SELECT COUNT(*) FROM Data_Klien WHERE kode_klien = :kode");
+                $insertKlien = $conn->prepare("
+                    INSERT INTO Data_Klien (kode_klien, nama_perusahaan, status, pic_nama, jabatan_pic, pic_whatsapp, pic_email)
+                    VALUES (:kode_klien, :nama_perusahaan, :status, :pic_nama, :jabatan_pic, :pic_whatsapp, :pic_email)
+                ");
+
+                foreach ($baris as $i => $r) {
+                    $baris_ke = $i + 2; // +2: baris 1 = header
+
+                    $data = ['nama_perusahaan' => '', 'pic_nama' => '', 'jabatan_pic' => '', 'pic_whatsapp' => '', 'pic_email' => '', 'status' => ''];
+                    foreach ($kolomTerpakai as $kolomHuruf => $field) {
+                        $data[$field] = trim((string) ($r[$kolomHuruf] ?? ''));
+                    }
+
+                    // Lewati baris kosong total (tidak dihitung sama sekali)
+                    if ($data['nama_perusahaan'] === '' && $data['pic_nama'] === '' && $data['pic_email'] === '') {
+                        $total--;
+                        continue;
+                    }
+
+                    if ($data['nama_perusahaan'] === '') {
+                        $gagal++;
+                        $daftarError[] = "Baris $baris_ke: Nama Perusahaan kosong.";
+                        continue;
+                    }
+
+                    $cekDuplikat->execute([':nama' => $data['nama_perusahaan']]);
+                    if ($cekDuplikat->fetch()) {
+                        $duplikat++;
+                        $daftarError[] = "Baris $baris_ke: \"{$data['nama_perusahaan']}\" sudah ada di Data Klien (dilewati).";
+                        continue;
+                    }
+
+                    $statusNormal = strtolower($data['status']);
+                    $status = (strpos($statusNormal, 'non') !== false || strpos($statusNormal, 'tidak') !== false)
+                        ? 'Non-aktif' : 'Aktif';
+
+                    do {
+                        $urutan++;
+                        $kode_klien = 'KLN-' . str_pad((string) $urutan, 4, '0', STR_PAD_LEFT);
+                        $cekKode->execute([':kode' => $kode_klien]);
+                    } while ((int) $cekKode->fetchColumn() > 0);
+
+                    $insertKlien->execute([
+                        ':kode_klien'      => $kode_klien,
+                        ':nama_perusahaan' => $data['nama_perusahaan'],
+                        ':status'          => $status,
+                        ':pic_nama'        => $data['pic_nama'],
+                        ':jabatan_pic'     => $data['jabatan_pic'],
+                        ':pic_whatsapp'    => $data['pic_whatsapp'],
+                        ':pic_email'       => $data['pic_email'],
+                    ]);
+                    $berhasil++;
+                }
+
+                $conn->commit();
+
+                $conn->prepare("
+                    INSERT INTO Import_Log (nama_file, total_baris, berhasil, gagal, duplikat, detail_error, diupload_oleh)
+                    VALUES (:nama_file, :total, :berhasil, :gagal, :duplikat, :detail, :user_id)
+                ")->execute([
+                    ':nama_file' => $namaFileAsli,
+                    ':total'     => $total,
+                    ':berhasil'  => $berhasil,
+                    ':gagal'     => $gagal,
+                    ':duplikat'  => $duplikat,
+                    ':detail'    => implode("\n", $daftarError) ?: null,
+                    ':user_id'   => $admin_id,
+                ]);
+
+                $flash = [
+                    'type'    => $berhasil > 0 ? 'success' : 'danger',
+                    'message' => "Import selesai: {$berhasil} berhasil, {$duplikat} duplikat dilewati, {$gagal} gagal dari {$total} baris data.",
+                ];
+            } catch (\Throwable $e) {
+                if ($conn->inTransaction()) {
+                    $conn->rollBack();
+                }
+                $flash = ['type' => 'danger', 'message' => 'Gagal import: ' . $e->getMessage()];
+            }
+        }
+    }
+
+    $_SESSION['data_klien_flash'] = $flash;
+    header("Location: data_klien.php?tab=daftar");
+    exit;
+}
+
 $flash = $_SESSION['data_klien_flash'] ?? $flash;
 unset($_SESSION['data_klien_flash']);
 
@@ -206,6 +336,21 @@ try {
 } catch (PDOException $e) {
     $klien_belum_tertaut = [];
 }
+
+// ================== DAFTAR SEMUA DATA_KLIEN (Tab "Daftar Client") ==================
+$semua_klien = [];
+try {
+    $stmt = $conn->query("
+        SELECT id, kode_klien, nama_perusahaan, pic_nama, jabatan_pic, pic_whatsapp, pic_email, status
+        FROM Data_Klien
+        ORDER BY nama_perusahaan ASC
+    ");
+    $semua_klien = $stmt->fetchAll();
+} catch (PDOException $e) {
+    $semua_klien = [];
+}
+
+$active_tab_klien = (($_GET['tab'] ?? '') === 'daftar') ? 'tabPanelDaftarKlien' : 'tabPanelAkunKlien';
 
 include "../includes/header.php";
 include "../includes/sidebar.php";
@@ -329,85 +474,164 @@ include "../includes/topbar.php";
         </div>
     </div>
 
-    <!-- Tabel -->
-    <div class="card-box">
-        <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-3">
-            <h5 class="mb-0 fw-bold">Akun Client Terdaftar</h5>
+    <!-- Tab Navigation -->
+    <div class="arp-tab-group">
+        <div class="arp-tab-nav">
+            <button type="button" class="arp-tab-btn<?= $active_tab_klien === 'tabPanelAkunKlien' ? ' active' : '' ?>"
+                data-tab-target="tabPanelAkunKlien" onclick="switchTab('tabPanelAkunKlien', this)">
+                <i class="bi bi-people-fill me-1"></i> Akun Client
+            </button>
+            <button type="button" class="arp-tab-btn<?= $active_tab_klien === 'tabPanelDaftarKlien' ? ' active' : '' ?>"
+                data-tab-target="tabPanelDaftarKlien" onclick="switchTab('tabPanelDaftarKlien', this)">
+                <i class="bi bi-building me-1"></i> Daftar Client
+            </button>
         </div>
 
-        <div class="table-responsive-custom">
-            <table class="table-custom">
-                <thead>
-                    <tr>
-                        <th>No</th>
-                        <th>Nama Akun</th>
-                        <th>Email Login</th>
-                        <th>Tgl. Registrasi</th>
-                        <th>Kode Klien</th>
-                        <th>Nama Perusahaan</th>
-                        <th>Status Tautan</th>
-                        <th style="text-align: center;">Aksi</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if (empty($daftar_client)): ?>
-                        <tr>
-                            <td colspan="8" class="text-center text-muted py-4">Belum ada akun client yang registrasi.</td>
-                        </tr>
-                    <?php else: ?>
-                        <?php foreach ($daftar_client as $i => $c): ?>
-                            <tr>
-                                <td><?= $i + 1 ?></td>
-                                <td><?= htmlspecialchars($c['nama_lengkap']) ?></td>
-                                <td><?= htmlspecialchars($c['email']) ?></td>
-                                <td><?= date('d M Y', strtotime($c['tgl_registrasi'])) ?></td>
-                                <td>
-                                    <?php if ($c['klien_id']): ?>
-                                        <?= htmlspecialchars($c['kode_klien']) ?>
-                                    <?php else: ?>
-                                        <span class="text-muted fs-7">-</span>
-                                    <?php endif; ?>
-                                </td>
-                                <td>
-                                    <?php if ($c['klien_id']): ?>
-                                        <?= htmlspecialchars($c['nama_perusahaan']) ?>
-                                    <?php else: ?>
-                                        <span class="text-muted fs-7">-</span>
-                                    <?php endif; ?>
-                                </td>
-                                <td>
-                                    <?php if ($c['klien_id']): ?>
-                                        <span class="badge-success">Sudah Ditautkan</span>
-                                    <?php else: ?>
-                                        <span class="badge-warning">Belum Ditautkan</span>
-                                    <?php endif; ?>
-                                </td>
-                                <td style="text-align: center;">
-                                    <?php if ($c['klien_id']): ?>
-                                        <button type="button" class="btn-secondary-custom" style="height:32px; padding:0 12px; font-size:0.8rem;"
-                                            onclick='openEditModal(<?= json_encode([
-                                                "klien_id" => $c["klien_id"],
-                                                "nama_perusahaan" => $c["nama_perusahaan"],
-                                                "alamat" => $c["alamat"],
-                                                "status" => $c["status"],
-                                                "pic_nama" => $c["pic_nama"],
-                                                "pic_whatsapp" => $c["pic_whatsapp"],
-                                                "pic_email" => $c["pic_email"],
-                                            ]) ?>)'>
-                                            <i class="bi bi-pencil-square"></i> Edit
-                                        </button>
-                                    <?php else: ?>
-                                        <button type="button" class="btn-primary-custom" style="height:32px; padding:0 12px; font-size:0.8rem;"
-                                            onclick="openTautkanModal(<?= (int) $c['user_id'] ?>, '<?= htmlspecialchars(addslashes($c['nama_lengkap'])) ?>')">
-                                            <i class="bi bi-link-45deg"></i> Tautkan
-                                        </button>
-                                    <?php endif; ?>
-                                </td>
-                            </tr>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </tbody>
-            </table>
+        <div class="row g-4">
+            <!-- Panel 1: Akun Client Terdaftar -->
+            <div class="col-12 arp-tab-panel" id="tabPanelAkunKlien" <?= $active_tab_klien === 'tabPanelAkunKlien' ? '' : 'style="display:none;"' ?>>
+                <div class="card-box">
+                    <div class="table-toolbar">
+                        <h5 class="table-toolbar-title fw-bold">Akun Client Terdaftar</h5>
+                    </div>
+
+                    <div class="table-responsive-custom">
+                        <table class="table-custom">
+                            <thead>
+                                <tr>
+                                    <th>No</th>
+                                    <th>Nama Akun</th>
+                                    <th>Email Login</th>
+                                    <th>Tgl. Registrasi</th>
+                                    <th>Kode Klien</th>
+                                    <th>Nama Perusahaan</th>
+                                    <th>Status Tautan</th>
+                                    <th style="text-align: center;">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php if (empty($daftar_client)): ?>
+                                    <tr>
+                                        <td colspan="8" class="text-center text-muted py-4">Belum ada akun client yang registrasi.</td>
+                                    </tr>
+                                <?php else: ?>
+                                    <?php foreach ($daftar_client as $i => $c): ?>
+                                        <tr>
+                                            <td><?= $i + 1 ?></td>
+                                            <td><?= htmlspecialchars($c['nama_lengkap']) ?></td>
+                                            <td><?= htmlspecialchars($c['email']) ?></td>
+                                            <td><?= date('d M Y', strtotime($c['tgl_registrasi'])) ?></td>
+                                            <td>
+                                                <?php if ($c['klien_id']): ?>
+                                                    <?= htmlspecialchars($c['kode_klien']) ?>
+                                                <?php else: ?>
+                                                    <span class="text-muted fs-7">-</span>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td>
+                                                <?php if ($c['klien_id']): ?>
+                                                    <?= htmlspecialchars($c['nama_perusahaan']) ?>
+                                                <?php else: ?>
+                                                    <span class="text-muted fs-7">-</span>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td>
+                                                <?php if ($c['klien_id']): ?>
+                                                    <span class="badge-success">Sudah Ditautkan</span>
+                                                <?php else: ?>
+                                                    <span class="badge-warning">Belum Ditautkan</span>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td style="text-align: center;">
+                                                <?php if ($c['klien_id']): ?>
+                                                    <button type="button" class="btn-secondary-custom" style="height:32px; padding:0 12px; font-size:0.8rem;"
+                                                        onclick='openEditModal(<?= json_encode([
+                                                            "klien_id" => $c["klien_id"],
+                                                            "nama_perusahaan" => $c["nama_perusahaan"],
+                                                            "alamat" => $c["alamat"],
+                                                            "status" => $c["status"],
+                                                            "pic_nama" => $c["pic_nama"],
+                                                            "pic_whatsapp" => $c["pic_whatsapp"],
+                                                            "pic_email" => $c["pic_email"],
+                                                        ]) ?>)'>
+                                                        <i class="bi bi-pencil-square"></i> Edit
+                                                    </button>
+                                                <?php else: ?>
+                                                    <button type="button" class="btn-primary-custom" style="height:32px; padding:0 12px; font-size:0.8rem;"
+                                                        onclick="openTautkanModal(<?= (int) $c['user_id'] ?>, '<?= htmlspecialchars(addslashes($c['nama_lengkap'])) ?>')">
+                                                        <i class="bi bi-link-45deg"></i> Tautkan
+                                                    </button>
+                                                <?php endif; ?>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel 2: Daftar Client (baru, dengan Import Data Klien) -->
+            <div class="col-12 arp-tab-panel" id="tabPanelDaftarKlien" <?= $active_tab_klien === 'tabPanelDaftarKlien' ? '' : 'style="display:none;"' ?>>
+                <div class="card-box">
+                    <div class="table-toolbar">
+                        <h5 class="table-toolbar-title fw-bold">Daftar Data Klien</h5>
+                        <div class="table-toolbar-actions">
+                            <div class="search-box-container">
+                                <i class="bi bi-search"></i>
+                                <input type="text" class="search-box" placeholder="Cari perusahaan..."
+                                    data-table-search="tabelDaftarKlien" onkeyup="handleTableSearch('tabelDaftarKlien')">
+                            </div>
+                            <button type="button" class="btn-primary-custom"
+                                onclick="new bootstrap.Modal(document.getElementById('modalImportKlien')).show()">
+                                <i class="bi bi-file-earmark-arrow-up"></i> Import Data Klien
+                            </button>
+                        </div>
+                    </div>
+                    <div class="table-responsive-custom">
+                        <table class="table-custom" id="tabelDaftarKlien">
+                            <thead>
+                                <tr>
+                                    <th>Kode Klien</th>
+                                    <th>Nama Perusahaan</th>
+                                    <th>Nama PIC</th>
+                                    <th>Jabatan</th>
+                                    <th>No. HP/WhatsApp</th>
+                                    <th>Email</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php if (empty($semua_klien)): ?>
+                                    <tr>
+                                        <td colspan="7" class="text-center text-muted py-4">Belum ada data klien.</td>
+                                    </tr>
+                                <?php else: ?>
+                                    <?php foreach ($semua_klien as $k): ?>
+                                        <tr>
+                                            <td><strong><?= htmlspecialchars($k['kode_klien']) ?></strong></td>
+                                            <td><?= htmlspecialchars($k['nama_perusahaan']) ?></td>
+                                            <td><?= htmlspecialchars($k['pic_nama'] ?: '-') ?></td>
+                                            <td><?= htmlspecialchars($k['jabatan_pic'] ?: '-') ?></td>
+                                            <td><?= htmlspecialchars($k['pic_whatsapp'] ?: '-') ?></td>
+                                            <td><?= htmlspecialchars($k['pic_email'] ?: '-') ?></td>
+                                            <td>
+                                                <?php if ($k['status'] === 'Aktif'): ?>
+                                                    <span class="badge-success">Aktif</span>
+                                                <?php else: ?>
+                                                    <span class="badge-danger">Non-aktif</span>
+                                                <?php endif; ?>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="pagination-custom" id="pagination-tabelDaftarKlien"></div>
+                </div>
+            </div>
         </div>
     </div>
 </main>
@@ -577,6 +801,41 @@ include "../includes/topbar.php";
                 <div class="modal-footer">
                     <button type="button" class="btn-secondary-custom" data-bs-dismiss="modal">Batal</button>
                     <button type="submit" class="btn-primary-custom">Simpan Perubahan</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ===== MODAL: Import Data Klien ===== -->
+<div class="modal fade modal-custom" id="modalImportKlien" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form action="data_klien.php" method="POST" enctype="multipart/form-data">
+                <input type="hidden" name="aksi" value="import_klien">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-file-earmark-arrow-up me-2"></i>Import Data Klien</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-success-custom text-xs mb-3">
+                        <i class="bi bi-info-circle-fill"></i>
+                        <div>
+                            File harus punya baris header berikut (urutan bebas):<br>
+                            <strong>NAMA PERUSAHAAN, Nama PIC, Jabatan, No. HP/WhatsApp, Email, Status Client</strong><br>
+                            Kolom di luar daftar ini otomatis diabaikan. Format file: <strong>.xlsx</strong> atau <strong>.csv</strong>.
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold fs-7 mb-2">Pilih File *</label>
+                        <input type="file" name="file_import" class="form-control-custom" accept=".xlsx,.csv" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary-custom" data-bs-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn-primary-custom">
+                        <i class="bi bi-upload me-1"></i> Import Sekarang
+                    </button>
                 </div>
             </form>
         </div>

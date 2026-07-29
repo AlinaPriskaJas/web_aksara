@@ -1475,3 +1475,153 @@ function e(?string $value): string
 {
     return htmlspecialchars($value ?? '', ENT_QUOTES, 'UTF-8');
 }
+
+// ==========================================
+// IMPORT DATA KLIEN: PETA HEADER FILE -> KOLOM Data_Klien
+// Hanya header yang ADA di daftar ini yang akan dibaca. Header lain di
+// file import (kolom tak dikenal) otomatis diabaikan, tidak masuk data.
+// ==========================================
+function petaHeaderImportKlien(): array
+{
+    return [
+        'NAMA PERUSAHAAN'   => 'nama_perusahaan',
+        'NAMA PIC'          => 'pic_nama',
+        'JABATAN'           => 'jabatan_pic',
+        'NO. HP/WHATSAPP'   => 'pic_whatsapp',
+        'NO HP/WHATSAPP'    => 'pic_whatsapp',
+        'NO. HP / WHATSAPP' => 'pic_whatsapp',
+        'WHATSAPP'          => 'pic_whatsapp',
+        'EMAIL'             => 'pic_email',
+        'STATUS CLIENT'     => 'status',
+        'STATUS'            => 'status',
+    ];
+}
+
+function normalisasiHeaderKlien(string $teks): string
+{
+    $teks = strtoupper(trim($teks));
+    return preg_replace('/\s+/', ' ', $teks);
+}
+
+// ==========================================
+// BACA BARIS FILE IMPORT (.xlsx / .csv) -> array baris,
+// tiap baris = array asosiatif ['A' => nilai, 'B' => nilai, ...]
+// mengikuti huruf kolom aslinya (bukan reindex 0,1,2), supaya
+// pemetaan header -> kolom tetap konsisten walau ada kolom kosong.
+// ==========================================
+function bacaBarisSpreadsheet(string $path, string $ext): array
+{
+    $ext = strtolower($ext);
+    if ($ext === 'csv') {
+        return bacaBarisCsv($path);
+    }
+    if ($ext === 'xlsx') {
+        return bacaBarisXlsx($path);
+    }
+    throw new RuntimeException('Format file tidak didukung. Gunakan .xlsx atau .csv.');
+}
+
+function arpKolomIndexKeHuruf(int $index): string
+{
+    $huruf = '';
+    $index++;
+    while ($index > 0) {
+        $sisa = ($index - 1) % 26;
+        $huruf = chr(65 + $sisa) . $huruf;
+        $index = intdiv($index - 1, 26);
+    }
+    return $huruf;
+}
+
+function bacaBarisCsv(string $path): array
+{
+    $content = file_get_contents($path);
+    if ($content === false) {
+        throw new RuntimeException('Gagal membaca file CSV.');
+    }
+    // Buang BOM UTF-8 kalau ada (biasa muncul dari export Excel)
+    $content = preg_replace('/^\xEF\xBB\xBF/', '', $content);
+
+    $firstLine = strtok($content, "\r\n");
+    // Deteksi delimiter otomatis: ";" (umum di Excel lokal ID) atau ","
+    $delimiter = (substr_count((string) $firstLine, ';') > substr_count((string) $firstLine, ',')) ? ';' : ',';
+
+    $rows = [];
+    foreach (preg_split('/\r\n|\r|\n/', $content) as $line) {
+        if (trim($line) === '') {
+            continue;
+        }
+        $cols = str_getcsv($line, $delimiter);
+        $baris = [];
+        foreach ($cols as $i => $val) {
+            $baris[arpKolomIndexKeHuruf($i)] = trim((string) $val);
+        }
+        $rows[] = $baris;
+    }
+    return $rows;
+}
+
+function bacaBarisXlsx(string $path): array
+{
+    $zip = new ZipArchive();
+    if ($zip->open($path) !== true) {
+        throw new RuntimeException('Gagal membuka file Excel (.xlsx). Pastikan file tidak rusak.');
+    }
+
+    // Ambil shared strings (teks yang dipakai berulang di file Excel)
+    $sharedStrings = [];
+    $ssXml = $zip->getFromName('xl/sharedStrings.xml');
+    if ($ssXml !== false) {
+        $ssObj = @simplexml_load_string($ssXml);
+        if ($ssObj !== false) {
+            foreach ($ssObj->si as $si) {
+                if (isset($si->t)) {
+                    $sharedStrings[] = (string) $si->t;
+                } else {
+                    $teks = '';
+                    foreach ($si->r as $r) {
+                        $teks .= (string) $r->t;
+                    }
+                    $sharedStrings[] = $teks;
+                }
+            }
+        }
+    }
+
+    $sheetXml = $zip->getFromName('xl/worksheets/sheet1.xml');
+    $zip->close();
+    if ($sheetXml === false) {
+        throw new RuntimeException('Gagal membaca isi sheet pertama pada file Excel.');
+    }
+
+    $xmlObj = @simplexml_load_string($sheetXml);
+    if ($xmlObj === false) {
+        throw new RuntimeException('File Excel tidak valid atau rusak.');
+    }
+
+    $rows = [];
+    foreach ($xmlObj->sheetData->row as $row) {
+        $baris = [];
+        foreach ($row->c as $c) {
+            $ref = (string) $c['r']; // contoh "B4"
+            preg_match('/^([A-Z]+)/', $ref, $m);
+            $kolomHuruf = $m[1] ?? '';
+            $tipe = (string) $c['t'];
+
+            $nilai = '';
+            if (isset($c->v)) {
+                $mentah = (string) $c->v;
+                $nilai = ($tipe === 's') ? ($sharedStrings[(int) $mentah] ?? '') : $mentah;
+            } elseif ($tipe === 'inlineStr' && isset($c->is->t)) {
+                $nilai = (string) $c->is->t;
+            }
+            if ($kolomHuruf !== '') {
+                $baris[$kolomHuruf] = trim($nilai);
+            }
+        }
+        if (!empty($baris)) {
+            $rows[] = $baris;
+        }
+    }
+    return $rows;
+}
