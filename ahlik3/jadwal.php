@@ -28,9 +28,10 @@ $jadwals = [];
 if ($ahli_k3_id > 0) {
     try {
         $stmtJadwal = $conn->prepare("
-            SELECT jp.*, dk.nama_perusahaan, u.nama_lengkap AS nama_admin 
+            SELECT jp.*, dk.nama_perusahaan, sa.nama_lengkap AS nama_ahli, sa.tingkat_ahli, sa.bidang_keahlian, u.nama_lengkap AS nama_admin 
             FROM Jadwal_Pemeriksaan jp
             JOIN Data_Klien dk ON jp.klien_id = dk.id
+            JOIN Sertifikat_Ahli sa ON jp.ahli_k3_id = sa.id
             JOIN Users u ON jp.dijadwalkan_oleh = u.id
             WHERE jp.ahli_k3_id = :ahli_id
             ORDER BY jp.tanggal DESC, jp.jam_mulai DESC
@@ -41,79 +42,192 @@ if ($ahli_k3_id > 0) {
         $jadwals = [];
     }
 }
+
+$today_str = date('Y-m-d');
 ?>
 
 <main class="main-content">
     <div class="row g-4">
-        <div class="col-12">
+        <!-- Kalender Jadwal Riksa (read-only) -->
+        <div class="col-lg-7">
             <div class="card-box">
                 <div class="table-toolbar">
-                    <h5 class="table-toolbar-title fw-bold">Daftar Jadwal Tugas Survey &amp; Pemeriksaan Lapangan</h5>
+                    <h5 class="table-toolbar-title fw-bold">Kalender Jadwal Riksa</h5>
                     <div class="table-toolbar-actions">
-                        <div class="search-box-container">
-                            <i class="bi bi-search"></i>
-                            <input type="text" class="search-box" placeholder="Cari jadwal..."
-                                data-table-search="tabelJadwalAhli" onkeyup="handleTableSearch('tabelJadwalAhli')">
-                        </div>
+                        <button type="button" class="btn-secondary-custom cal-nav-btn" onclick="changeMonth(-1)">
+                            <i class="bi bi-chevron-left"></i>
+                        </button>
+                        <span id="calendarMonthLabel" class="fw-semibold"
+                            style="min-width:150px; text-align:center; display:inline-block;"></span>
+                        <button type="button" class="btn-secondary-custom cal-nav-btn" onclick="changeMonth(1)">
+                            <i class="bi bi-chevron-right"></i>
+                        </button>
                     </div>
                 </div>
 
-                <div class="table-responsive-custom">
-                    <table class="table-custom" id="tabelJadwalAhli">
-                        <thead>
-                            <tr>
-                                <th>Tanggal &amp; Waktu</th>
-                                <th>Perusahaan Klien</th>
-                                <th>Lokasi Proyek</th>
-                                <th>Status Tugas</th>
-                                <th>Catatan Penugasan</th>
-                                <th>Dijadwalkan Oleh</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php if (count($jadwals) === 0): ?>
-                                <tr>
-                                    <td colspan="6" class="text-center py-4 text-muted">Belum ada tugas jadwal inspeksi yang
-                                        terdaftar untuk Anda.</td>
-                                </tr>
-                            <?php else: ?>
-                                <?php foreach ($jadwals as $j): ?>
-                                    <tr>
-                                        <td>
-                                            <div class="fw-bold"><?= date('d M Y', strtotime($j['tanggal'])) ?></div>
-                                            <small class="text-secondary"><?= substr($j['jam_mulai'], 0, 5) ?> -
-                                                <?= $j['jam_selesai'] ? substr($j['jam_selesai'], 0, 5) : 'Selesai' ?></small>
-                                        </td>
-                                        <td><strong><?= htmlspecialchars($j['nama_perusahaan']) ?></strong></td>
-                                        <td><?= htmlspecialchars($j['lokasi'] ?: '-') ?></td>
-                                        <td>
-                                            <?php
-                                            $badgeClass = 'badge-warning';
-                                            if ($j['status'] === 'Selesai')
-                                                $badgeClass = 'badge-success';
-                                            if ($j['status'] === 'Dibatalkan')
-                                                $badgeClass = 'badge-danger';
-                                            ?>
-                                            <span class="<?= $badgeClass ?>"><?= htmlspecialchars($j['status']) ?></span>
-                                        </td>
-                                        <td><?= htmlspecialchars($j['catatan'] ?: '-') ?></td>
-                                        <td><?= htmlspecialchars($j['nama_admin']) ?></td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            <?php endif; ?>
-                        </tbody>
-                    </table>
+                <div class="calendar-weekdays">
+                    <span>Sen</span><span>Sel</span><span>Rab</span><span>Kam</span><span>Jum</span><span>Sab</span><span>Min</span>
                 </div>
-                <div class="pagination-custom" id="pagination-tabelJadwalAhli"></div>
+                <div class="calendar-grid" id="calendarGrid"></div>
+
+                <div class="calendar-legend">
+                    <span class="legend-dot"></span> Ada jadwal riksa &mdash; nama klien ditampilkan langsung pada
+                    tanggal
+                </div>
+            </div>
+        </div>
+
+        <!-- Daftar Riksa Aktif (read-only) -->
+        <div class="col-lg-5">
+            <div class="card-box">
+                <div class="table-toolbar">
+                    <h5 class="table-toolbar-title fw-bold">Daftar Riksa Aktif</h5>
+                </div>
+                <div class="riksa-subtitle" id="selectedDateLabel"></div>
+
+                <div id="daftarRiksaAktif" class="daftar-riksa-list"></div>
             </div>
         </div>
     </div>
 </main>
 
 <script>
+    // Data jadwal milik ahli K3 ini saja, dipakai untuk kalender & daftar riksa aktif (read-only)
+    const jadwalData = <?= json_encode($jadwals) ?>;
+    const todayStr = <?= json_encode($today_str) ?>;
+
+    const namaBulan = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+    const namaHari = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+
+    let calYear, calMonth, selectedDate;
+
     document.addEventListener('DOMContentLoaded', function () {
         initTablePagination('tabelJadwalAhli', 10);
+
+        const now = new Date();
+        calYear = now.getFullYear();
+        calMonth = now.getMonth(); // 0-based
+        selectedDate = todayStr;
+
+        renderCalendar();
+        renderDaftarAktif(selectedDate);
     });
+
+    function pad2(n) { return n < 10 ? '0' + n : '' + n; }
+
+    function changeMonth(dir) {
+        calMonth += dir;
+        if (calMonth < 0) { calMonth = 11; calYear--; }
+        if (calMonth > 11) { calMonth = 0; calYear++; }
+        renderCalendar();
+    }
+
+    function renderCalendar() {
+        const grid = document.getElementById('calendarGrid');
+        const label = document.getElementById('calendarMonthLabel');
+        label.textContent = namaBulan[calMonth] + ' ' + calYear;
+        grid.innerHTML = '';
+
+        // Kelompokkan jadwal berdasarkan tanggal, agar tiap tanggal bisa menampilkan nama klien pemeriksaannya
+        const eventsByDate = {};
+        jadwalData.forEach(j => {
+            if (!eventsByDate[j.tanggal]) eventsByDate[j.tanggal] = [];
+            eventsByDate[j.tanggal].push(j);
+        });
+
+        const firstOfMonth = new Date(calYear, calMonth, 1);
+        // Senin = 0 ... Minggu = 6
+        let startOffset = (firstOfMonth.getDay() + 6) % 7;
+        const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+        const maxShow = 2;
+
+        for (let i = 0; i < startOffset; i++) {
+            const empty = document.createElement('div');
+            empty.className = 'calendar-day empty';
+            grid.appendChild(empty);
+        }
+
+        for (let d = 1; d <= daysInMonth; d++) {
+            const dateStr = calYear + '-' + pad2(calMonth + 1) + '-' + pad2(d);
+            const dayEvents = eventsByDate[dateStr] || [];
+
+            const cell = document.createElement('div');
+            cell.className = 'calendar-day';
+            if (dateStr === todayStr) cell.classList.add('today');
+            if (dateStr === selectedDate) cell.classList.add('selected');
+
+            let eventsHtml = '';
+            if (dayEvents.length > 0) {
+                eventsHtml = '<div class="day-events">' +
+                    dayEvents.slice(0, maxShow).map(ev => `<div class="day-event-item">${escapeHtml(ev.nama_perusahaan)}</div>`).join('') +
+                    (dayEvents.length > maxShow ? `<div class="day-event-more">+${dayEvents.length - maxShow} lainnya</div>` : '') +
+                    '</div>';
+            }
+
+            cell.innerHTML = `<div class="day-number">${d}</div>${eventsHtml}`;
+            cell.onclick = () => selectDate(dateStr);
+            grid.appendChild(cell);
+        }
+    }
+
+    function selectDate(dateStr) {
+        selectedDate = dateStr;
+        renderCalendar();
+        renderDaftarAktif(dateStr);
+    }
+
+    function renderDaftarAktif(dateStr) {
+        const list = document.getElementById('daftarRiksaAktif');
+        const label = document.getElementById('selectedDateLabel');
+
+        const dObj = new Date(dateStr + 'T00:00:00');
+        const formatted = dObj.getDate() + ' ' + namaBulan[dObj.getMonth()] + ' ' + dObj.getFullYear();
+        label.textContent = 'Inspeksi untuk tanggal ' + formatted;
+
+        const items = jadwalData
+            .filter(j => j.tanggal === dateStr)
+            .sort((a, b) => a.jam_mulai.localeCompare(b.jam_mulai));
+
+        if (items.length === 0) {
+            list.innerHTML = '<div class="riksa-empty"><i class="bi bi-calendar-x fs-3 d-block mb-2"></i>Tidak ada jadwal riksa pada tanggal ini.</div>';
+            return;
+        }
+
+        // Read-only: tanpa tombol Edit
+        list.innerHTML = items.map(j => {
+            let badgeClass = 'badge-warning';
+            if (j.status === 'Selesai') badgeClass = 'badge-success';
+            if (j.status === 'Dibatalkan') badgeClass = 'badge-danger';
+            const jamSelesai = j.jam_selesai ? j.jam_selesai.substring(0, 5) : 'Selesai';
+
+            // Ambil nama tim support dari catatan (format: [Tim Support: A, B, C])
+            let supportText = 'Unknown';
+            if (j.catatan) {
+                const match = j.catatan.match(/\[Tim Support:\s*(.+?)\]/);
+                if (match && match[1].trim()) {
+                    supportText = match[1].trim();
+                }
+            }
+            const leadExpertText = j.nama_ahli ? escapeHtml(j.nama_ahli) + (j.tingkat_ahli ? ' (' + escapeHtml(j.tingkat_ahli) + ')' : '') : 'Unknown';
+
+            return `
+    <div class="riksa-card">
+        <div class="riksa-jam">${j.jam_mulai.substring(0, 5)} - ${jamSelesai}</div>
+        <div class="riksa-client">${escapeHtml(j.nama_perusahaan)}</div>
+        <div class="riksa-ahli"><span class="riksa-label">Lead Expert</span><span class="riksa-value">${leadExpertText}</span></div>
+        <div class="riksa-ahli"><span class="riksa-label">Support</span><span class="riksa-value">${escapeHtml(supportText)}</span></div>
+        <div class="riksa-lokasi">${j.lokasi ? escapeHtml(j.lokasi) : '-'}</div>
+        <div class="riksa-dibuat">Dibuat oleh: ${escapeHtml(j.nama_admin || '-')}</div>
+    </div>
+`;
+        }).join('');
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+    }
 </script>
 
 <?php

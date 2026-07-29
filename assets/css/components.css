@@ -1084,3 +1084,213 @@
     color: var(--text-secondary);
     cursor: not-allowed;
 }
+
+.arp-suggestion-box {
+    position: absolute;
+    top: calc(var(--input-height) + 4px);
+    left: 0;
+    right: 0;
+    background: #fff;
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: var(--radius, 8px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+    max-height: 220px;
+    overflow-y: auto;
+    z-index: 2000;
+}
+.arp-suggestion-item {
+    padding: 10px 14px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    border-bottom: 1px solid #f1f5f9;
+}
+.arp-suggestion-item:last-child { border-bottom: none; }
+.arp-suggestion-item:hover {
+    background-color: #f1f5f9;
+    color: var(--primary);
+}
+.arp-suggestion-empty {
+    padding: 10px 14px;
+    font-size: 0.85rem;
+    color: var(--text-secondary, #64748b);
+}
+
+
+/* ===== Kalender Jadwal Riksa (versi besar dengan label tanggal) ===== */
+.cal-nav-btn {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.calendar-weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    text-align: center;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-secondary, #64748b);
+    padding: 10px 0 6px;
+}
+.calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 6px;
+}
+.calendar-day {
+    position: relative;
+    min-height: 56px;
+    border-radius: var(--radius, 10px);
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    cursor: pointer;
+    color: var(--text-primary, #1e293b);
+    background: #f8fafc;
+    overflow: visible;
+    transition: background-color .15s ease, color .15s ease;
+}
+.calendar-day.empty {
+    background: transparent;
+    cursor: default;
+}
+.calendar-day:not(.empty):hover {
+    background: #e2e8f0;
+}
+.calendar-day .day-number {
+    font-size: 0.9rem;
+    font-weight: 700;
+    margin-bottom: 4px;
+}
+.calendar-day.today {
+    border: 1.5px solid var(--primary, #2563eb);
+}
+.calendar-day.today .day-number {
+    color: var(--primary, #2563eb);
+}
+.calendar-day.selected {
+    background: var(--primary, #2563eb) !important;
+}
+.calendar-day.selected .day-number,
+.calendar-day.selected .day-event-item,
+.calendar-day.selected .day-event-more {
+    color: #fff !important;
+}
+.calendar-day .day-events {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    gap: 3px;
+    overflow: hidden;
+}
+.calendar-day .day-event-item {
+    font-size: 0.6rem;
+    line-height: 1.2;
+    background: rgba(37, 99, 235, 0.12);
+    color: var(--primary, #2563eb);
+    padding: 1px 5px;
+    border-radius: 10px;
+    flex: 0 1 auto;
+    max-width: 70px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.calendar-day.selected .day-event-item {
+    background: rgba(255, 255, 255, 0.25);
+}
+.calendar-day .day-event-more {
+    font-size: 0.6rem;
+    color: var(--text-secondary, #64748b);
+}
+.calendar-legend {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.75rem;
+    color: var(--text-secondary, #64748b);
+    margin-top: 10px;
+}
+.legend-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 3px;
+    background: rgba(37, 99, 235, 0.5);
+    display: inline-block;
+}
+
+/* ===== Daftar Riksa Aktif ===== */
+.riksa-subtitle {
+    font-size: 0.85rem;
+    color: var(--text-secondary, #64748b);
+    margin: -4px 0 12px;
+}
+.daftar-riksa-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 560px;
+    overflow-y: auto;
+    padding-right: 2px;
+}
+.riksa-card {
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: var(--radius, 8px);
+    padding: 14px 16px;
+}
+.riksa-jam {
+    font-weight: 700;
+    color: var(--primary, #2563eb);
+    font-size: 0.85rem;
+    margin-bottom: 6px;
+}
+.riksa-client {
+    font-weight: 700;
+    font-size: 0.95rem;
+    text-transform: uppercase;
+    letter-spacing: .2px;
+}
+.riksa-ahli, .riksa-lokasi {
+    font-size: 0.82rem;
+    color: var(--text-secondary, #64748b);
+    margin-top: 2px;
+}
+.riksa-dibuat {
+    font-size: 0.75rem;
+    color: var(--text-secondary, #94a3b8);
+    margin-top: 4px;
+    font-style: italic;
+}
+.riksa-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 10px;
+}
+.riksa-empty {
+    text-align: center;
+    color: var(--text-secondary, #64748b);
+    padding: 40px 10px;
+    font-size: 0.9rem;
+}
+
+.riksa-ahli {
+    display: flex;
+    align-items: flex-start;
+    font-size: 0.82rem;
+    color: var(--text-secondary, #64748b);
+    margin-top: 2px;
+}
+.riksa-label {
+    flex: 0 0 90px;
+    font-weight: 600;
+    color: var(--text-secondary, #64748b);
+}
+
+.riksa-value {
+    flex: 1;
+}
