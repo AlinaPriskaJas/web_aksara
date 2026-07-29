@@ -208,7 +208,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['aksi'] === 'import_klien') {
     require_once "../includes/functions.php";
 
-    $total = 0; $berhasil = 0; $gagal = 0; $duplikat = 0;
+    $total = 0; $berhasil = 0; $gagal = 0; $duplikat = 0; $diperbarui = 0;
     $daftarError = [];
     $namaFileAsli = $_FILES['file_import']['name'] ?? '-';
 
@@ -245,7 +245,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
                 $conn->beginTransaction();
 
                 $urutan = (int) $conn->query("SELECT COUNT(*) FROM Data_Klien")->fetchColumn();
-                $cekDuplikat = $conn->prepare("SELECT id FROM Data_Klien WHERE LOWER(nama_perusahaan) = LOWER(:nama) LIMIT 1");
+                // Ambil juga kolom PIC yang ada supaya bisa dicek mana yang masih kosong
+                // dan boleh dilengkapi dari file import (bukan cuma ID untuk deteksi duplikat).
+                $cekDuplikat = $conn->prepare("
+                    SELECT id, pic_nama, jabatan_pic, pic_whatsapp, pic_email
+                    FROM Data_Klien
+                    WHERE LOWER(nama_perusahaan) = LOWER(:nama)
+                    LIMIT 1
+                ");
                 $cekKode     = $conn->prepare("SELECT COUNT(*) FROM Data_Klien WHERE kode_klien = :kode");
                 $insertKlien = $conn->prepare("
                     INSERT INTO Data_Klien (kode_klien, nama_perusahaan, status, pic_nama, jabatan_pic, pic_whatsapp, pic_email)
@@ -273,9 +280,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
                     }
 
                     $cekDuplikat->execute([':nama' => $data['nama_perusahaan']]);
-                    if ($cekDuplikat->fetch()) {
-                        $duplikat++;
-                        $daftarError[] = "Baris $baris_ke: \"{$data['nama_perusahaan']}\" sudah ada di Data Klien (dilewati).";
+                    $existing = $cekDuplikat->fetch(PDO::FETCH_ASSOC);
+                    if ($existing) {
+                        // Perusahaan sudah ada di Data Klien. Jangan langsung dilewati begitu saja:
+                        // lengkapi kolom PIC (nama/jabatan/whatsapp/email) yang di data lama masih
+                        // kosong, memakai nilai dari file import. Kolom yang di data lama SUDAH
+                        // terisi tidak akan ditimpa, supaya data yang sudah benar tidak berubah.
+                        $kolomBisaDilengkapi = [
+                            'pic_nama'     => $data['pic_nama'],
+                            'jabatan_pic'  => $data['jabatan_pic'],
+                            'pic_whatsapp' => $data['pic_whatsapp'],
+                            'pic_email'    => $data['pic_email'],
+                        ];
+
+                        $setSql = [];
+                        $params = [':id' => $existing['id']];
+                        foreach ($kolomBisaDilengkapi as $kolom => $nilaiBaru) {
+                            $kosongDiData = ($existing[$kolom] === null || trim((string) $existing[$kolom]) === '');
+                            if ($kosongDiData && $nilaiBaru !== '') {
+                                $setSql[] = "$kolom = :$kolom";
+                                $params[":$kolom"] = $nilaiBaru;
+                            }
+                        }
+
+                        if (!empty($setSql)) {
+                            $conn->prepare("UPDATE Data_Klien SET " . implode(', ', $setSql) . " WHERE id = :id")
+                                 ->execute($params);
+                            $diperbarui++;
+                            $daftarError[] = "Baris $baris_ke: \"{$data['nama_perusahaan']}\" sudah ada, data PIC yang sebelumnya kosong berhasil dilengkapi.";
+                        } else {
+                            $duplikat++;
+                            $daftarError[] = "Baris $baris_ke: \"{$data['nama_perusahaan']}\" sudah ada dan datanya sudah lengkap (dilewati).";
+                        }
                         continue;
                     }
 
@@ -317,8 +353,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
                 ]);
 
                 $flash = [
-                    'type'    => $berhasil > 0 ? 'success' : 'danger',
-                    'message' => "Import selesai: {$berhasil} berhasil, {$duplikat} duplikat dilewati, {$gagal} gagal dari {$total} baris data.",
+                    'type'    => ($berhasil > 0 || $diperbarui > 0) ? 'success' : 'danger',
+                    'message' => "Import selesai: {$berhasil} baru ditambahkan, {$diperbarui} data lama dilengkapi, {$duplikat} duplikat dilewati (sudah lengkap), {$gagal} gagal dari {$total} baris data.",
                 ];
             } catch (\Throwable $e) {
                 if ($conn->inTransaction()) {
@@ -890,9 +926,12 @@ include "../includes/topbar.php";
                     <div class="alert alert-success-custom text-xs mb-3">
                         <i class="bi bi-info-circle-fill"></i>
                         <div>
-                            File harus punya baris header berikut (urutan bebas):<br>
+                            File harus punya baris header berikut (urutan bebas, <strong>besar/kecil huruf tidak masalah</strong>):<br>
                             <strong>NAMA PERUSAHAAN, Nama PIC, Jabatan, No. HP/WhatsApp, Email, Status Client</strong><br>
-                            Kolom di luar daftar ini otomatis diabaikan. Format file: <strong>.xlsx</strong> atau <strong>.csv</strong>.
+                            Kolom di luar daftar ini otomatis diabaikan. Format file: <strong>.xlsx</strong> atau <strong>.csv</strong>.<br>
+                            Jika nama perusahaan <strong>sudah ada</strong> di Data Klien, sistem <strong>tidak menduplikasi</strong> —
+                            kolom PIC (nama/jabatan/WhatsApp/email) yang di data lama masih kosong akan otomatis dilengkapi dari file ini,
+                            tanpa menimpa data yang sudah terisi.
                         </div>
                     </div>
                     <div class="mb-3">

@@ -1483,24 +1483,46 @@ function e(?string $value): string
 // ==========================================
 function petaHeaderImportKlien(): array
 {
+    // Catatan: key di sini HARUS dalam bentuk yang sudah dinormalisasi lewat
+    // normalisasiHeaderKlien() -> huruf besar semua, tanpa titik/titik dua,
+    // tanpa spasi di sekitar "/". Nilai (value) = nama kolom di tabel Data_Klien.
+    // Boleh tambah variasi header baru di sini kapan saja tanpa mengubah kode lain.
     return [
-        'NAMA PERUSAHAAN'   => 'nama_perusahaan',
-        'NAMA PIC'          => 'pic_nama',
-        'JABATAN'           => 'jabatan_pic',
-        'NO. HP/WHATSAPP'   => 'pic_whatsapp',
-        'NO HP/WHATSAPP'    => 'pic_whatsapp',
-        'NO. HP / WHATSAPP' => 'pic_whatsapp',
-        'WHATSAPP'          => 'pic_whatsapp',
-        'EMAIL'             => 'pic_email',
-        'STATUS CLIENT'     => 'status',
-        'STATUS'            => 'status',
+        'NAMA PERUSAHAAN'  => 'nama_perusahaan',
+        'PERUSAHAAN'       => 'nama_perusahaan',
+        'NAMA KLIEN'       => 'nama_perusahaan',
+
+        'NAMA PIC'         => 'pic_nama',
+        'PIC'              => 'pic_nama',
+
+        'JABATAN'          => 'jabatan_pic',
+        'JABATAN PIC'      => 'jabatan_pic',
+
+        'NO HP/WHATSAPP'   => 'pic_whatsapp',
+        'HP/WHATSAPP'      => 'pic_whatsapp',
+        'NO HP'            => 'pic_whatsapp',
+        'WHATSAPP'         => 'pic_whatsapp',
+        'NO WA'            => 'pic_whatsapp',
+        'WA'               => 'pic_whatsapp',
+
+        'EMAIL'            => 'pic_email',
+        'EMAIL PIC'        => 'pic_email',
+        'GMAIL'            => 'pic_email',
+
+        'STATUS CLIENT'    => 'status',
+        'STATUS'           => 'status',
     ];
 }
 
 function normalisasiHeaderKlien(string $teks): string
 {
     $teks = strtoupper(trim($teks));
-    return preg_replace('/\s+/', ' ', $teks);
+    // Samakan variasi tanda baca (titik, titik dua) supaya header seperti
+    // "No. HP/WhatsApp", "no hp/whatsapp:", "NO HP / WHATSAPP" tetap terbaca sama.
+    $teks = str_replace([':', '.'], '', $teks);
+    $teks = preg_replace('/\s*\/\s*/', '/', $teks); // "HP / WA" -> "HP/WA"
+    $teks = preg_replace('/\s+/', ' ', $teks);
+    return trim($teks);
 }
 
 // ==========================================
