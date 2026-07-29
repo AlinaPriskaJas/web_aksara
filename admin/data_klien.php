@@ -135,8 +135,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
     $alamat          = trim($_POST['alamat'] ?? '');
     $status          = $_POST['status'] ?? 'Aktif';
     $pic_nama        = trim($_POST['pic_nama'] ?? '');
+    $jabatan_pic     = trim($_POST['jabatan_pic'] ?? '');
     $pic_whatsapp    = trim($_POST['pic_whatsapp'] ?? '');
     $pic_email       = trim($_POST['pic_email'] ?? '');
+    $tab_asal        = in_array($_POST['tab_asal'] ?? 'akun', ['akun', 'daftar'], true) ? $_POST['tab_asal'] : 'akun';
 
     if (!$klien_id || $nama_perusahaan === '' || !in_array($status, ['Aktif', 'Non-aktif'], true)) {
         $flash = ['type' => 'danger', 'message' => 'Data tidak valid.'];
@@ -145,7 +147,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
             $stmt = $conn->prepare("
                 UPDATE Data_Klien
                 SET nama_perusahaan = :nama_perusahaan, alamat = :alamat, status = :status,
-                    pic_nama = :pic_nama, pic_whatsapp = :pic_whatsapp, pic_email = :pic_email
+                    pic_nama = :pic_nama, jabatan_pic = :jabatan_pic, pic_whatsapp = :pic_whatsapp, pic_email = :pic_email
                 WHERE id = :id
             ");
             $stmt->execute([
@@ -153,6 +155,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
                 ':alamat'          => $alamat,
                 ':status'          => $status,
                 ':pic_nama'        => $pic_nama,
+                ':jabatan_pic'     => $jabatan_pic,
                 ':pic_whatsapp'    => $pic_whatsapp,
                 ':pic_email'       => $pic_email,
                 ':id'              => $klien_id,
@@ -163,7 +166,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
         }
     }
     $_SESSION['data_klien_flash'] = $flash;
-    header("Location: data_klien.php");
+    header("Location: data_klien.php?tab=" . $tab_asal);
+    exit;
+}
+
+// ================== PROSES: HAPUS DATA KLIEN ==================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['aksi'] === 'hapus_klien') {
+    $klien_id = (int) ($_POST['klien_id'] ?? 0);
+
+    if (!$klien_id) {
+        $flash = ['type' => 'danger', 'message' => 'Data klien tidak valid.'];
+    } else {
+        try {
+            $cekNama = $conn->prepare("SELECT nama_perusahaan FROM Data_Klien WHERE id = :id");
+            $cekNama->execute([':id' => $klien_id]);
+            $namaKlien = $cekNama->fetchColumn();
+
+            if ($namaKlien === false) {
+                $flash = ['type' => 'danger', 'message' => 'Data klien tidak ditemukan (mungkin sudah dihapus sebelumnya).'];
+            } else {
+                $stmt = $conn->prepare("DELETE FROM Data_Klien WHERE id = :id");
+                $stmt->execute([':id' => $klien_id]);
+                $flash = ['type' => 'success', 'message' => "Data perusahaan \"{$namaKlien}\" berhasil dihapus."];
+            }
+        } catch (PDOException $e) {
+            // Error 23000 = pelanggaran foreign key (klien masih dipakai di Objek K3 / Pengajuan
+            // Pemeriksaan / Suket K3 / Jadwal Pemeriksaan / Dokumen Digital, dsb.)
+            if ((int) $e->getCode() === 23000 || stripos($e->getMessage(), 'foreign key') !== false) {
+                $flash = ['type' => 'danger', 'message' => 'Data klien ini tidak bisa dihapus karena masih memiliki data terkait (Objek K3, Pengajuan Pemeriksaan, Suket K3, Jadwal Pemeriksaan, atau Dokumen Digital). Gunakan tombol Edit lalu ubah status menjadi "Non-aktif" jika perusahaan ini sudah tidak aktif.'];
+            } else {
+                $flash = ['type' => 'danger', 'message' => 'Gagal menghapus data klien: ' . $e->getMessage()];
+            }
+        }
+    }
+    $_SESSION['data_klien_flash'] = $flash;
+    header("Location: data_klien.php?tab=daftar");
     exit;
 }
 
@@ -306,7 +343,7 @@ try {
     $stmt = $conn->query("
         SELECT u.id AS user_id, u.nama_lengkap, u.email, u.created_at AS tgl_registrasi,
                dk.id AS klien_id, dk.kode_klien, dk.nama_perusahaan, dk.alamat, dk.status,
-               dk.pic_nama, dk.pic_whatsapp, dk.pic_email
+               dk.pic_nama, dk.jabatan_pic, dk.pic_whatsapp, dk.pic_email
         FROM Users u
         LEFT JOIN Data_Klien dk ON dk.user_id = u.id
         WHERE u.role = 'client'
@@ -341,7 +378,7 @@ try {
 $semua_klien = [];
 try {
     $stmt = $conn->query("
-        SELECT id, kode_klien, nama_perusahaan, pic_nama, jabatan_pic, pic_whatsapp, pic_email, status
+        SELECT id, kode_klien, nama_perusahaan, alamat, pic_nama, jabatan_pic, pic_whatsapp, pic_email, status
         FROM Data_Klien
         ORDER BY nama_perusahaan ASC
     ");
@@ -551,9 +588,10 @@ include "../includes/topbar.php";
                                                             "alamat" => $c["alamat"],
                                                             "status" => $c["status"],
                                                             "pic_nama" => $c["pic_nama"],
+                                                            "jabatan_pic" => $c["jabatan_pic"],
                                                             "pic_whatsapp" => $c["pic_whatsapp"],
                                                             "pic_email" => $c["pic_email"],
-                                                        ]) ?>)'>
+                                                        ]) ?>, "akun")'>
                                                         <i class="bi bi-pencil-square"></i> Edit
                                                     </button>
                                                 <?php else: ?>
@@ -572,7 +610,7 @@ include "../includes/topbar.php";
                 </div>
             </div>
 
-            <!-- Panel 2: Daftar Client (baru, dengan Import Data Klien) -->
+            <!-- Panel 2: Daftar Client (baru, dengan Import Data Klien + Edit/Hapus) -->
             <div class="col-12 arp-tab-panel" id="tabPanelDaftarKlien" <?= $active_tab_klien === 'tabPanelDaftarKlien' ? '' : 'style="display:none;"' ?>>
                 <div class="card-box">
                     <div class="table-toolbar">
@@ -600,12 +638,13 @@ include "../includes/topbar.php";
                                     <th>No. HP/WhatsApp</th>
                                     <th>Email</th>
                                     <th>Status</th>
+                                    <th style="text-align: center;">Aksi</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <?php if (empty($semua_klien)): ?>
                                     <tr>
-                                        <td colspan="7" class="text-center text-muted py-4">Belum ada data klien.</td>
+                                        <td colspan="8" class="text-center text-muted py-4">Belum ada data klien.</td>
                                     </tr>
                                 <?php else: ?>
                                     <?php foreach ($semua_klien as $k): ?>
@@ -622,6 +661,31 @@ include "../includes/topbar.php";
                                                 <?php else: ?>
                                                     <span class="badge-danger">Non-aktif</span>
                                                 <?php endif; ?>
+                                            </td>
+                                            <td style="text-align: center;">
+                                                <div class="d-flex gap-1 justify-content-center">
+                                                    <button type="button" class="btn-secondary-custom" style="height:32px; padding:0 12px; font-size:0.8rem;"
+                                                        onclick='openEditModal(<?= json_encode([
+                                                            "klien_id" => $k["id"],
+                                                            "nama_perusahaan" => $k["nama_perusahaan"],
+                                                            "alamat" => $k["alamat"],
+                                                            "status" => $k["status"],
+                                                            "pic_nama" => $k["pic_nama"],
+                                                            "jabatan_pic" => $k["jabatan_pic"],
+                                                            "pic_whatsapp" => $k["pic_whatsapp"],
+                                                            "pic_email" => $k["pic_email"],
+                                                        ]) ?>, "daftar")'>
+                                                        <i class="bi bi-pencil-square"></i> Edit
+                                                    </button>
+                                                    <form method="POST" action="data_klien.php" class="d-inline"
+                                                        onsubmit="return confirm('Hapus data perusahaan \'<?= htmlspecialchars(addslashes($k['nama_perusahaan'])) ?>\'? Tindakan ini tidak bisa dibatalkan.');">
+                                                        <input type="hidden" name="aksi" value="hapus_klien">
+                                                        <input type="hidden" name="klien_id" value="<?= (int) $k['id'] ?>">
+                                                        <button type="submit" class="btn-danger-custom" style="height:32px; padding:0 12px; font-size:0.8rem;">
+                                                            <i class="bi bi-trash-fill"></i> Hapus
+                                                        </button>
+                                                    </form>
+                                                </div>
                                             </td>
                                         </tr>
                                     <?php endforeach; ?>
@@ -740,13 +804,14 @@ include "../includes/topbar.php";
     </div>
 </div>
 
-<!-- ===== MODAL: Edit Data Perusahaan ===== -->
+<!-- ===== MODAL: Edit Data Perusahaan (dipakai dari tab "Akun Client" & "Daftar Client") ===== -->
 <div class="modal fade modal-custom" id="modalEditKlien" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
             <form action="data_klien.php" method="POST">
                 <input type="hidden" name="aksi" value="edit_klien">
                 <input type="hidden" name="klien_id" id="editKlienId" value="">
+                <input type="hidden" name="tab_asal" id="editTabAsal" value="akun">
                 <div class="modal-header">
                     <h5 class="modal-title">Edit Data Perusahaan</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -787,6 +852,10 @@ include "../includes/topbar.php";
                         <div class="mb-3">
                             <label class="form-label fw-semibold fs-7 mb-2">Nama PIC</label>
                             <input type="text" name="pic_nama" id="editPicNama" class="form-control-custom">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold fs-7 mb-2">Jabatan PIC</label>
+                            <input type="text" name="jabatan_pic" id="editJabatanPic" class="form-control-custom">
                         </div>
                         <div class="mb-3">
                             <label class="form-label fw-semibold fs-7 mb-2">WhatsApp PIC</label>
@@ -881,14 +950,18 @@ function gantiSubTab(group, tab) {
     });
 }
 
-function openEditModal(data) {
+// tabAsal: 'akun' (dibuka dari tab Akun Client) atau 'daftar' (dibuka dari tab Daftar Client),
+// dipakai supaya setelah simpan, halaman kembali ke tab yang sama tempat tombol Edit diklik.
+function openEditModal(data, tabAsal) {
     document.getElementById('editKlienId').value = data.klien_id;
     document.getElementById('editNamaPerusahaan').value = data.nama_perusahaan || '';
     document.getElementById('editAlamat').value = data.alamat || '';
     document.getElementById('editStatus').value = data.status || 'Aktif';
     document.getElementById('editPicNama').value = data.pic_nama || '';
+    document.getElementById('editJabatanPic').value = data.jabatan_pic || '';
     document.getElementById('editPicWhatsapp').value = data.pic_whatsapp || '';
     document.getElementById('editPicEmail').value = data.pic_email || '';
+    document.getElementById('editTabAsal').value = tabAsal || 'akun';
     gantiSubTab('edit', 'perusahaan');
     new bootstrap.Modal(document.getElementById('modalEditKlien')).show();
 }
