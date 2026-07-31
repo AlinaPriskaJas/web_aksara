@@ -55,17 +55,17 @@ body {
     display: flex;
     flex-direction: column;
     transition: transform var(--transition), width var(--transition);
-    overflow-y: auto;
+    overflow: hidden; /* drawer sendiri tidak lagi ikut discroll */
 }
 
-/* Custom Scrollbar for Sidebar */
-#sidebar::-webkit-scrollbar {
+/* Custom Scrollbar for Sidebar Menu */
+.sidebar-menu::-webkit-scrollbar {
     width: 6px;
 }
-#sidebar::-webkit-scrollbar-track {
+.sidebar-menu::-webkit-scrollbar-track {
     background: var(--sidebar-bg);
 }
-#sidebar::-webkit-scrollbar-thumb {
+.sidebar-menu::-webkit-scrollbar-thumb {
     background: var(--sidebar-hover-bg);
     border-radius: 3px;
 }
@@ -97,7 +97,10 @@ body {
 
 /* Sidebar Menus */
 .sidebar-menu {
-    flex: 1;
+    flex: 1 1 auto;
+    min-height: 0; /* wajib agar overflow-y bekerja di dalam flex column */
+    overflow-y: auto; /* hanya daftar menu ini yang discroll */
+    -webkit-overflow-scrolling: touch;
     padding: 15px 10px;
     list-style: none;
     margin-bottom: 0;
@@ -140,6 +143,7 @@ body {
 
 /* Sidebar Footer User Profile */
 .sidebar-user {
+    flex-shrink: 0; /* tombol logout selalu terlihat, tidak ikut terdorong keluar layar */
     padding: 15px;
     background-color: rgba(0, 0, 0, 0.15);
 }
