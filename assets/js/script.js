@@ -257,6 +257,27 @@ function renderTablePage(tableId) {
     renderTablePaginationControls(tableId, totalRows, totalPages);
 }
 
+// Menghasilkan jendela nomor halaman yang bergeser mengikuti halaman aktif,
+// selalu menampilkan maksimal 5 angka (tanpa "..."). Contoh: kalau sedang
+// di halaman 7 dari 20 halaman -> tampil [5, 6, 7, 8, 9], lalu ikut geser
+// begitu pindah halaman.
+function getPaginationRange(current, total, windowSize) {
+    windowSize = Math.min(windowSize || 5, total);
+    let start = Math.max(1, current - Math.floor(windowSize / 2));
+    let end = start + windowSize - 1;
+
+    if (end > total) {
+        end = total;
+        start = Math.max(1, end - windowSize + 1);
+    }
+
+    const range = [];
+    for (let i = start; i <= end; i++) {
+        range.push(i);
+    }
+    return range;
+}
+
 function renderTablePaginationControls(tableId, totalRows, totalPages) {
     const state = tablePaginationState[tableId];
     const container = document.getElementById('pagination-' + tableId);
@@ -274,11 +295,17 @@ function renderTablePaginationControls(tableId, totalRows, totalPages) {
         '<a href="javascript:void(0)"' + (prevDisabled ? '' : ' onclick="goToTablePage(\'' + tableId + '\', ' + (state.currentPage - 1) + ')"') + '>' +
         '<i class="bi bi-chevron-left"></i></a></li>';
 
-    for (let i = 1; i <= totalPages; i++) {
-        const isActive = i === state.currentPage;
+    const pages = getPaginationRange(state.currentPage, totalPages);
+
+    pages.forEach(function (p) {
+        if (p === '...') {
+            html += '<li class="pagination-item disabled"><span>&hellip;</span></li>';
+            return;
+        }
+        const isActive = p === state.currentPage;
         html += '<li class="pagination-item' + (isActive ? ' active' : '') + '">' +
-            '<span style="cursor:pointer;" onclick="goToTablePage(\'' + tableId + '\', ' + i + ')">' + i + '</span></li>';
-    }
+            '<span style="cursor:pointer;" onclick="goToTablePage(\'' + tableId + '\', ' + p + ')">' + p + '</span></li>';
+    });
 
     const nextDisabled = state.currentPage === totalPages;
     html += '<li class="pagination-item' + (nextDisabled ? ' disabled' : '') + '">' +

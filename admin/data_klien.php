@@ -951,6 +951,10 @@ include "../includes/topbar.php";
 </div>
 
 <script>
+document.addEventListener('DOMContentLoaded', function () {
+    initTablePagination('tabelDaftarKlien', 10);
+});
+
 function openTautkanModal(userId, namaAkun) {
     document.getElementById('tautkanNamaAkun').textContent = namaAkun;
     document.getElementById('tautkanExistingUserId').value = userId;
