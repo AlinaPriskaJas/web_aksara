@@ -456,31 +456,61 @@ body{
     color:#fff;
 }
 
-/*================ NAVBAR RESPONSIVE (BURGER MENU) =================*/
+/*================ NAVBAR RESPONSIVE (BURGER MENU -> SIDEBAR) =================*/
 @media(max-width:991.98px){
 
     .navbar .container{
         position:relative;
+        flex-wrap:nowrap;
+    }
+
+    .navbar-brand{
+        min-width:0;
+        flex:1 1 auto;
     }
 
     .navbar-toggler{
         border:none;
         box-shadow:none!important;
+        flex:0 0 auto;
+        position:relative;
+        z-index:1051;
     }
 
+    /* Sidebar: selalu ada di DOM (display:block), tapi disembunyikan
+       dengan menggesernya keluar layar (translateX). Saat Bootstrap
+       menambahkan class .show, sidebar digeser masuk (translateX:0). */
     .navbar-collapse{
-        position:absolute;
-        top:100%;
+        display:block!important;
+        position:fixed;
+        top:0;
         right:0;
         left:auto;
-        width:260px;
+        width:280px;
         max-width:85vw;
-        margin-top:10px;
+        height:100vh!important;
+        margin-top:0;
         background:#fff;
-        border-radius:12px;
-        box-shadow:0 14px 34px rgba(0,0,0,.15);
-        padding:14px 18px;
+        border-radius:0;
+        box-shadow:-8px 0 30px rgba(0,0,0,.18);
+        padding:90px 22px 24px;
         z-index:1050;
+        overflow-y:auto;
+        transform:translateX(100%);
+        transition:transform .3s ease;
+    }
+
+    .navbar-collapse.show{
+        transform:translateX(0);
+    }
+
+    /* Overlay gelap di belakang sidebar saat terbuka (CSS murni, tanpa JS) */
+    .navbar:has(.navbar-collapse.show)::before{
+        content:"";
+        position:fixed;
+        inset:0;
+        background:rgba(0,0,0,.45);
+        z-index:1045;
     }
 
     .navbar-collapse .navbar-nav{
@@ -493,9 +523,10 @@ body{
 
     .navbar-collapse .nav-link{
         margin-right:0;
-        padding:10px 0;
+        padding:14px 0;
         width:100%;
         border-bottom:1px solid #eee;
+        font-size:16px;
     }
 
     .navbar-collapse .nav-item:last-child .nav-link{
@@ -503,13 +534,44 @@ body{
     }
 
     .navbar-collapse .btn-login{
-        display:inline-block;
-        margin-top:8px;
+        display:block;
+        margin-top:16px;
         text-align:center;
     }
 
     .navbar-collapse.ms-auto{
         margin-left:0!important;
+    }
+
+    .navbar-collapse .nav-link:hover{
+        color:#2E9F74;
+    }
+}
+
+/* Brand/logo mengecil di HP supaya tidak overflow/terpotong */
+@media(max-width:576px){
+    .logo-img{
+        width:40px;
+        height:40px;
+    }
+
+    .navbar-brand .ms-3{
+        margin-left:10px!important;
+    }
+
+    .brand-title{
+        font-size:17px;
+        line-height:1.2;
+    }
+
+    .brand-sub{
+        font-size:11px;
+    }
+}
+
+@media(max-width:400px){
+    .brand-sub{
+        display:none;
     }
 }
 
@@ -870,7 +932,11 @@ footer{
 
 /* Responsive */
 
-@media(max-width:768px){
+@media(max-width:991.98px){
+
+.hero .col-lg-6:first-child{
+    margin-bottom:20px;
+}
 
 .preview{
     height:340px;
@@ -1286,6 +1352,8 @@ button:focus-visible,
 
 .about-header h2{
     font-size:30px;
+    white-space:normal;
+    word-break:break-word;
 }
 
 .about-header p{
@@ -1337,6 +1405,28 @@ button:focus-visible,
     margin-bottom:16px;
 }
 
+.access-section .row{
+    display:flex;
+    flex-wrap:wrap;
+    justify-content:center;
+}
+
+.access-section .row > .col{
+    flex:0 0 50%;
+    max-width:50%;
+}
+
+.access-section .role-box{
+    font-size:13px;
+    padding:20px 8px 16px;
+}
+
+}
+
+@media(max-width:400px){
+    .about-header h2{
+        font-size:24px;
+    }
 }
 
 /*=========================================
