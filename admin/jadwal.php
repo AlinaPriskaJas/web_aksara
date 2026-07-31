@@ -490,6 +490,17 @@ $today_str = date('Y-m-d');
 
     function pad2(n) { return n < 10 ? '0' + n : '' + n; }
 
+    function getDateRange(start, end) {
+        const dates = [];
+        let cur = new Date(start + 'T00:00:00');
+        const last = new Date((end || start) + 'T00:00:00');
+        while (cur <= last) {
+            dates.push(cur.getFullYear() + '-' + pad2(cur.getMonth() + 1) + '-' + pad2(cur.getDate()));
+            cur.setDate(cur.getDate() + 1);
+        }
+        return dates;
+    }
+
     function changeMonth(dir) {
         calMonth += dir;
         if (calMonth < 0) { calMonth = 11; calYear--; }
@@ -506,8 +517,10 @@ $today_str = date('Y-m-d');
         // Kelompokkan jadwal berdasarkan tanggal, agar tiap tanggal bisa menampilkan nama klien pemeriksaannya
         const eventsByDate = {};
         jadwalData.forEach(j => {
-            if (!eventsByDate[j.tanggal]) eventsByDate[j.tanggal] = [];
-            eventsByDate[j.tanggal].push(j);
+            getDateRange(j.tanggal, j.tanggal_selesai).forEach(dateStr => {
+                if (!eventsByDate[dateStr]) eventsByDate[dateStr] = [];
+                eventsByDate[dateStr].push(j);
+            });
         });
 
         const firstOfMonth = new Date(calYear, calMonth, 1);
@@ -560,10 +573,10 @@ $today_str = date('Y-m-d');
         label.textContent = 'Inspeksi untuk tanggal ' + formatted;
 
         const items = jadwalData
-            .filter(j => j.tanggal === dateStr)
+            .filter(j => getDateRange(j.tanggal, j.tanggal_selesai).includes(dateStr))
             .sort((a, b) => a.jam_mulai.localeCompare(b.jam_mulai));
-
-        if (items.length === 0) {
+        
+            if (items.length === 0) {
             list.innerHTML = '<div class="riksa-empty"><i class="bi bi-calendar-x fs-3 d-block mb-2"></i>Tidak ada jadwal riksa pada tanggal ini.</div>';
             return;
         }
