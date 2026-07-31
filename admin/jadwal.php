@@ -35,6 +35,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error_msg = "Semua kolom bertanda * wajib diisi!";
         } else {
             try {
+                // Update data PIC klien jika diisi manual pada form jadwal
+                // (hanya menimpa jika field yang dikirim tidak kosong, agar data lama tidak tertimpa kosong)
+                $pic_nama_input = trim($_POST['pic_nama'] ?? '');
+                $pic_kontak_input = trim($_POST['pic_kontak'] ?? '');
+
+                if ($pic_nama_input !== '' || $pic_kontak_input !== '') {
+                    $updKlienPic = $conn->prepare("
+                UPDATE Data_Klien 
+                SET pic_nama = COALESCE(NULLIF(:pic_nama, ''), pic_nama),
+                    pic_whatsapp = COALESCE(NULLIF(:pic_kontak, ''), pic_whatsapp)
+                WHERE id = :klien_id
+            ");
+                    $updKlienPic->execute([
+                        'pic_nama' => $pic_nama_input,
+                        'pic_kontak' => $pic_kontak_input,
+                        'klien_id' => $klien_id
+                    ]);
+                }
+
                 // Simpan daftar kategori objek K3 terpilih sebagai catatan tambahan terstruktur (comma separated ids -> nama)
                 $kategori_label = [];
                 if (!empty($kategori_objek_ids)) {
@@ -294,15 +313,15 @@ $today_str = date('Y-m-d');
                         <!-- PIC Nama -->
                         <div class="col-md-4">
                             <label class="form-label fw-semibold fs-7 mb-1">Nama PIC</label>
-                            <input type="text" id="form-pic-nama" class="form-control-custom field-readonly" readonly
-                                placeholder="Otomatis dari data klien">
+                            <input type="text" name="pic_nama" id="form-pic-nama" class="form-control-custom"
+                                placeholder="Otomatis dari data klien, atau isi manual">
                         </div>
 
                         <!-- PIC Kontak -->
                         <div class="col-md-4">
                             <label class="form-label fw-semibold fs-7 mb-1">Kontak PIC</label>
-                            <input type="text" id="form-pic-kontak" class="form-control-custom field-readonly" readonly
-                                placeholder="Otomatis dari data klien">
+                            <input type="text" name="pic_kontak" id="form-pic-kontak" class="form-control-custom"
+                                placeholder="Otomatis dari data klien, atau isi manual">
                         </div>
 
                         <div class="col-md-6">
@@ -621,8 +640,26 @@ $today_str = date('Y-m-d');
     function pilihKlien(klien) {
         document.getElementById('form-klien-search').value = klien.nama_perusahaan;
         document.getElementById('form-klien-id').value = klien.id;
-        document.getElementById('form-pic-nama').value = klien.pic_nama || '';
-        document.getElementById('form-pic-kontak').value = klien.pic_whatsapp || '';
+
+        const picNamaInput = document.getElementById('form-pic-nama');
+        const picKontakInput = document.getElementById('form-pic-kontak');
+
+        // Isi otomatis jika data PIC tersedia di data klien
+        picNamaInput.value = klien.pic_nama || '';
+        picKontakInput.value = klien.pic_whatsapp || '';
+
+        // Jika data PIC kosong pada klien ini, tandai supaya user tahu harus isi manual
+        if (!klien.pic_nama) {
+            picNamaInput.placeholder = 'PIC belum terdaftar, isi manual';
+        } else {
+            picNamaInput.placeholder = 'Otomatis dari data klien, atau isi manual';
+        }
+
+        if (!klien.pic_whatsapp) {
+            picKontakInput.placeholder = 'Kontak belum terdaftar, isi manual';
+        } else {
+            picKontakInput.placeholder = 'Otomatis dari data klien, atau isi manual';
+        }
 
         // Sembunyikan daftar saran setelah dipilih
         const box = document.getElementById('klien-suggestion-box');
@@ -640,8 +677,14 @@ $today_str = date('Y-m-d');
         document.getElementById('form-id').value = '';
         document.getElementById('form-klien-id').value = '';
         document.getElementById('form-klien-search').value = '';
-        document.getElementById('form-pic-nama').value = '';
-        document.getElementById('form-pic-kontak').value = '';
+
+        const picNamaInput = document.getElementById('form-pic-nama');
+        const picKontakInput = document.getElementById('form-pic-kontak');
+        picNamaInput.value = '';
+        picKontakInput.value = '';
+        picNamaInput.placeholder = 'Otomatis dari data klien, atau isi manual';
+        picKontakInput.placeholder = 'Otomatis dari data klien, atau isi manual';
+
         document.getElementById('form-ahli-id').value = '';
         document.getElementById('form-tanggal').value = selectedDate || '';
         document.getElementById('form-tanggal-selesai').value = '';
@@ -660,12 +703,17 @@ $today_str = date('Y-m-d');
         document.getElementById('form-klien-id').value = data.klien_id;
 
         const klien = klienData.find(k => k.id == data.klien_id);
+        const picNamaInput = document.getElementById('form-pic-nama');
+        const picKontakInput = document.getElementById('form-pic-kontak');
+
         if (klien) {
             document.getElementById('form-klien-search').value = klien.nama_perusahaan;
-            document.getElementById('form-pic-nama').value = klien.pic_nama || '';
-            document.getElementById('form-pic-kontak').value = klien.pic_whatsapp || '';
+            picNamaInput.value = klien.pic_nama || '';
+            picKontakInput.value = klien.pic_whatsapp || '';
         } else {
             document.getElementById('form-klien-search').value = data.nama_perusahaan || '';
+            picNamaInput.value = '';
+            picKontakInput.value = '';
         }
 
         document.getElementById('form-ahli-id').value = data.ahli_k3_id;
