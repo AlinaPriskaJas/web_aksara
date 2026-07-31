@@ -1,5 +1,5 @@
 <?php
-// ahlik3/sertifikat_ahli.php
+// admin/sertifikat_ahli.php
 require_once "../config/koneksi.php";
 
 if (session_status() === PHP_SESSION_NONE)
@@ -24,89 +24,205 @@ $bidang_keahlian_opsi = ['PTP', 'PAA', 'Elevator', 'Eskalator', 'PUBT', 'Instala
 
 // Handle tambah sertifikat baru
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $nama_lengkap = trim($_POST['nama_lengkap'] ?? '');
-    $tingkat_ahli = trim($_POST['tingkat_ahli'] ?? '');
-    $bidang_keahlian_arr = $_POST['bidang_keahlian'] ?? [];
-    if (!is_array($bidang_keahlian_arr))
-        $bidang_keahlian_arr = [$bidang_keahlian_arr];
-    $bidang_keahlian_arr = array_values(array_filter(array_map('trim', $bidang_keahlian_arr)));
-    $nomor_sertifikat = trim($_POST['nomor_sertifikat'] ?? '');
-    $tanggal_terbit = $_POST['tanggal_terbit'] ?? '';
-    $tanggal_kedaluwarsa = $_POST['tanggal_kedaluwarsa'] ?? '';
-    $file_sertifikat = "";
 
-    if (
-        empty($nama_lengkap) || empty($tingkat_ahli) || empty($bidang_keahlian_arr) ||
-        empty($nomor_sertifikat) || empty($tanggal_terbit) || empty($tanggal_kedaluwarsa)
-    ) {
-        $error_msg = "Semua field wajib diisi (Bidang Keahlian minimal pilih 1), kecuali upload file sertifikat!";
-    } elseif (!in_array($tingkat_ahli, $tingkat_ahli_opsi, true)) {
-        $error_msg = "Tingkat ahli tidak valid!";
-    } elseif (array_diff($bidang_keahlian_arr, $bidang_keahlian_opsi)) {
-        $error_msg = "Bidang keahlian tidak valid!";
-    } else {
-        $bidang_keahlian = implode(', ', $bidang_keahlian_arr);
-        // Handle optional file upload
-        if (isset($_FILES['file_sertifikat']) && $_FILES['file_sertifikat']['error'] === UPLOAD_ERR_OK) {
-            $file = $_FILES['file_sertifikat'];
-            $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-            if (in_array($ext, ['pdf', 'jpg', 'jpeg', 'png'])) {
-                $dir = "../uploads/sertifikat/";
-                if (!is_dir($dir))
-                    mkdir($dir, 0777, true);
-                $fname = "cert_" . time() . "_" . uniqid() . "." . $ext;
-                if (move_uploaded_file($file['tmp_name'], $dir . $fname)) {
-                    $file_sertifikat = "uploads/sertifikat/" . $fname;
-                } else {
-                    $error_msg = "Gagal mengunggah file sertifikat.";
+    if (isset($_POST['delete_id'])) {
+        // ================= HANDLE HAPUS =================
+        $delete_id = (int) $_POST['delete_id'];
+
+        $cekStmt = $conn->prepare("SELECT * FROM Sertifikat_Ahli WHERE id = :id AND user_id = :uid");
+        $cekStmt->execute(['id' => $delete_id, 'uid' => $current_user_id]);
+        $existing = $cekStmt->fetch();
+
+        if (!$existing) {
+            $error_msg = "Anda tidak memiliki akses untuk menghapus sertifikat ini!";
+        } else {
+            try {
+                $stmt = $conn->prepare("DELETE FROM Sertifikat_Ahli WHERE id = :id AND user_id = :uid");
+                $stmt->execute(['id' => $delete_id, 'uid' => $current_user_id]);
+
+                // Hapus file fisik jika ada
+                if (!empty($existing['file_sertifikat'])) {
+                    $filePath = "../" . $existing['file_sertifikat'];
+                    if (is_file($filePath)) {
+                        @unlink($filePath);
+                    }
                 }
-            } else {
-                $error_msg = "Format file tidak didukung. Gunakan PDF, JPG, atau PNG.";
+
+                $success_msg = "Sertifikat berhasil dihapus!";
+            } catch (PDOException $e) {
+                $error_msg = "Gagal menghapus sertifikat: " . $e->getMessage();
             }
         }
 
-        if (empty($error_msg)) {
-            try {
-                $stmt = $conn->prepare("
-                    INSERT INTO Sertifikat_Ahli
-                        (user_id, nama_lengkap, tingkat_ahli, bidang_keahlian, nomor_sertifikat,
-                         tanggal_terbit, tanggal_kedaluwarsa, file_sertifikat, status)
-                    VALUES
-                        (:user_id, :nama_lengkap, :tingkat_ahli, :bidang_keahlian, :nomor,
-                         :terbit, :exp, :file, 'Aktif')
-                ");
-                $stmt->execute([
-                    'user_id' => $current_user_id,
-                    'nama_lengkap' => $nama_lengkap,
-                    'tingkat_ahli' => $tingkat_ahli,
-                    'bidang_keahlian' => $bidang_keahlian,
-                    'nomor' => $nomor_sertifikat,
-                    'terbit' => $tanggal_terbit,
-                    'exp' => $tanggal_kedaluwarsa,
-                    'file' => $file_sertifikat
-                ]);
-                $success_msg = "Sertifikat berhasil ditambahkan ke sistem!";
-            } catch (PDOException $e) {
-                if ($e->getCode() == 23000) {
-                    $error_msg = "Nomor sertifikat sudah terdaftar di sistem!";
+    } elseif (isset($_POST['edit_id'])) {
+        // ================= HANDLE EDIT =================
+        $edit_id = (int) $_POST['edit_id'];
+        $nama_lengkap = trim($_POST['nama_lengkap'] ?? '');
+        $tingkat_ahli = trim($_POST['tingkat_ahli'] ?? '');
+        $bidang_keahlian_arr = $_POST['bidang_keahlian'] ?? [];
+        if (!is_array($bidang_keahlian_arr))
+            $bidang_keahlian_arr = [$bidang_keahlian_arr];
+        $bidang_keahlian_arr = array_values(array_filter(array_map('trim', $bidang_keahlian_arr)));
+        $nomor_sertifikat = trim($_POST['nomor_sertifikat'] ?? '');
+        $tanggal_terbit = $_POST['tanggal_terbit'] ?? '';
+        $tanggal_kedaluwarsa = $_POST['tanggal_kedaluwarsa'] ?? '';
+
+        $cekStmt = $conn->prepare("SELECT * FROM Sertifikat_Ahli WHERE id = :id AND user_id = :uid");
+        $cekStmt->execute(['id' => $edit_id, 'uid' => $current_user_id]);
+        $existing = $cekStmt->fetch();
+
+        if (!$existing) {
+            $error_msg = "Anda tidak memiliki akses untuk mengedit sertifikat ini!";
+        } elseif (
+            empty($nama_lengkap) || empty($tingkat_ahli) || empty($bidang_keahlian_arr) ||
+            empty($nomor_sertifikat) || empty($tanggal_terbit) || empty($tanggal_kedaluwarsa)
+        ) {
+            $error_msg = "Semua field wajib diisi (Bidang Keahlian minimal pilih 1)!";
+        } elseif (!in_array($tingkat_ahli, $tingkat_ahli_opsi, true)) {
+            $error_msg = "Tingkat ahli tidak valid!";
+        } elseif (array_diff($bidang_keahlian_arr, $bidang_keahlian_opsi)) {
+            $error_msg = "Bidang keahlian tidak valid!";
+        } else {
+            $bidang_keahlian = implode(', ', $bidang_keahlian_arr);
+            $file_sertifikat = $existing['file_sertifikat'];
+
+            if (isset($_FILES['file_sertifikat']) && $_FILES['file_sertifikat']['error'] === UPLOAD_ERR_OK) {
+                $file = $_FILES['file_sertifikat'];
+                $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+                if (in_array($ext, ['pdf', 'jpg', 'jpeg', 'png'])) {
+                    $dir = "../uploads/sertifikat/";
+                    if (!is_dir($dir))
+                        mkdir($dir, 0777, true);
+                    $fname = "cert_" . time() . "_" . uniqid() . "." . $ext;
+                    if (move_uploaded_file($file['tmp_name'], $dir . $fname)) {
+                        $file_sertifikat = "uploads/sertifikat/" . $fname;
+                    } else {
+                        $error_msg = "Gagal mengunggah file sertifikat.";
+                    }
                 } else {
-                    $error_msg = "Gagal menyimpan sertifikat: " . $e->getMessage();
+                    $error_msg = "Format file tidak didukung. Gunakan PDF, JPG, atau PNG.";
+                }
+            }
+
+            if (empty($error_msg)) {
+                try {
+                    $stmt = $conn->prepare("
+                        UPDATE Sertifikat_Ahli SET
+                            nama_lengkap = :nama_lengkap,
+                            tingkat_ahli = :tingkat_ahli,
+                            bidang_keahlian = :bidang_keahlian,
+                            nomor_sertifikat = :nomor,
+                            tanggal_terbit = :terbit,
+                            tanggal_kedaluwarsa = :exp,
+                            file_sertifikat = :file
+                        WHERE id = :id AND user_id = :uid
+                    ");
+                    $stmt->execute([
+                        'nama_lengkap' => $nama_lengkap,
+                        'tingkat_ahli' => $tingkat_ahli,
+                        'bidang_keahlian' => $bidang_keahlian,
+                        'nomor' => $nomor_sertifikat,
+                        'terbit' => $tanggal_terbit,
+                        'exp' => $tanggal_kedaluwarsa,
+                        'file' => $file_sertifikat,
+                        'id' => $edit_id,
+                        'uid' => $current_user_id
+                    ]);
+                    $success_msg = "Sertifikat berhasil diperbarui!";
+                } catch (PDOException $e) {
+                    if ($e->getCode() == 23000) {
+                        $error_msg = "Nomor sertifikat sudah terdaftar di sistem!";
+                    } else {
+                        $error_msg = "Gagal memperbarui sertifikat: " . $e->getMessage();
+                    }
+                }
+            }
+        }
+
+    } else {
+        // ================= HANDLE TAMBAH =================
+        $nama_lengkap = trim($_POST['nama_lengkap'] ?? '');
+        $tingkat_ahli = trim($_POST['tingkat_ahli'] ?? '');
+        $bidang_keahlian_arr = $_POST['bidang_keahlian'] ?? [];
+        if (!is_array($bidang_keahlian_arr))
+            $bidang_keahlian_arr = [$bidang_keahlian_arr];
+        $bidang_keahlian_arr = array_values(array_filter(array_map('trim', $bidang_keahlian_arr)));
+        $nomor_sertifikat = trim($_POST['nomor_sertifikat'] ?? '');
+        $tanggal_terbit = $_POST['tanggal_terbit'] ?? '';
+        $tanggal_kedaluwarsa = $_POST['tanggal_kedaluwarsa'] ?? '';
+        $file_sertifikat = "";
+
+        if (
+            empty($nama_lengkap) || empty($tingkat_ahli) || empty($bidang_keahlian_arr) ||
+            empty($nomor_sertifikat) || empty($tanggal_terbit) || empty($tanggal_kedaluwarsa)
+        ) {
+            $error_msg = "Semua field wajib diisi (Bidang Keahlian minimal pilih 1), kecuali upload file sertifikat!";
+        } elseif (!in_array($tingkat_ahli, $tingkat_ahli_opsi, true)) {
+            $error_msg = "Tingkat ahli tidak valid!";
+        } elseif (array_diff($bidang_keahlian_arr, $bidang_keahlian_opsi)) {
+            $error_msg = "Bidang keahlian tidak valid!";
+        } else {
+            $bidang_keahlian = implode(', ', $bidang_keahlian_arr);
+            if (isset($_FILES['file_sertifikat']) && $_FILES['file_sertifikat']['error'] === UPLOAD_ERR_OK) {
+                $file = $_FILES['file_sertifikat'];
+                $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+                if (in_array($ext, ['pdf', 'jpg', 'jpeg', 'png'])) {
+                    $dir = "../uploads/sertifikat/";
+                    if (!is_dir($dir))
+                        mkdir($dir, 0777, true);
+                    $fname = "cert_" . time() . "_" . uniqid() . "." . $ext;
+                    if (move_uploaded_file($file['tmp_name'], $dir . $fname)) {
+                        $file_sertifikat = "uploads/sertifikat/" . $fname;
+                    } else {
+                        $error_msg = "Gagal mengunggah file sertifikat.";
+                    }
+                } else {
+                    $error_msg = "Format file tidak didukung. Gunakan PDF, JPG, atau PNG.";
+                }
+            }
+
+            if (empty($error_msg)) {
+                try {
+                    $stmt = $conn->prepare("
+                        INSERT INTO Sertifikat_Ahli
+                            (user_id, nama_lengkap, tingkat_ahli, bidang_keahlian, nomor_sertifikat,
+                             tanggal_terbit, tanggal_kedaluwarsa, file_sertifikat, status)
+                        VALUES
+                            (:user_id, :nama_lengkap, :tingkat_ahli, :bidang_keahlian, :nomor,
+                             :terbit, :exp, :file, 'Aktif')
+                    ");
+                    $stmt->execute([
+                        'user_id' => $current_user_id,
+                        'nama_lengkap' => $nama_lengkap,
+                        'tingkat_ahli' => $tingkat_ahli,
+                        'bidang_keahlian' => $bidang_keahlian,
+                        'nomor' => $nomor_sertifikat,
+                        'terbit' => $tanggal_terbit,
+                        'exp' => $tanggal_kedaluwarsa,
+                        'file' => $file_sertifikat
+                    ]);
+                    $success_msg = "Sertifikat berhasil ditambahkan ke sistem!";
+                } catch (PDOException $e) {
+                    if ($e->getCode() == 23000) {
+                        $error_msg = "Nomor sertifikat sudah terdaftar di sistem!";
+                    } else {
+                        $error_msg = "Gagal menyimpan sertifikat: " . $e->getMessage();
+                    }
                 }
             }
         }
     }
 }
 
-// Fetch sertifikat milik user ini
+
+// Fetch semua sertifikat (bukan hanya milik user login)
 try {
-    $stmt = $conn->prepare("SELECT * FROM v_sertifikat_ahli_status WHERE user_id = :user_id ORDER BY tanggal_kedaluwarsa ASC");
-    $stmt->execute(['user_id' => $current_user_id]);
+    $stmt = $conn->query("SELECT * FROM v_sertifikat_ahli_status ORDER BY tanggal_kedaluwarsa ASC");
     $certs = $stmt->fetchAll();
 } catch (PDOException $e) {
     // Fallback jika view belum ada
     try {
-        $stmt2 = $conn->prepare("SELECT * FROM Sertifikat_Ahli WHERE user_id = :user_id ORDER BY tanggal_kedaluwarsa ASC");
-        $stmt2->execute(['user_id' => $current_user_id]);
+        $stmt2 = $conn->query("SELECT * FROM Sertifikat_Ahli ORDER BY tanggal_kedaluwarsa ASC");
         $certs = $stmt2->fetchAll();
     } catch (PDOException $e2) {
         $certs = [];
@@ -131,7 +247,7 @@ try {
     <!-- Content Card -->
     <div class="card-box">
         <div class="table-toolbar">
-            <h5 class="table-toolbar-title fw-bold">Data Sertifikat Lisensi Kompetensi Pribadi</h5>
+            <h5 class="table-toolbar-title fw-bold">Daftar Sertifikat Ahli</h5>
             <div class="table-toolbar-actions">
                 <div class="search-box-container">
                     <i class="bi bi-search"></i>
@@ -157,6 +273,7 @@ try {
                         <th>Masa Berlaku</th>
                         <th>Status</th>
                         <th>Unduh Berkas</th>
+                        <th class="col-aksi" style="text-align:center;">Aksi</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -197,10 +314,46 @@ try {
                                         <a href="../<?= htmlspecialchars($c['file_sertifikat']) ?>" target="_blank"
                                             class="btn btn-outline-secondary btn-sm py-1"
                                             style="font-size:0.75rem; border-radius: 8px;">
-                                            <i class="bi bi-file-earmark-pdf"></i> Unduh
+                                            <i class="bi bi-file-earmark-pdf"></i> Lihat
                                         </a>
                                     <?php else: ?>
                                         <span class="text-muted">Tidak ada lampiran</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td class="col-aksi text-center">
+                                    <?php if ((int) $c['user_id'] === (int) $current_user_id): ?>
+                                        <div class="table-actions">
+
+                                            <!-- Edit -->
+                                            <button type="button" class="btn btn-outline-primary btn-sm py-1"
+                                                style="font-size:0.75rem;" title="Edit Sertifikat" onclick='bukaModalEdit(<?= json_encode([
+                                                    "id" => $c["id"],
+                                                    "nama_lengkap" => $c["nama_lengkap"],
+                                                    "tingkat_ahli" => $c["tingkat_ahli"],
+                                                    "bidang_keahlian" => array_map("trim", explode(",", $c["bidang_keahlian"])),
+                                                    "nomor_sertifikat" => $c["nomor_sertifikat"],
+                                                    "tanggal_terbit" => $c["tanggal_terbit"],
+                                                    "tanggal_kedaluwarsa" => $c["tanggal_kedaluwarsa"]
+                                                ]) ?>)'>
+                                                <i class="bi bi-pencil-square"></i>
+                                            </button>
+
+                                            <!-- Hapus -->
+                                            <form method="POST" action="sertifikat_ahli.php" class="d-inline"
+                                                onsubmit="return confirm('Yakin ingin menghapus sertifikat <?= htmlspecialchars(addslashes($c['nomor_sertifikat'])) ?>? Tindakan ini tidak dapat dibatalkan.');">
+
+                                                <input type="hidden" name="delete_id" value="<?= (int) $c['id'] ?>">
+
+                                                <button type="submit" class="btn-danger-custom"
+                                                    style="height:28px; padding:0 8px; font-size:0.75rem;" title="Hapus Sertifikat">
+                                                    <i class="bi bi-trash-fill"></i>
+                                                </button>
+                                            </form>
+
+                                        </div>
+
+                                    <?php else: ?>
+                                        <span class="text-secondary">-</span>
                                     <?php endif; ?>
                                 </td>
                             </tr>
@@ -283,6 +436,97 @@ try {
         </div>
     </div>
 </div>
+
+<!-- ===== MODAL: Edit Sertifikat ===== -->
+<div id="modalEditSertifikat" class="arp-modal-overlay" onclick="closeModalOutside(event, 'modalEditSertifikat')">
+    <div class="arp-modal-box">
+        <div class="arp-modal-header">
+            <div>
+                <h6 class="fw-bold mb-0">Edit Sertifikat Kompetensi</h6>
+                <small class="text-muted">Perbarui data sertifikat milik Anda.</small>
+            </div>
+            <button class="arp-modal-close" onclick="closeModal('modalEditSertifikat')">&times;</button>
+        </div>
+        <div class="arp-modal-body">
+            <form method="POST" action="sertifikat_ahli.php" enctype="multipart/form-data" id="formEditSertifikat">
+                <input type="hidden" name="edit_id" id="edit_id">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold fs-7 mb-2">Nama Lengkap *</label>
+                    <input type="text" name="nama_lengkap" id="edit_nama_lengkap" class="form-control-custom" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold fs-7 mb-2">Tingkat Ahli *</label>
+                    <select name="tingkat_ahli" id="edit_tingkat_ahli" class="select-custom" required>
+                        <option value="">-- Pilih Tingkat Ahli --</option>
+                        <?php foreach ($tingkat_ahli_opsi as $opt): ?>
+                            <option value="<?= htmlspecialchars($opt) ?>"><?= htmlspecialchars($opt) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold fs-7 mb-2">Bidang Keahlian *</label>
+                    <div class="d-flex flex-wrap gap-2" id="edit_bidang_keahlian_wrapper">
+                        <?php foreach ($bidang_keahlian_opsi as $opt): ?>
+                            <label class="form-control-custom d-flex align-items-center gap-2 mb-0"
+                                style="width:auto; cursor:pointer;">
+                                <input type="checkbox" class="edit-bidang-checkbox" name="bidang_keahlian[]"
+                                    value="<?= htmlspecialchars($opt) ?>">
+                                <?= htmlspecialchars($opt) ?>
+                            </label>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold fs-7 mb-2">Nomor Sertifikat *</label>
+                    <input type="text" name="nomor_sertifikat" id="edit_nomor_sertifikat" class="form-control-custom"
+                        required>
+                </div>
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label class="form-label fw-semibold fs-7 mb-2">Tanggal Terbit *</label>
+                        <input type="date" name="tanggal_terbit" id="edit_tanggal_terbit" class="form-control-custom"
+                            required>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label fw-semibold fs-7 mb-2">Tanggal Kedaluwarsa *</label>
+                        <input type="date" name="tanggal_kedaluwarsa" id="edit_tanggal_kedaluwarsa"
+                            class="form-control-custom" required>
+                    </div>
+                </div>
+                <div class="mb-4">
+                    <label class="form-label fw-semibold fs-7 mb-2">Ganti File Sertifikat (opsional)</label>
+                    <input type="file" name="file_sertifikat" class="form-control-custom" style="padding-top:8px;"
+                        accept=".pdf,.jpg,.jpeg,.png">
+                    <small class="text-muted d-block mt-1">Kosongkan jika tidak ingin mengganti file.</small>
+                </div>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn-secondary-custom flex-grow-1"
+                        onclick="closeModal('modalEditSertifikat')">Batal</button>
+                    <button type="submit" class="btn-primary-custom flex-grow-1">
+                        <i class="bi bi-save me-1"></i> Simpan Perubahan
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    function bukaModalEdit(data) {
+        document.getElementById('edit_id').value = data.id;
+        document.getElementById('edit_nama_lengkap').value = data.nama_lengkap;
+        document.getElementById('edit_tingkat_ahli').value = data.tingkat_ahli;
+        document.getElementById('edit_nomor_sertifikat').value = data.nomor_sertifikat;
+        document.getElementById('edit_tanggal_terbit').value = data.tanggal_terbit;
+        document.getElementById('edit_tanggal_kedaluwarsa').value = data.tanggal_kedaluwarsa;
+
+        document.querySelectorAll('.edit-bidang-checkbox').forEach(cb => {
+            cb.checked = data.bidang_keahlian.includes(cb.value);
+        });
+
+        openModal('modalEditSertifikat');
+    }
+</script>
 
 <script>
     document.addEventListener('DOMContentLoaded', function () {
