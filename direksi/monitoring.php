@@ -5,6 +5,15 @@ require_once "../config/koneksi.php";
 
 $page_title = "Monitoring Operasional";
 
+// ================== TAB MONITORING ==================
+// Setiap rekapan (absensi, jadwal, cuti, kendaraan, stok, sertifikat)
+// ditampilkan sebagai tab terpisah supaya halaman lebih rapi & mudah dipantau.
+$tab_list_monitoring = ['absensi', 'jadwal', 'cuti', 'kendaraan', 'stok', 'sertifikat'];
+$tab_monitoring = $_GET['tab_monitoring'] ?? 'absensi';
+if (!in_array($tab_monitoring, $tab_list_monitoring, true)) {
+    $tab_monitoring = 'absensi';
+}
+
 function safe_count(PDO $conn, string $sql, array $params = []): int
 {
     try {
@@ -84,26 +93,66 @@ $sertifikat_kritis = safe_query($conn, "
 // default tahun berjalan. Pakai LEFT JOIN + COALESCE supaya karyawan yang
 // belum punya baris Cuti_Saldo (belum pernah ambil cuti tahun ini) tetap
 // tampil dengan jatah default 12 hari / 0 terpakai, tanpa perlu INSERT dulu.
-$tahun_cuti = isset($_GET['tahun_cuti']) ? (int) $_GET['tahun_cuti'] : (int) date('Y');
+$tahun_sekarang_cuti = (int) date('Y');
+$bulan_sekarang_cuti = (int) date('n'); // 1-12, dipakai untuk akrual bulanan
+
+$tahun_cuti = isset($_GET['tahun_cuti']) ? (int) $_GET['tahun_cuti'] : $tahun_sekarang_cuti;
 if ($tahun_cuti < 2020 || $tahun_cuti > 2100) {
-    $tahun_cuti = (int) date('Y');
+    $tahun_cuti = $tahun_sekarang_cuti;
 }
 
-$sisa_cuti_karyawan = safe_query($conn, "
+// Jatah cuti tahunan mengikuti akrual bulanan, sama persis dengan logika di
+// halaman Pengajuan Cuti (ensure_saldo_cuti): TIDAK langsung 12 hari di awal
+// tahun, tapi bertambah +1 hari otomatis setiap tanggal 1 bulan berjalan
+// (Jan = 1 hari, Jul = 7 hari, dst, maksimal 12). Tahun yang sudah lewat
+// dianggap jatah penuh 12, tahun yang akan datang belum mulai akrual (0).
+if ($tahun_cuti < $tahun_sekarang_cuti) {
+    $jatah_tahunan_akrual = 12;
+} elseif ($tahun_cuti > $tahun_sekarang_cuti) {
+    $jatah_tahunan_akrual = 0;
+} else {
+    $jatah_tahunan_akrual = max(0, min(12, $bulan_sekarang_cuti));
+}
+
+$sisa_cuti_karyawan_raw = safe_query($conn, "
     SELECT
         u.id, u.nama_lengkap, u.role,
-        COALESCE(cs.jatah_tahunan, 12) AS jatah_tahunan,
-        COALESCE(cs.terpakai, 0)       AS terpakai,
-        COALESCE(cs.sisa, 12)          AS sisa
+        COALESCE(cs.terpakai, 0) AS terpakai
     FROM Users u
     LEFT JOIN Cuti_Saldo cs ON cs.user_id = u.id AND cs.tahun = :tahun
     WHERE u.role NOT IN ('client')
     ORDER BY u.nama_lengkap ASC
 ", ['tahun' => $tahun_cuti]);
 
+$sisa_cuti_karyawan = array_map(function ($row) use ($jatah_tahunan_akrual) {
+    $row['jatah_tahunan'] = $jatah_tahunan_akrual;
+    $row['sisa'] = $jatah_tahunan_akrual - (int) $row['terpakai'];
+    return $row;
+}, $sisa_cuti_karyawan_raw);
+
 // Daftar tahun untuk dropdown pilihan (tahun berjalan +/- beberapa tahun)
-$tahun_sekarang_cuti = (int) date('Y');
 $opsi_tahun_cuti = range($tahun_sekarang_cuti + 1, $tahun_sekarang_cuti - 3);
+
+// ================== REKAP CUTI KHUSUS & CUTI SAKIT ==================
+// Dua jenis ini TIDAK punya jatah/saldo tahunan seperti Cuti Tahunan
+// (langsung diajukan sesuai kebutuhan), jadi direkap terpisah: total hari
+// & jumlah pengajuan yang sudah Disetujui per karyawan untuk tahun terpilih.
+// Catatan: field jenis_cuti untuk izin sakit di form pengajuan (semua role)
+// tersimpan sebagai 'Izin Sakit', karena itu dicek juga di sini supaya rekap
+// tetap akurat walau labelnya beda dengan ENUM 'Cuti Sakit'.
+$rekap_cuti_khusus_sakit = safe_query($conn, "
+    SELECT
+        u.id, u.nama_lengkap, u.role,
+        COALESCE(SUM(CASE WHEN c.jenis_cuti = 'Cuti Khusus' AND c.status = 'Disetujui' THEN c.total_durasi ELSE 0 END), 0) AS khusus_hari,
+        COALESCE(SUM(CASE WHEN c.jenis_cuti = 'Cuti Khusus' AND c.status = 'Disetujui' THEN 1 ELSE 0 END), 0) AS khusus_jumlah,
+        COALESCE(SUM(CASE WHEN c.jenis_cuti IN ('Cuti Sakit', 'Izin Sakit') AND c.status = 'Disetujui' THEN c.total_durasi ELSE 0 END), 0) AS sakit_hari,
+        COALESCE(SUM(CASE WHEN c.jenis_cuti IN ('Cuti Sakit', 'Izin Sakit') AND c.status = 'Disetujui' THEN 1 ELSE 0 END), 0) AS sakit_jumlah
+    FROM Users u
+    LEFT JOIN Cuti c ON c.user_id = u.id AND YEAR(c.tgl_mulai) = :tahun
+    WHERE u.role NOT IN ('client')
+    GROUP BY u.id, u.nama_lengkap, u.role
+    ORDER BY u.nama_lengkap ASC
+", ['tahun' => $tahun_cuti]);
 
 function badge_kehadiran(string $status): string
 {
@@ -181,13 +230,51 @@ include "../includes/topbar.php";
         </div>
     </div>
 
+    <!-- Tab Navigasi -->
+    <div class="arp-tab-group">
+        <div class="arp-tab-nav">
+            <a href="monitoring.php?tab_monitoring=absensi&tgl=<?= urlencode($tgl_rekap) ?>"
+                class="arp-tab-btn<?= $tab_monitoring === 'absensi' ? ' active' : '' ?>">
+                <i class="bi bi-calendar-check me-1"></i> Rekap Absensi
+            </a>
+            <a href="monitoring.php?tab_monitoring=jadwal"
+                class="arp-tab-btn<?= $tab_monitoring === 'jadwal' ? ' active' : '' ?>">
+                <i class="bi bi-calendar-event me-1"></i> Jadwal Pemeriksaan
+            </a>
+            <a href="monitoring.php?tab_monitoring=cuti&tahun_cuti=<?= urlencode((string) $tahun_cuti) ?>"
+                class="arp-tab-btn<?= $tab_monitoring === 'cuti' ? ' active' : '' ?>">
+                <i class="bi bi-calendar-week me-1"></i> Sisa Cuti Karyawan
+            </a>
+            <a href="monitoring.php?tab_monitoring=kendaraan"
+                class="arp-tab-btn<?= $tab_monitoring === 'kendaraan' ? ' active' : '' ?>">
+                <i class="bi bi-truck me-1"></i> Status Kendaraan
+            </a>
+            <a href="monitoring.php?tab_monitoring=stok"
+                class="arp-tab-btn<?= $tab_monitoring === 'stok' ? ' active' : '' ?>">
+                <i class="bi bi-box-seam me-1"></i> Stok Gudang Menipis
+                <?php if (count($stok_menipis) > 0): ?>
+                    <span class="badge-danger ms-1"><?= count($stok_menipis) ?></span>
+                <?php endif; ?>
+            </a>
+            <a href="monitoring.php?tab_monitoring=sertifikat"
+                class="arp-tab-btn<?= $tab_monitoring === 'sertifikat' ? ' active' : '' ?>">
+                <i class="bi bi-patch-check me-1"></i> Sertifikat Ahli
+                <?php if (count($sertifikat_kritis) > 0): ?>
+                    <span class="badge-warning ms-1"><?= count($sertifikat_kritis) ?></span>
+                <?php endif; ?>
+            </a>
+        </div>
+    </div>
+
+    <?php if ($tab_monitoring === 'absensi'): ?>
     <div class="row g-4 mb-4">
-        <div class="col-12">
+        <div class="col-12 arp-tab-panel" id="panelAbsensi">
             <div class="card-box">
                 <div class="table-toolbar">
                     <h5 class="table-toolbar-title fw-bold">Rekap Absensi Harian (Seluruh Karyawan)</h5>
                     <div class="table-toolbar-actions">
                         <form method="GET" action="monitoring.php" class="d-flex align-items-center gap-2">
+                            <input type="hidden" name="tab_monitoring" value="absensi">
                             <input type="date" name="tgl" class="form-control-custom" value="<?= htmlspecialchars($tgl_rekap) ?>" onchange="this.form.submit()">
                         </form>
                         <div class="search-box-container">
@@ -249,10 +336,12 @@ include "../includes/topbar.php";
             </div>
         </div>
     </div>
+    <?php endif; ?>
 
+    <?php if ($tab_monitoring === 'jadwal'): ?>
     <div class="row g-4 mb-4">
-        <div class="col-12">
-            <div class="card-box h-100">
+        <div class="col-12 arp-tab-panel" id="panelJadwal">
+            <div class="card-box">
                 <h5 class="fw-bold mb-3">Jadwal Pemeriksaan Terdekat</h5>
                 <?php if (empty($jadwal_terdekat)): ?>
                     <p class="text-secondary fs-7 mb-0">Tidak ada jadwal pemeriksaan mendatang.</p>
@@ -275,14 +364,17 @@ include "../includes/topbar.php";
             </div>
         </div>
     </div>
+    <?php endif; ?>
 
+    <?php if ($tab_monitoring === 'cuti'): ?>
     <div class="row g-4 mb-4">
-        <div class="col-12">
+        <div class="col-12 arp-tab-panel" id="panelCuti">
             <div class="card-box">
                 <div class="table-toolbar">
                     <h5 class="table-toolbar-title fw-bold">Sisa Cuti Karyawan</h5>
                     <div class="table-toolbar-actions">
                         <form method="GET" action="monitoring.php" class="d-flex align-items-center gap-2">
+                            <input type="hidden" name="tab_monitoring" value="cuti">
                             <select name="tahun_cuti" class="select-custom" onchange="this.form.submit()">
                                 <?php foreach ($opsi_tahun_cuti as $th): ?>
                                     <option value="<?= $th ?>" <?= $th === $tahun_cuti ? 'selected' : '' ?>>Tahun <?= $th ?></option>
@@ -298,8 +390,10 @@ include "../includes/topbar.php";
                 </div>
 
                 <p class="text-secondary fs-7 mb-3">
-                    Rekap saldo cuti tahunan seluruh karyawan untuk tahun <strong><?= $tahun_cuti ?></strong>
-                    (<?= count($sisa_cuti_karyawan) ?> karyawan)
+                    Jatah cuti tahunan mengikuti akrual bulanan (bertambah otomatis tiap tanggal 1,
+                    bukan langsung 12 hari di awal tahun) &mdash; sama seperti di halaman Pengajuan Cuti.
+                    Untuk tahun <strong><?= $tahun_cuti ?></strong>, jatah saat ini
+                    <strong><?= (int) $jatah_tahunan_akrual ?> hari</strong> (<?= count($sisa_cuti_karyawan) ?> karyawan).
                 </p>
 
                 <?php if (empty($sisa_cuti_karyawan)): ?>
@@ -337,16 +431,73 @@ include "../includes/topbar.php";
         </div>
     </div>
 
-    <div class="row g-4">
-        <div class="col-lg-4 col-12">
-            <div class="card-box h-100">
+    <div class="row g-4 mb-4">
+        <div class="col-12 arp-tab-panel" id="panelRekapCutiLain">
+            <div class="card-box">
+                <div class="table-toolbar">
+                    <h5 class="table-toolbar-title fw-bold">Rekap Cuti Khusus &amp; Cuti Sakit</h5>
+                    <div class="table-toolbar-actions">
+                        <div class="search-box-container">
+                            <i class="bi bi-search"></i>
+                            <input type="text" class="search-box" placeholder="Cari nama karyawan..."
+                                data-table-search="tabelRekapCutiLain" onkeyup="handleTableSearch('tabelRekapCutiLain')">
+                        </div>
+                    </div>
+                </div>
+
+                <p class="text-secondary fs-7 mb-3">
+                    Cuti Khusus dan Cuti Sakit tidak punya jatah/saldo tahunan seperti Cuti Tahunan
+                    (langsung diajukan sesuai kebutuhan), jadi direkap terpisah di sini: total pengajuan
+                    yang sudah Disetujui untuk tahun <strong><?= $tahun_cuti ?></strong>.
+                </p>
+
+                <?php if (empty($rekap_cuti_khusus_sakit)): ?>
+                    <p class="text-secondary fs-7 mb-0">Belum ada data karyawan.</p>
+                <?php else: ?>
+                    <div class="table-responsive-custom">
+                        <table class="table-custom" id="tabelRekapCutiLain">
+                            <thead>
+                                <tr>
+                                    <th>Nama</th>
+                                    <th>Status</th>
+                                    <th class="text-center">Cuti Khusus (Hari)</th>
+                                    <th class="text-center">Cuti Khusus (Pengajuan)</th>
+                                    <th class="text-center">Cuti Sakit (Hari)</th>
+                                    <th class="text-center">Cuti Sakit (Pengajuan)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($rekap_cuti_khusus_sakit as $r): ?>
+                                    <tr>
+                                        <td><?= htmlspecialchars($r['nama_lengkap']) ?></td>
+                                        <td><?= htmlspecialchars($r['role']) ?></td>
+                                        <td class="text-center"><?= (int) $r['khusus_hari'] ?> Hari</td>
+                                        <td class="text-center"><?= (int) $r['khusus_jumlah'] ?>x</td>
+                                        <td class="text-center"><?= (int) $r['sakit_hari'] ?> Hari</td>
+                                        <td class="text-center"><?= (int) $r['sakit_jumlah'] ?>x</td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="pagination-custom" id="pagination-tabelRekapCutiLain"></div>
+                <?php endif; ?>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
+
+    <?php if ($tab_monitoring === 'kendaraan'): ?>
+    <div class="row g-4 mb-4">
+        <div class="col-12 arp-tab-panel" id="panelKendaraan">
+            <div class="card-box">
                 <h5 class="fw-bold mb-3">Status Kendaraan</h5>
                 <?php if (empty($daftar_kendaraan)): ?>
                     <p class="text-secondary fs-7 mb-0">Belum ada data kendaraan.</p>
                 <?php else: ?>
                     <ul class="list-unstyled mb-0">
                         <?php foreach ($daftar_kendaraan as $k): ?>
-                            <li class="d-flex justify-content-between align-items-center mb-2">
+                            <li class="d-flex justify-content-between align-items-center mb-2 pb-2" style="border-bottom:1px solid var(--border-color, #eee);">
                                 <span class="fs-7"><?= htmlspecialchars($k['nama_kendaraan']) ?> <span class="text-muted">(<?= htmlspecialchars($k['plat_nomor']) ?>)</span></span>
                                 <span class="<?= badge_kendaraan($k['status_kendaraan']) ?> fs-7"><?= htmlspecialchars($k['status_kendaraan']) ?></span>
                             </li>
@@ -355,16 +506,20 @@ include "../includes/topbar.php";
                 <?php endif; ?>
             </div>
         </div>
+    </div>
+    <?php endif; ?>
 
-        <div class="col-lg-4 col-12">
-            <div class="card-box h-100">
+    <?php if ($tab_monitoring === 'stok'): ?>
+    <div class="row g-4 mb-4">
+        <div class="col-12 arp-tab-panel" id="panelStok">
+            <div class="card-box">
                 <h5 class="fw-bold mb-3">Stok Gudang Menipis</h5>
                 <?php if (empty($stok_menipis)): ?>
                     <p class="text-secondary fs-7 mb-0">Semua stok dalam batas aman.</p>
                 <?php else: ?>
                     <ul class="list-unstyled mb-0">
                         <?php foreach ($stok_menipis as $s): ?>
-                            <li class="d-flex justify-content-between align-items-center mb-2">
+                            <li class="d-flex justify-content-between align-items-center mb-2 pb-2" style="border-bottom:1px solid var(--border-color, #eee);">
                                 <span class="fs-7"><?= htmlspecialchars($s['nama_barang']) ?></span>
                                 <span class="badge-danger fs-7"><?= (int) $s['stok_sistem'] ?> <?= htmlspecialchars($s['satuan']) ?></span>
                             </li>
@@ -373,16 +528,20 @@ include "../includes/topbar.php";
                 <?php endif; ?>
             </div>
         </div>
+    </div>
+    <?php endif; ?>
 
-        <div class="col-lg-4 col-12">
-            <div class="card-box h-100">
+    <?php if ($tab_monitoring === 'sertifikat'): ?>
+    <div class="row g-4 mb-4">
+        <div class="col-12 arp-tab-panel" id="panelSertifikat">
+            <div class="card-box">
                 <h5 class="fw-bold mb-3">Sertifikat Ahli Perlu Perhatian</h5>
                 <?php if (empty($sertifikat_kritis)): ?>
                     <p class="text-secondary fs-7 mb-0">Semua sertifikat masih aktif.</p>
                 <?php else: ?>
                     <ul class="list-unstyled mb-0">
                         <?php foreach ($sertifikat_kritis as $s): ?>
-                            <li class="d-flex justify-content-between align-items-center mb-2">
+                            <li class="d-flex justify-content-between align-items-center mb-2 pb-2" style="border-bottom:1px solid var(--border-color, #eee);">
                                 <div>
                                     <div class="fs-7 fw-semibold"><?= htmlspecialchars($s['nama_lengkap']) ?></div>
                                     <div class="fs-7 text-muted">exp. <?= date('d M Y', strtotime($s['tanggal_kedaluwarsa'])) ?></div>
@@ -395,12 +554,14 @@ include "../includes/topbar.php";
             </div>
         </div>
     </div>
+    <?php endif; ?>
 </main>
 
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         initTablePagination('tabelRekapAbsensi', 10);
         initTablePagination('tabelSisaCuti', 10);
+        initTablePagination('tabelRekapCutiLain', 10);
     });
 </script>
 

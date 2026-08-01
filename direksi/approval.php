@@ -275,7 +275,8 @@ function ambil_detail_ref(PDO $conn, string $jenis, int $ref_id): string
                 $d = $s->fetch();
                 if (!$d)
                     return '-';
-                return htmlspecialchars($d['jenis_cuti']) . ' &middot; ' .
+                $label_jenis_cuti = $d['jenis_cuti'] === 'Izin Sakit' ? 'Cuti Sakit' : $d['jenis_cuti'];
+                return htmlspecialchars($label_jenis_cuti) . ' &middot; ' .
                     date('d M Y', strtotime($d['tgl_mulai'])) . ' - ' . date('d M Y', strtotime($d['tgl_selesai'])) .
                     ' (' . (int) $d['total_durasi'] . ' hari)';
             case 'Reimburse':
@@ -304,6 +305,44 @@ function ambil_detail_ref(PDO $conn, string $jenis, int $ref_id): string
         return '-';
     }
     return '-';
+}
+
+// Untuk pengajuan jenis "Cuti", kolom Jenis di tabel Approval Center cuma
+// nunjukin "Cuti" secara umum (sesuai ENUM Approval.jenis_pengajuan) —
+// nggak kelihatan apakah itu Cuti Tahunan, Cuti Khusus, atau Cuti Sakit
+// seperti yang dibedakan di halaman Pengajuan Cuti. Fungsi ini ambil
+// jenis_cuti spesifiknya dari tabel Cuti supaya direksi langsung tahu.
+function label_jenis_pengajuan(PDO $conn, string $jenis, int $ref_id): string
+{
+    if ($jenis !== 'Cuti') {
+        return $jenis;
+    }
+    try {
+        $s = $conn->prepare("SELECT jenis_cuti FROM Cuti WHERE id = :id");
+        $s->execute([':id' => $ref_id]);
+        $d = $s->fetch();
+        if ($d && !empty($d['jenis_cuti'])) {
+            // Normalisasi label lama 'Izin Sakit' (masih dipakai form pengajuan)
+            // supaya tampil konsisten dengan ENUM terbaru 'Cuti Sakit'.
+            return $d['jenis_cuti'] === 'Izin Sakit' ? 'Cuti Sakit' : $d['jenis_cuti'];
+        }
+    } catch (PDOException $e) {
+    }
+    return $jenis; // fallback generik "Cuti" kalau data Cuti-nya nggak ketemu
+}
+
+function badge_class_jenis_cuti(string $label): string
+{
+    switch ($label) {
+        case 'Cuti Tahunan':
+            return 'badge-info';
+        case 'Cuti Khusus':
+            return 'badge-secondary';
+        case 'Cuti Sakit':
+            return 'badge-danger';
+        default:
+            return 'badge-secondary';
+    }
 }
 
 function badge_class_status(string $status): string
@@ -497,7 +536,15 @@ include "../includes/topbar.php";
                                     <tr>
                                         <td><?= $i + 1 ?></td>
                                         <td><?= htmlspecialchars(date('d M Y', strtotime($a['created_at']))) ?></td>
-                                        <td><?= htmlspecialchars($a['jenis_pengajuan']) ?></td>
+                                        <td>
+                                            <?php if ($a['jenis_pengajuan'] === 'Cuti'):
+                                                $label_cuti = label_jenis_pengajuan($conn, $a['jenis_pengajuan'], (int) $a['ref_id']);
+                                            ?>
+                                                <span class="<?= badge_class_jenis_cuti($label_cuti) ?> fs-7"><?= htmlspecialchars($label_cuti) ?></span>
+                                            <?php else: ?>
+                                                <?= htmlspecialchars($a['jenis_pengajuan']) ?>
+                                            <?php endif; ?>
+                                        </td>
                                         <td>
                                             <?= htmlspecialchars($a['nama_pemohon'] ?? '-') ?>
                                             <div class="fs-7 text-muted"><?= htmlspecialchars(ucfirst($a['role_pemohon'] ?? '-')) ?>
