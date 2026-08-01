@@ -1,5 +1,5 @@
 <?php
-// ahlik3/surat.php — Modul Persuratan untuk Ahli K3 (tab Surat & Buat Surat saja)
+// direksi/surat.php — Modul Persuratan untuk Ahli K3 (tab Surat & Buat Surat saja)
 require_once "../config/koneksi.php";
 
 if (session_status() === PHP_SESSION_NONE)
@@ -127,6 +127,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
                 $dataForm[$fieldName] = $fieldValue;
             }
 
+            // Nilai diskon nominal manual dari form (dikirim terpisah, bukan lewat dinamis[])
+            if (isset($_POST['diskon_input'])) {
+                $dataForm['diskon_input'] = trim((string) $_POST['diskon_input']);
+            }
+            if (isset($_POST['dp_input'])) {
+                $dataForm['dp_input'] = trim((string) $_POST['dp_input']);
+            }
+
             $items = [];
             foreach ($_POST['items'] ?? [] as $baris) {
                 $baris = array_map('trim', (array) $baris);
@@ -159,8 +167,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
                 }
             }
 
-            $fileHasilRelatif = generateSuratDocx(BASE_PATH . '/' . $kode['file_path'], $dataForm, $items, $nomorSurat, $blocksData, $kode['nama']);
+            $ringkasanDisertakan = [
+                'ppn' => isset($_POST['sertakan_ppn']),
+                'pph_23' => isset($_POST['sertakan_pph23']),
+                'diskon' => isset($_POST['sertakan_diskon']),
+                'grand_total' => isset($_POST['sertakan_grand_total']),
+                'dp' => isset($_POST['sertakan_dp']),
+                'total_bayar' => isset($_POST['sertakan_total_bayar']),   // ⬅ BARU
+                'sisa_pelunasan' => isset($_POST['sertakan_sisa_pelunasan']),   // ⬅ BARU
+            ];
 
+
+            $fileHasilRelatif = generateSuratDocx(BASE_PATH . '/' . $kode['file_path'], $dataForm, $items, $nomorSurat, $blocksData, $kode['nama'], null, $ringkasanDisertakan);
             $perihalDariWord = extractPerihalFromDocxText(BASE_PATH . '/' . $fileHasilRelatif);
             $perihalSimpan = $perihalDariWord
                 ?? $dataForm['perihal']
@@ -182,6 +200,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
             if (!empty($blocksData)) {
                 $isiDataDisimpan['__blok'] = $blocksData;
             }
+            $isiDataDisimpan['__ringkasan'] = $ringkasanDisertakan;
+
 
             $insert = $pdo->prepare("INSERT INTO surat
                 (nomor_agenda, nomor, kode_id, template_id, perihal, status, arah, tujuan, dibuat_oleh, tgl_dibuat, tanggal_diterima, file_hasil, isi_data)
@@ -521,8 +541,23 @@ $auto_fields_template = ($kodeTerpilih && !$file_template_hilang && $kodeTerpili
 $ada_total = in_array('total', $auto_fields_template, true);
 $ada_ppn = in_array('ppn', $auto_fields_template, true);
 $ada_pph23 = in_array('pph_23', $auto_fields_template, true);
+
 $ada_total_bayar = in_array('total_bayar', $auto_fields_template, true);
-$ada_ringkasan_total = $ada_total || $ada_ppn || $ada_pph23 || $ada_total_bayar;
+$ada_sisa_pelunasan = in_array('sisa_pelunasan', $auto_fields_template, true);  // ⬅ BARU
+$ada_diskon = in_array('diskon', $auto_fields_template, true);
+$ada_grand_total = in_array('grand_total', $auto_fields_template, true);
+$ada_dp = in_array('down_payment', $auto_fields_template, true);
+$ada_total_alat = in_array('total_alat', $auto_fields_template, true);
+$ada_ringkasan_total = $ada_total || $ada_ppn || $ada_pph23 || $ada_diskon || $ada_total_bayar || $ada_grand_total || $ada_dp || $ada_sisa_pelunasan;
+
+$isPostBuatSurat = $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generate_surat';
+$checkedSertakanPpn = $isPostBuatSurat ? isset($_POST['sertakan_ppn']) : true;
+$checkedSertakanPph23 = $isPostBuatSurat ? isset($_POST['sertakan_pph23']) : true;
+$checkedSertakanDiskon = $isPostBuatSurat ? isset($_POST['sertakan_diskon']) : true;
+$checkedSertakanGrandTotal = $isPostBuatSurat ? isset($_POST['sertakan_grand_total']) : true;
+$checkedSertakanTotalBayar = $isPostBuatSurat ? isset($_POST['sertakan_total_bayar']) : true;  // ⬅ BARU
+$checkedSertakanSisaPelunasan = $isPostBuatSurat ? isset($_POST['sertakan_sisa_pelunasan']) : true;  // ⬅ BARU
+$checkedSertakanDp = $isPostBuatSurat ? isset($_POST['sertakan_dp']) : true;
 
 $nilai_dinamis = [];
 foreach ($fields_dinamis as $f) {
@@ -714,8 +749,12 @@ include "../includes/topbar.php";
                                     </td>
                                     <td><?= e($s['jenis_surat_kode']) ?> <span
                                             class="text-secondary">(<?= e($s['kode_str']) ?>)</span></td>
-                                    <td style="white-space:normal; word-break:break-word; max-width:280px;"><?= e($s['perihal']) ?></td>
-                                    <td style="white-space:normal; word-break:break-word; max-width:200px;"><?= e($s['tujuan']) ?></td>
+                                    <td style="white-space:normal; word-break:break-word; max-width:280px;">
+                                        <?= e($s['perihal']) ?>
+                                    </td>
+                                    <td style="white-space:normal; word-break:break-word; max-width:200px;">
+                                        <?= e($s['tujuan']) ?>
+                                    </td>
                                     <td>
                                         <?php if ($suratMilikSaya): ?>
                                             <span class="badge-success">Saya</span>
@@ -873,8 +912,12 @@ include "../includes/topbar.php";
                                         <?php endif; ?>
                                     </td>
                                     <td><?= e($s['jenis_surat_kode']) ?></td>
-                                    <td style="white-space:normal; word-break:break-word; max-width:280px;"><?= e($s['perihal']) ?></td>
-                                    <td style="white-space:normal; word-break:break-word; max-width:200px;"><?= e($s['tujuan']) ?></td>
+                                    <td style="white-space:normal; word-break:break-word; max-width:280px;">
+                                        <?= e($s['perihal']) ?>
+                                    </td>
+                                    <td style="white-space:normal; word-break:break-word; max-width:200px;">
+                                        <?= e($s['tujuan']) ?>
+                                    </td>
                                     <td><?= !empty($s['tgl_dibuat']) ? date('d-m-Y', strtotime($s['tgl_dibuat'])) : '-' ?>
                                     </td>
                                     <td><span class="<?= badgeStatus($s['status'] ?? '') ?>"><?= e($s['status']) ?></span>
@@ -1156,6 +1199,81 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
                                 </script>
                             <?php endforeach; ?>
 
+                            <?php if (in_array('diskon', $auto_fields_template, true) || $ada_dp): ?>
+                                <div class="row g-3 mt-1 mb-3">
+                                    <?php if (in_array('diskon', $auto_fields_template, true)): ?>
+                                        <div class="col-md-6">
+                                            <label class="form-label fw-semibold mb-2 d-flex align-items-center gap-2">
+                                                <input type="checkbox" id="checkbox-sertakan-diskon" name="sertakan_diskon"
+                                                    value="1" <?= $checkedSertakanDiskon ? 'checked' : '' ?>>
+                                                Sertakan Diskon di surat
+                                            </label>
+                                            <div class="position-relative">
+                                                <input type="text" name="diskon_input" id="input-diskon"
+                                                    class="form-control-custom pe-5" placeholder="2"
+                                                    value="<?= e($_POST['diskon_input'] ?? '0') ?>">
+                                                <span
+                                                    class="position-absolute top-50 end-0 translate-middle-y me-3 fw-semibold text-secondary">%</span>
+                                            </div>
+                                            <small class="text-secondary text-xs d-block mt-1">
+                                                Masukkan besar diskon dalam <b>persen (%)</b> dari Total, cth "2" untuk diskon 2%.
+                                                Nominal rupiahnya dihitung otomatis. Kosongkan/isi 0 jika tidak ada diskon.
+                                                Jika tidak dicentang, baris Diskon akan dihapus dari dokumen Word.
+                                                PPN &amp; PPH 23 akan dihitung dari Total <b>setelah dikurangi diskon</b> ini
+                                                (kalau tidak ada diskon, tetap dihitung dari Total penuh).
+                                            </small>
+                                        </div>
+                                    <?php endif; ?>
+
+                                    <?php if ($ada_dp): ?>
+                                        <div class="col-md-6">
+                                            <label class="form-label fw-semibold mb-2 d-flex align-items-center gap-2">
+                                                <input type="checkbox" id="checkbox-sertakan-dp" name="sertakan_dp" value="1"
+                                                    <?= $checkedSertakanDp ? 'checked' : '' ?>>
+                                                Sertakan DP di surat
+                                            </label>
+                                            <div class="position-relative">
+                                                <input type="text" name="dp_input" id="input-dp" class="form-control-custom pe-5"
+                                                    placeholder="2" value="<?= e($_POST['dp_input'] ?? '0') ?>">
+                                                <span
+                                                    class="position-absolute top-50 end-0 translate-middle-y me-3 fw-semibold text-secondary">%</span>
+                                            </div>
+                                            <small class="text-secondary text-xs d-block mt-1">
+                                                Masukkan besar DP dalam <b>persen (%)</b> dari <b>Grand Total</b>, cth "2" untuk DP
+                                                2%
+                                                (boleh ditulis "2" atau "2%", sama saja). Nominal rupiahnya dihitung otomatis.
+                                                Jika tidak dicentang, baris DP akan dihapus dari dokumen Word.
+                                            </small>
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
+                                <script>
+                                    (function () {
+                                        var inpDiskon = document.getElementById('input-diskon');
+                                        if (inpDiskon) {
+                                            var bersihkan = function (str) { return str.replace(/[^\d.,]/g, ''); };
+                                            if (inpDiskon.value) inpDiskon.value = bersihkan(inpDiskon.value);
+                                            inpDiskon.addEventListener('input', function () {
+                                                this.value = bersihkan(this.value);
+                                                if (window.hitungUlangTotalSurat) window.hitungUlangTotalSurat();
+                                            });
+                                        }
+
+                                        var inpDp = document.getElementById('input-dp');
+                                        if (inpDp) {
+                                            var bersihkanDp = function (str) { return str.replace(/[^\d.,]/g, ''); };
+                                            if (inpDp.value) inpDp.value = bersihkanDp(inpDp.value);
+                                            inpDp.addEventListener('input', function () {
+                                                this.value = bersihkanDp(this.value);
+                                                if (window.hitungUlangTotalSurat) window.hitungUlangTotalSurat();
+                                            });
+                                            var cbDp = document.getElementById('checkbox-sertakan-dp');
+                                            if (cbDp) cbDp.addEventListener('change', function () { if (window.hitungUlangTotalSurat) window.hitungUlangTotalSurat(); });
+                                        }
+                                    })();
+                                </script>
+                            <?php endif; ?>
+
                             <?php if (!empty($fields_tabel)): ?>
                                 <div class="mt-3">
                                     <label class="form-label fw-semibold mb-2">Rincian Item</label>
@@ -1211,8 +1329,65 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
                                         <i class="bi bi-plus-lg"></i> Tambah Baris
                                     </button>
                                     <?php if ($tabel_item_punya_harga): ?>
+                                        <?php if ($ada_ppn || $ada_pph23 || $ada_grand_total || $ada_total_bayar): ?>
+                                            <div class="d-flex flex-wrap gap-3 mt-2 mb-1">
+                                                <?php if ($ada_ppn): ?>
+                                                    <label class="d-flex align-items-center gap-2 text-xs fw-semibold mb-0"
+                                                        style="cursor:pointer;">
+                                                        <input type="checkbox" id="checkbox-sertakan-ppn" name="sertakan_ppn" value="1"
+                                                            <?= $checkedSertakanPpn ? 'checked' : '' ?>>
+                                                        Sertakan PPN (11%) di surat
+                                                    </label>
+                                                <?php endif; ?>
+                                                <?php if ($ada_pph23): ?>
+                                                    <label class="d-flex align-items-center gap-2 text-xs fw-semibold mb-0"
+                                                        style="cursor:pointer;">
+                                                        <input type="checkbox" id="checkbox-sertakan-pph23" name="sertakan_pph23" value="1"
+                                                            <?= $checkedSertakanPph23 ? 'checked' : '' ?>>
+                                                        Sertakan PPH 23 (2%) di surat
+                                                    </label>
+                                                <?php endif; ?>
+                                                <?php if ($ada_grand_total): ?>
+                                                    <label class="d-flex align-items-center gap-2 text-xs fw-semibold mb-0"
+                                                        style="cursor:pointer;">
+                                                        <input type="checkbox" id="checkbox-sertakan-grand-total"
+                                                            name="sertakan_grand_total" value="1" <?= $checkedSertakanGrandTotal ? 'checked' : '' ?>>
+                                                        Sertakan Grand Total di surat
+                                                    </label>
+                                                <?php endif; ?>
+                                                <?php if ($ada_total_bayar): ?> <!-- ⬅ BARU -->
+                                                    <label class="d-flex align-items-center gap-2 text-xs fw-semibold mb-0"
+                                                        style="cursor:pointer;">
+                                                        <input type="checkbox" id="checkbox-sertakan-total-bayar"
+                                                            name="sertakan_total_bayar" value="1" <?= $checkedSertakanTotalBayar ? 'checked' : '' ?>>
+                                                        Sertakan Total Bayar di surat
+                                                    </label>
+                                                <?php endif; ?>
+                                                <?php if ($ada_sisa_pelunasan): ?>
+                                                    <label class="d-flex align-items-center gap-2 text-xs fw-semibold mb-0" style="cursor:pointer;">
+                                                        <input type="checkbox" id="checkbox-sertakan-sisa-pelunasan" name="sertakan_sisa_pelunasan" value="1"
+                                                            <?= $checkedSertakanSisaPelunasan ? 'checked' : '' ?>>
+                                                        Sertakan Sisa Pelunasan di surat
+                                                    </label>
+                                                <?php endif; ?>
+                                            </div>
+                                            <script>
+                                                (function () {
+                                                    var cb = document.getElementById('checkbox-sertakan-grand-total');
+                                                    if (cb) cb.addEventListener('change', function () { if (window.hitungUlangTotalSurat) window.hitungUlangTotalSurat(); });
+                                                    var cb2 = document.getElementById('checkbox-sertakan-total-bayar');
+                                                    if (cb2) cb2.addEventListener('change', function () { if (window.hitungUlangTotalSurat) window.hitungUlangTotalSurat(); });
+                                                    var cb3 = document.getElementById('checkbox-sertakan-sisa-pelunasan');            // ⬅ BARU
+                                                    if (cb3) cb3.addEventListener('change', function () { if (window.hitungUlangTotalSurat) window.hitungUlangTotalSurat(); });
+                                                })();
+                                            </script>
+                                        <?php endif; ?>
                                         <p class="text-secondary text-xs mt-2 mb-0">Subtotal, Total, PPN &amp; PPH
-                                            dihitung otomatis oleh sistem saat surat disimpan.</p>
+                                            dihitung otomatis oleh sistem saat surat disimpan. Baris yang tidak dicentang
+                                            akan otomatis dihapus dari dokumen Word.</p>
+                                        <p class="text-secondary text-xs mt-2 mb-0">Grand Total = Total (setelah Diskon, jika ada) +
+                                            PPN − PPH 23. Jika tidak dicentang,
+                                            baris Grand Total dihapus dari dokumen Word.</p>
                                     <?php endif; ?>
                                 </div>
 
@@ -1471,12 +1646,99 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
                                 </table>
                             </div>
 
+                            <?php if ($ada_total_alat): ?>
+                                <div class="ringkasan-total-row mb-3">
+                                    <span>Total Alat</span>
+                                    <span id="preview-total-alat" style="font-family:monospace;">-</span>
+                                </div>
+
+                                <script>
+                                    (function () {
+                                        var tbody = document.getElementById('tabel-item-body');
+                                        var el = document.getElementById('preview-total-alat');
+                                        if (!tbody || !el) return;
+
+                                        function parseAngkaJsLokal(teks) {
+                                            teks = String(teks || '').trim();
+                                            var m = teks.match(/-?\d[\d.,]*/);
+                                            if (!m) return null;
+                                            var angka = m[0];
+                                            if (angka.indexOf(',') !== -1 && angka.indexOf('.') !== -1) {
+                                                angka = angka.replace(/\./g, '').replace(',', '.');
+                                            } else if (angka.indexOf(',') !== -1) {
+                                                angka = angka.replace(',', '.');
+                                            } else {
+                                                var bagian = angka.split('.');
+                                                if (bagian.length > 1 && bagian[bagian.length - 1].length === 3) {
+                                                    angka = angka.split('.').join('');
+                                                }
+                                            }
+                                            var hasil = parseFloat(angka);
+                                            return isNaN(hasil) ? null : hasil;
+                                        }
+
+                                        function ambilSatuanJsLokal(teks) {
+                                            teks = String(teks || '').trim();
+                                            var m = teks.match(/-?\d[\d.,]*/);
+                                            if (!m) return null;
+                                            var akhirAngka = m.index + m[0].length;
+                                            var sisa = teks.substring(akhirAngka).trim();
+                                            sisa = sisa.replace(/^[\s\-:]+|[\s\-:]+$/g, '');
+                                            return sisa !== '' ? sisa : null;
+                                        }
+
+                                        window.hitungTotalAlatSurat = function () {
+                                            var total = 0, ada = false, satuan = null;
+                                            tbody.querySelectorAll('tr.baris-item').forEach(function (tr) {
+                                                tr.querySelectorAll('input[data-kolom]').forEach(function (inp) {
+                                                    var nama = inp.getAttribute('data-kolom');
+                                                    if (/qty|jumlah/i.test(nama)) {
+                                                        var v = parseAngkaJsLokal(inp.value);
+                                                        if (v !== null) {
+                                                            total += v;
+                                                            ada = true;
+                                                            if (satuan === null) satuan = ambilSatuanJsLokal(inp.value);
+                                                        }
+                                                    }
+                                                });
+                                            });
+                                            if (!ada) { el.textContent = '-'; return; }
+                                            var tampil = (Math.floor(total) === total)
+                                                ? String(total)
+                                                : total.toFixed(2).replace('.', ',');
+                                            el.textContent = tampil + (satuan ? (' ' + satuan) : '');
+                                        };
+
+                                        var observer = new MutationObserver(window.hitungTotalAlatSurat);
+                                        observer.observe(tbody, { childList: true });
+                                        tbody.addEventListener('input', function (e) {
+                                            if (e.target && e.target.matches('input[data-kolom]')) {
+                                                window.hitungTotalAlatSurat();
+                                            }
+                                        });
+
+                                        window.hitungTotalAlatSurat();
+                                    })();
+                                </script>
+                            <?php endif; ?>
+
                             <?php if ($ada_ringkasan_total): ?>
                                 <div id="blok-ringkasan-total" data-ada-pph23="<?= $ada_pph23 ? '1' : '0' ?>"
-                                    data-ada-ppn="<?= $ada_ppn ? '1' : '0' ?>">
+                                    data-ada-ppn="<?= $ada_ppn ? '1' : '0' ?>" data-ada-diskon="<?= $ada_diskon ? '1' : '0' ?>"
+                                    data-ada-grand-total="<?= $ada_grand_total ? '1' : '0' ?>"
+                                    data-ada-dp="<?= $ada_dp ? '1' : '0' ?>"
+                                    data-ada-total-bayar="<?= $ada_total_bayar ? '1' : '0' ?>"
+                                    data-ada-sisa-pelunasan="<?= $ada_sisa_pelunasan ? '1' : '0' ?>">   <!-- ⬅ BARU -->
+
+
                                     <?php if ($ada_total): ?>
                                         <div class="ringkasan-total-row">
                                             <span>Total</span><span id="preview-total" style="font-family:monospace;">Rp. 0</span>
+                                        </div>
+                                    <?php endif; ?>
+                                    <?php if ($ada_diskon): ?>
+                                        <div class="ringkasan-total-row">
+                                            <span>Diskon</span><span id="preview-diskon" style="font-family:monospace;">Rp. 0</span>
                                         </div>
                                     <?php endif; ?>
                                     <?php if ($ada_ppn): ?>
@@ -1489,13 +1751,30 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
                                             <span>PPH 23 (2%)</span><span id="preview-pph" style="font-family:monospace;">Rp. 0</span>
                                         </div>
                                     <?php endif; ?>
+                                    <?php if ($ada_dp): ?>
+                                        <div class="ringkasan-total-row">
+                                            <span>DP</span><span id="preview-dp" style="font-family:monospace;">Rp. 0</span>
+                                        </div>
+                                    <?php endif; ?>
+                                    <?php if ($ada_sisa_pelunasan): ?>                                  <!-- ⬅ BARU -->
+                                        <div class="ringkasan-total-row">
+                                            <span>Sisa Pelunasan</span><span id="preview-sisa-pelunasan" style="font-family:monospace;">Rp. 0</span>
+                                        </div>
+                                    <?php endif; ?>
                                     <?php if ($ada_total_bayar): ?>
                                         <div class="ringkasan-total-row total-bayar">
                                             <span>Total Bayar</span><span id="preview-total-bayar" style="font-family:monospace;">Rp.
                                                 0</span>
                                         </div>
                                     <?php endif; ?>
+                                    <?php if ($ada_grand_total): ?>
+                                        <div class="ringkasan-total-row total-bayar">
+                                            <span>Grand Total</span><span id="preview-grand-total" style="font-family:monospace;">Rp.
+                                                0</span>
+                                        </div>
+                                    <?php endif; ?>
                                 </div>
+
 
                                 <script>
                                     (function () {
@@ -1503,6 +1782,9 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
                                         var elTotal = document.getElementById('preview-total');
                                         var elPpn = document.getElementById('preview-ppn');
                                         var elTotalBayar = document.getElementById('preview-total-bayar');
+                                        var elSisaPelunasan = document.getElementById('preview-sisa-pelunasan');   // ⬅ BARU
+                                        var elGrandTotal = document.getElementById('preview-grand-total');
+                                        var elDp = document.getElementById('preview-dp');
                                         var previewTabelItem = document.getElementById('preview-tabel-item');
                                         if (!tbody || !elTotal) return;
 
@@ -1565,28 +1847,101 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
 
                                             var blokRingkasan = document.getElementById('blok-ringkasan-total');
                                             var adaPph23 = blokRingkasan && blokRingkasan.getAttribute('data-ada-pph23') === '1';
+                                            var adaDiskon = blokRingkasan && blokRingkasan.getAttribute('data-ada-diskon') === '1';
                                             var elPph = document.getElementById('preview-pph');
+                                            var elDiskon = document.getElementById('preview-diskon');
+
+                                            function ambilDiskonPersen() {
+                                                var inp = document.getElementById('input-diskon');
+                                                if (!inp) return 0;
+                                                var v = parseAngkaJs(inp.value);
+                                                return v !== null ? v : 0;
+                                            }
 
                                             if (!adaSubtotal) {
                                                 elTotal.textContent = 'Rp. 0';
                                                 elPpn.textContent = 'Rp. 0';
                                                 if (elPph) elPph.textContent = 'Rp. 0';
+                                                if (elDiskon) elDiskon.textContent = 'Rp. 0';
+                                                if (elSisaPelunasan) elSisaPelunasan.textContent = 'Rp. 0';
                                                 elTotalBayar.textContent = 'Rp. 0';
                                                 return;
                                             }
 
-                                            var ppn = Math.round(totalSemuaBaris * 0.11);
-                                            var pph = adaPph23 ? Math.round(totalSemuaBaris * 0.02) : 0;
-                                            var totalBayar = totalSemuaBaris + ppn - pph;
+                                            var checkboxPpn = document.getElementById('checkbox-sertakan-ppn');
+                                            var checkboxPph23 = document.getElementById('checkbox-sertakan-pph23');
+                                            var checkboxDiskon = document.getElementById('checkbox-sertakan-diskon');
+                                            var sertakanPpn = !checkboxPpn || checkboxPpn.checked;
+                                            var sertakanPph23 = !checkboxPph23 || checkboxPph23.checked;
+                                            var sertakanDiskon = !checkboxDiskon || checkboxDiskon.checked;
+
+                                            var diskonPersen = (adaDiskon && sertakanDiskon) ? ambilDiskonPersen() : 0;
+                                            var diskon = (adaDiskon && sertakanDiskon) ? Math.round(totalSemuaBaris * (diskonPersen / 100)) : 0;
+
+                                            // DPP (dasar hitung pajak) = Total - Diskon kalau diskon disertakan & > 0,
+                                            // kalau tidak basisnya tetap Total penuh.
+                                            var dasarPajak = (adaDiskon && sertakanDiskon && diskon > 0) ? (totalSemuaBaris - diskon) : totalSemuaBaris;
+
+                                            var ppn = sertakanPpn ? Math.round(dasarPajak * 0.11) : 0;
+                                            var pph = (adaPph23 && sertakanPph23) ? Math.round(dasarPajak * 0.02) : 0;
+                                            var grandTotal = totalSemuaBaris + ppn - pph - diskon;
 
                                             elTotal.textContent = formatRupiahJs(totalSemuaBaris);
-                                            elPpn.textContent = formatRupiahJs(ppn);
-                                            if (adaPph23 && elPph) elPph.textContent = formatRupiahJs(pph);
-                                            elTotalBayar.textContent = formatRupiahJs(totalBayar);
+                                            elPpn.textContent = sertakanPpn ? formatRupiahJs(ppn) : 'Tidak disertakan';
+                                            if (elPph) elPph.textContent = (adaPph23 && sertakanPph23) ? formatRupiahJs(pph) : (adaPph23 ? 'Tidak disertakan' : elPph.textContent);
+                                            if (elDiskon) elDiskon.textContent = (adaDiskon && sertakanDiskon) ? (diskonPersen + '% (' + formatRupiahJs(diskon) + ')') : (adaDiskon ? 'Tidak disertakan' : elDiskon.textContent);
+
+                                            var blokRingkasanEl = document.getElementById('blok-ringkasan-total');
+                                            var adaGrandTotal = blokRingkasanEl && blokRingkasanEl.getAttribute('data-ada-grand-total') === '1';
+                                            var adaDp = blokRingkasanEl && blokRingkasanEl.getAttribute('data-ada-dp') === '1';
+
+                                            var checkboxGrandTotal = document.getElementById('checkbox-sertakan-grand-total');
+                                            var checkboxDp = document.getElementById('checkbox-sertakan-dp');
+                                            var sertakanGrandTotal = !checkboxGrandTotal || checkboxGrandTotal.checked;
+                                            var sertakanDpChecked = !checkboxDp || checkboxDp.checked;
+
+                                            function ambilDpPersen() {
+                                                var inp = document.getElementById('input-dp');
+                                                if (!inp) return 0;
+                                                var v = parseAngkaJs(inp.value);
+                                                return v !== null ? v : 0;
+                                            }
+
+                                            var dpPersenNilai = (adaDp && sertakanDpChecked) ? ambilDpPersen() : 0;
+                                            var dpNominal = (adaDp && sertakanDpChecked) ? Math.round(grandTotal * (dpPersenNilai / 100)) : 0;
+
+                                            var totalBayar = (adaDp && sertakanDpChecked && dpNominal > 0) ? (grandTotal - dpNominal) : grandTotal;
+                                            if (elGrandTotal) {
+                                                elGrandTotal.textContent = (adaGrandTotal && sertakanGrandTotal) ? formatRupiahJs(grandTotal) : (adaGrandTotal ? 'Tidak disertakan' : elGrandTotal.textContent);
+                                            }
+                                            if (elDp) {
+                                                elDp.textContent = (adaDp && sertakanDpChecked) ? (dpPersenNilai + '% (' + formatRupiahJs(dpNominal) + ')') : (adaDp ? 'Tidak disertakan' : elDp.textContent);
+                                            }
+
+                                            // ⬇ GANTI baris "elTotalBayar.textContent = formatRupiahJs(totalBayar);" dengan ini:
+                                            var checkboxTotalBayar = document.getElementById('checkbox-sertakan-total-bayar');
+                                            var sertakanTotalBayarChecked = !checkboxTotalBayar || checkboxTotalBayar.checked;
+                                            elTotalBayar.textContent = sertakanTotalBayarChecked ? formatRupiahJs(totalBayar) : 'Tidak disertakan';
+                                            var checkboxSisaPelunasan = document.getElementById('checkbox-sertakan-sisa-pelunasan');
+                                            var sertakanSisaPelunasanChecked = !checkboxSisaPelunasan || checkboxSisaPelunasan.checked;
+                                            var adaSisaPelunasan = blokRingkasanEl && blokRingkasanEl.getAttribute('data-ada-sisa-pelunasan') === '1';
+                                            var sisaPelunasan = grandTotal - dpNominal;
+                                            if (elSisaPelunasan) {
+                                                elSisaPelunasan.textContent = (adaSisaPelunasan && sertakanSisaPelunasanChecked)
+                                                    ? formatRupiahJs(sisaPelunasan)
+                                                    : (adaSisaPelunasan ? 'Tidak disertakan' : elSisaPelunasan.textContent);
+                                            }
                                         };
 
                                         var observer = new MutationObserver(window.hitungUlangTotalSurat);
                                         observer.observe(tbody, { childList: true });
+
+                                        ['checkbox-sertakan-ppn', 'checkbox-sertakan-pph23', 'checkbox-sertakan-diskon',
+                                            'checkbox-sertakan-grand-total', 'checkbox-sertakan-dp',
+                                            'checkbox-sertakan-total-bayar', 'checkbox-sertakan-sisa-pelunasan'].forEach(function (id) {  // ⬅ ditambah
+                                                var cb = document.getElementById(id);
+                                                if (cb) cb.addEventListener('change', window.hitungUlangTotalSurat);
+                                            });
 
                                         window.hitungUlangTotalSurat();
                                     })();

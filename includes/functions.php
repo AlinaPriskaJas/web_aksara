@@ -333,7 +333,7 @@ const KOLOM_SUBTOTAL = 'item_sub_total';    // subtotal per baris, dihitung otom
 // selalu konsisten format "Rp. 1.234.567").
 // - total/ppn/pph_23/total_bayar/terbilang : untuk tabel item bertipe uang (qty x harga)
 // - total_alat : untuk tabel item bertipe kuantitas saja (tanpa harga), cth "13 Unit"
-const FIELD_OTOMATIS_SISTEM = ['nomor', 'nomor_surat', 'total', 'ppn', 'pph_23', 'total_bayar', 'terbilang', 'total_alat'];
+const FIELD_OTOMATIS_SISTEM = ['nomor', 'nomor_surat', 'total', 'ppn', 'pph_23', 'diskon', 'diskon_persen', 'total_bayar', 'terbilang', 'total_alat', 'grand_total', 'down_payment', 'down_payment_persen', 'sisa_pelunasan'];
 
 // ==========================================
 // PENANDA BLOK LIST BERULANG (BUKAN tabel Word), cth di dalam .docx:
@@ -366,11 +366,19 @@ const PREFIX_BLOK = 'blok_';
 //             harga), tapi tetap menghitung ${total_alat} = jumlah semua
 //             kolom kuantitas (qty-like) digabung, cth "13 Unit".
 // ==========================================
-function generateSuratDocx(string $templatePath, array $dataForm, array $items, string $nomorSurat, array $blocks = [], string $jenisSurat = '', ?string $tujuanManual = null): string
+function generateSuratDocx(string $templatePath, array $dataForm, array $items, string $nomorSurat, array $blocks = [], string $jenisSurat = '', ?string $tujuanManual = null, array $ringkasanDisertakan = []): string
 {
     if (!file_exists($templatePath)) {
         throw new RuntimeException("File template master tidak ditemukan: {$templatePath}");
     }
+
+    $sertakanPpn = $ringkasanDisertakan['ppn'] ?? true;
+    $sertakanPph23 = $ringkasanDisertakan['pph_23'] ?? true;
+    $sertakanDiskon = $ringkasanDisertakan['diskon'] ?? true;
+    $sertakanGrandTotal = $ringkasanDisertakan['grand_total'] ?? true;
+    $sertakanDp = $ringkasanDisertakan['dp'] ?? true;
+    $sertakanTotalBayar = $ringkasanDisertakan['total_bayar'] ?? true;
+    $sertakanSisaPelunasan = $ringkasanDisertakan['sisa_pelunasan'] ?? true;   // ⬅ BARU
 
     $processor = new TemplateProcessor($templatePath);
 
@@ -638,21 +646,85 @@ function generateSuratDocx(string $templatePath, array $dataForm, array $items, 
     }
 
     // -----------------------------------------------------
-    // 2) HITUNG OTOMATIS: total, ppn, pph_23, total_bayar, terbilang
+    // 2) HITUNG OTOMATIS: total, ppn, pph_23, diskon, total_bayar, terbilang
     // -----------------------------------------------------
     if ($adaSubtotalOtomatis) {
         $dataForm['total'] = formatRupiah($totalSemuaBaris);
 
-        $ppn = round($totalSemuaBaris * 0.11);
-        $dataForm['ppn'] = formatRupiah($ppn);
+        // ----- DISKON: sekarang diinput sebagai PERSEN (cth "2" = 2%), bukan
+        // nominal Rp langsung. Nominalnya = persen x Total.
+        $diskonPersen = $sertakanDiskon ? (parseAngka($dataForm['diskon_input'] ?? '0') ?? 0.0) : 0.0;
+        unset($dataForm['diskon_input']);
+        $diskonNominal = $sertakanDiskon ? round($totalSemuaBaris * ($diskonPersen / 100)) : 0.0;
+        if ($sertakanDiskon) {
+            $dataForm['diskon'] = formatRupiah($diskonNominal);
+            // Placeholder tambahan untuk menampilkan angka persennya, cth
+            // template bisa menulis "DISKON ${diskon_persen}" -> "DISKON 2%"
+            $diskonPersenTampil = (floor($diskonPersen) == $diskonPersen)
+                ? (string) (int) $diskonPersen
+                : rtrim(rtrim(number_format($diskonPersen, 2, ',', '.'), '0'), ',');
+            $dataForm['diskon_persen'] = $diskonPersenTampil . '%';
+        }
 
-        $pph = round($totalSemuaBaris * 0.02);
-        $dataForm['pph_23'] = formatRupiah($pph);
+        // ----- DASAR PENGENAAN PAJAK (DPP): Total dikurangi Diskon (kalau ada
+        // diskon yang disertakan & nilainya > 0). Kalau tidak ada diskon, basis
+        // hitung PPN/PPH tetap Total penuh (perilaku lama).
+        $dasarPajak = ($sertakanDiskon && $diskonNominal > 0)
+            ? ($totalSemuaBaris - $diskonNominal)
+            : $totalSemuaBaris;
 
-        $totalBayar = $totalSemuaBaris + $ppn - $pph;
-        $dataForm['total_bayar'] = formatRupiah($totalBayar);
+        $ppn = $sertakanPpn ? round($dasarPajak * 0.11) : 0;
+        if ($sertakanPpn) {
+            $dataForm['ppn'] = formatRupiah($ppn);
+        }
 
-        $dataForm['terbilang'] = terbilang($totalBayar) . ' Rupiah';
+        $pph = $sertakanPph23 ? round($dasarPajak * 0.02) : 0;
+        if ($sertakanPph23) {
+            $dataForm['pph_23'] = formatRupiah($pph);
+        }
+
+        // ----- BARU -----
+        $grandTotal = $totalSemuaBaris + $ppn - $pph - $diskonNominal;
+        if ($sertakanGrandTotal) {
+            $dataForm['grand_total'] = formatRupiah($grandTotal);
+        }
+
+        // DP dihitung dari Grand Total
+        $dpPersen = $sertakanDp ? (parseAngka($dataForm['dp_input'] ?? '0') ?? 0.0) : 0.0;
+        unset($dataForm['dp_input']);
+        $dpNominal = $sertakanDp ? round($grandTotal * ($dpPersen / 100)) : 0.0;
+        if ($sertakanDp) {
+            $dataForm['down_payment'] = formatRupiah($dpNominal);
+            $dpPersenTampil = (floor($dpPersen) == $dpPersen)
+                ? (string) (int) $dpPersen
+                : rtrim(rtrim(number_format($dpPersen, 2, ',', '.'), '0'), ',');
+            $dataForm['down_payment_persen'] = $dpPersenTampil . '%';
+        }
+
+        // Total Bayar = Grand Total dikurangi DP (kalau DP disertakan & > 0)
+        $totalBayar = ($sertakanDp && $dpNominal > 0) ? ($grandTotal - $dpNominal) : $grandTotal;
+        if ($sertakanTotalBayar) {
+            $dataForm['total_bayar'] = formatRupiah($totalBayar);
+        }
+
+        // ----- BARU: Sisa Pelunasan = Grand Total - DP (checkbox terpisah dari Total Bayar) -----
+        $sisaPelunasan = $grandTotal - $dpNominal;
+        if ($sertakanSisaPelunasan) {
+            $dataForm['sisa_pelunasan'] = formatRupiah($sisaPelunasan);
+        }
+
+        // ----- TERBILANG: prioritas sumber nilai -----
+        // - DP & Sisa Pelunasan sama-sama disertakan -> pakai Sisa Pelunasan
+        // - Hanya DP yang disertakan (Sisa Pelunasan tidak) -> pakai DP
+        // - Selain itu (tidak pakai DP) -> pakai Total Bayar (perilaku lama)
+        if ($sertakanDp && $dpNominal > 0 && $sertakanSisaPelunasan) {
+            $nilaiUntukTerbilang = $sisaPelunasan;
+        } elseif ($sertakanDp && $dpNominal > 0) {
+            $nilaiUntukTerbilang = $dpNominal;
+        } else {
+            $nilaiUntukTerbilang = $totalBayar;
+        }
+        $dataForm['terbilang'] = terbilang($nilaiUntukTerbilang) . ' Rupiah';
     }
 
     // -----------------------------------------------------
@@ -740,6 +812,37 @@ function generateSuratDocx(string $templatePath, array $dataForm, array $items, 
     $processor->saveAs($outputPath);
 
     replaceBraceOnlyPlaceholders($outputPath, $fields);
+
+    // Hapus baris/paragraf ringkasan (PPN/PPH23/Diskon) yang tidak dicentang.
+    $fieldRingkasanDihapus = [];
+    if (!$sertakanPpn) {
+        $fieldRingkasanDihapus[] = 'ppn';
+    }
+    if (!$sertakanPph23) {
+        $fieldRingkasanDihapus[] = 'pph_23';
+    }
+    if (!$sertakanDiskon) {
+        $fieldRingkasanDihapus[] = 'diskon';
+        $fieldRingkasanDihapus[] = 'diskon_persen';
+    }
+    if (!$sertakanGrandTotal) {
+        $fieldRingkasanDihapus[] = 'grand_total';
+    }
+    if (!$sertakanTotalBayar) {                      // ⬅ BARU
+        $fieldRingkasanDihapus[] = 'total_bayar';
+    }
+    if (!$sertakanSisaPelunasan) {                    // ⬅ BARU
+        $fieldRingkasanDihapus[] = 'sisa_pelunasan';
+    }
+    if (!$sertakanDp) {
+        $fieldRingkasanDihapus[] = 'down_payment';
+        $fieldRingkasanDihapus[] = 'down_payment_persen';
+    }
+    if (!empty($fieldRingkasanDihapus)) {
+        hapusBarisTidakDisertakan($outputPath, $fieldRingkasanDihapus);
+    }
+
+
 
     // Tahap 3 (opsional): gabungkan (merge) sel kolom "No" & kolom perusahaan
     // secara vertikal untuk baris-baris dengan nama perusahaan yang sama.
@@ -1004,6 +1107,116 @@ function mergeGrupKolomVertikalDocx(string $docxFullPath, array $items, string $
             }
 
             $i = $j;
+        }
+    }
+
+    $xmlBaru = $dom->saveXML();
+    $zip->addFromString('word/document.xml', $xmlBaru);
+    $zip->close();
+}
+
+// ==========================================
+// HAPUS BARIS/PARAGRAF YANG MEMUAT PLACEHOLDER TERTENTU DARI FILE .docx
+// HASIL GENERATE. Dipakai supaya baris PPN / PPH 23 / Diskon benar-benar
+// HILANG dari dokumen kalau checklist terkait TIDAK dicentang -- bukan
+// cuma dikosongkan nilainya.
+// ==========================================
+function hapusBarisTidakDisertakan(string $docxFullPath, array $daftarFieldDihapus): void
+{
+    $daftarFieldDihapus = array_values(array_filter(
+        array_map('strval', $daftarFieldDihapus),
+        fn($f) => trim($f) !== ''
+    ));
+    if (empty($daftarFieldDihapus) || !is_file($docxFullPath)) {
+        return;
+    }
+
+    $zip = new ZipArchive();
+    if ($zip->open($docxFullPath) !== true) {
+        return;
+    }
+    $xml = $zip->getFromName('word/document.xml');
+    if ($xml === false) {
+        $zip->close();
+        return;
+    }
+
+    $xml = fixBrokenBraceMacros($xml);
+
+    $dom = new DOMDocument();
+    $dom->preserveWhiteSpace = true;
+    $dom->formatOutput = false;
+    if (!@$dom->loadXML($xml)) {
+        $zip->close();
+        return;
+    }
+
+    $xpath = new DOMXPath($dom);
+    $nsWord = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+    $xpath->registerNamespace('w', $nsWord);
+
+    $ambilTeks = function (DOMElement $el) use ($xpath): string {
+        $teks = '';
+        foreach ($xpath->query('.//w:t', $el) as $t) {
+            $teks .= $t->textContent;
+        }
+        return $teks;
+    };
+
+    $polaDicari = [];
+    foreach ($daftarFieldDihapus as $namaField) {
+        $q = preg_quote($namaField, '/');
+        $polaDicari[] = '/\$\{\s*' . $q . '\s*\}/i';
+        $polaDicari[] = '/(?<!\$)\{\s*' . $q . '\s*\}/i';
+    }
+
+    $cocokPola = function (string $teks) use ($polaDicari): bool {
+        foreach ($polaDicari as $p) {
+            if (preg_match($p, $teks)) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    // 1) Baris tabel (w:tr) yang memuat placeholder -> hapus seluruh baris.
+    $trDihapus = [];
+    foreach ($xpath->query('//w:tr') as $tr) {
+        if ($cocokPola($ambilTeks($tr))) {
+            $trDihapus[] = $tr;
+        }
+    }
+    foreach ($trDihapus as $tr) {
+        if ($tr->parentNode) {
+            $tr->parentNode->removeChild($tr);
+        }
+    }
+
+    // 2) Paragraf (w:p) DI LUAR tabel yang memuat placeholder -> hapus paragraf.
+    $pDihapus = [];
+    foreach ($xpath->query('//w:p') as $p) {
+        if (!$p->parentNode) {
+            continue;
+        }
+        $adaLeluhurTabel = false;
+        $cek = $p->parentNode;
+        while ($cek) {
+            if ($cek instanceof DOMElement && $cek->localName === 'tc') {
+                $adaLeluhurTabel = true;
+                break;
+            }
+            $cek = $cek->parentNode;
+        }
+        if ($adaLeluhurTabel) {
+            continue;
+        }
+        if ($cocokPola($ambilTeks($p))) {
+            $pDihapus[] = $p;
+        }
+    }
+    foreach ($pDihapus as $p) {
+        if ($p->parentNode) {
+            $p->parentNode->removeChild($p);
         }
     }
 
@@ -1475,6 +1688,7 @@ function e(?string $value): string
 {
     return htmlspecialchars($value ?? '', ENT_QUOTES, 'UTF-8');
 }
+
 
 // ==========================================
 // IMPORT DATA KLIEN: PETA HEADER FILE -> KOLOM Data_Klien
