@@ -265,6 +265,7 @@ if ($tab_aktif === 'umum') {
 }
 
 // Ambil detail ringkas tiap ref (nominal reimburse, tanggal cuti, tujuan kendaraan, dsb.)
+// Detail ringkas (TANPA alasan/keterangan — dipisah ke kolom sendiri)
 function ambil_detail_ref(PDO $conn, string $jenis, int $ref_id): string
 {
     try {
@@ -300,6 +301,33 @@ function ambil_detail_ref(PDO $conn, string $jenis, int $ref_id): string
                 return htmlspecialchars(($d['nama_kendaraan'] ?? '-') . ' (' . ($d['plat_nomor'] ?? '-') . ')') .
                     ' &middot; ke ' . htmlspecialchars($d['tujuan_lokasi'] ?? '-') .
                     ' &middot; ' . date('d M Y', strtotime($d['tgl_mulai'])) . ' - ' . date('d M Y', strtotime($d['tgl_selesai']));
+        }
+    } catch (PDOException $e) {
+        return '-';
+    }
+    return '-';
+}
+
+// Keterangan/alasan asli dari pemohon — ditampilkan di kolom terpisah
+function ambil_keterangan_ref(PDO $conn, string $jenis, int $ref_id): string
+{
+    try {
+        switch ($jenis) {
+            case 'Cuti':
+                $s = $conn->prepare("SELECT alasan FROM Cuti WHERE id = :id");
+                $s->execute([':id' => $ref_id]);
+                $v = $s->fetchColumn();
+                return $v !== false && $v !== null && $v !== '' ? (string) $v : '-';
+            case 'Reimburse':
+                $s = $conn->prepare("SELECT keterangan FROM Reimburse WHERE id = :id");
+                $s->execute([':id' => $ref_id]);
+                $v = $s->fetchColumn();
+                return $v !== false && $v !== null && $v !== '' ? (string) $v : '-';
+            case 'Kendaraan':
+                $s = $conn->prepare("SELECT keperluan_dinas FROM Peminjaman_Kendaraan WHERE id = :id");
+                $s->execute([':id' => $ref_id]);
+                $v = $s->fetchColumn();
+                return $v !== false && $v !== null && $v !== '' ? (string) $v : '-';
         }
     } catch (PDOException $e) {
         return '-';
@@ -522,6 +550,7 @@ include "../includes/topbar.php";
                                 <th>Jenis</th>
                                 <th>Pemohon</th>
                                 <th>Detail</th>
+                                <th>Keterangan</th>
                                 <th>Status</th>
                                 <th style="text-align:center;">Aksi</th>
                             </tr>
@@ -529,7 +558,7 @@ include "../includes/topbar.php";
                         <tbody>
                             <?php if (empty($daftar_approval)): ?>
                                 <tr>
-                                    <td colspan="7" class="text-center text-muted py-4">Tidak ada data untuk status ini.</td>
+                                    <td colspan="8" class="text-center text-muted py-4">Tidak ada data untuk status ini.</td>
                                 </tr>
                             <?php else: ?>
                                 <?php foreach ($daftar_approval as $i => $a): ?>
@@ -551,6 +580,8 @@ include "../includes/topbar.php";
                                             </div>
                                         </td>
                                         <td class="fs-7"><?= ambil_detail_ref($conn, $a['jenis_pengajuan'], (int) $a['ref_id']) ?>
+                                        </td>
+                                        <td class="fs-7 col-keterangan"><?= htmlspecialchars(ambil_keterangan_ref($conn, $a['jenis_pengajuan'], (int) $a['ref_id'])) ?>
                                         </td>
                                         <td><span
                                                 class="<?= badge_class_status($a['status']) ?>"><?= htmlspecialchars($a['status']) ?></span>

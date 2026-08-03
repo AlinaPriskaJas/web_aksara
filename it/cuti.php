@@ -137,14 +137,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $tgl_selesai = $_POST['tgl_selesai'] ?? '';
 
             if (empty($tgl_mulai) || empty($tgl_selesai)) {
-                $error_msg = "Tanggal Mulai dan Tanggal Masuk wajib diisi!";
+                $error_msg = "Tanggal Mulai dan Tanggal Selesai wajib diisi!";
             } else {
                 $start = new DateTime($tgl_mulai);
                 $end = new DateTime($tgl_selesai);
                 $diff = $start->diff($end)->format("%r%a");
                 $duration = intval($diff) + 1;
                 if ($duration <= 0) {
-                    $error_msg = "Tanggal Masuk harus sesudah atau sama dengan Tanggal Mulai!";
+                    $error_msg = "Tanggal Selesai harus sesudah atau sama dengan Tanggal Mulai!";
                 }
             }
         }
@@ -339,7 +339,7 @@ $dipakaiSakit  = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year
                             <th>Nama</th>
                             <th>Jenis Cuti</th>
                             <th>Tanggal Mulai</th>
-                            <th>Tanggal Masuk</th>
+                            <th>Tanggal Selesai</th>
                             <th>Durasi</th>
                             <th>Status</th>
                             <th>Keterangan</th>
@@ -364,7 +364,7 @@ $dipakaiSakit  = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year
                                     <td><?= date('d-m-Y', strtotime($l['tgl_selesai'])) ?></td>
                                     <td><strong><?= $l['total_durasi'] ?> Hari</strong></td>
                                     <td><span class="<?= badge_class_for($l['status']) ?>"><?= htmlspecialchars($l['status']) ?></span></td>
-                                    <td><?= htmlspecialchars($l['alasan'] ?: '-') ?></td>
+                                    <td class="col-keterangan"><?= htmlspecialchars($l['alasan'] ?: '-') ?></td>
                                     <td>
                                         <?php if (!empty($l['lampiran'])): ?>
                                             <a href="../<?= htmlspecialchars($l['lampiran']) ?>" target="_blank" class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem; border-radius: 8px;">
@@ -408,7 +408,7 @@ $dipakaiSakit  = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year
                             <th>Nama</th>
                             <th>Jenis Cuti</th>
                             <th>Tanggal Mulai</th>
-                            <th>Tanggal Masuk</th>
+                            <th>Tanggal Selesai</th>
                             <th>Durasi</th>
                             <th>Status</th>
                             <th>Keterangan</th>
@@ -433,7 +433,7 @@ $dipakaiSakit  = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year
                                     <td><?= date('d-m-Y', strtotime($l['tgl_selesai'])) ?></td>
                                     <td><strong><?= $l['total_durasi'] ?> Hari</strong></td>
                                     <td><span class="<?= badge_class_for($l['status']) ?>"><?= htmlspecialchars($l['status']) ?></span></td>
-                                    <td><?= htmlspecialchars($l['alasan'] ?: '-') ?></td>
+                                    <td class="col-keterangan"><?= htmlspecialchars($l['alasan'] ?: '-') ?></td>
                                     <td>
                                         <?php if (!empty($l['lampiran'])): ?>
                                             <a href="../<?= htmlspecialchars($l['lampiran']) ?>" target="_blank" class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem; border-radius: 8px;">
@@ -500,7 +500,7 @@ $dipakaiSakit  = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year
                                     <td><?= date('d-m-Y', strtotime($l['tgl_mulai'])) ?></td>
                                     <td><strong><?= $l['total_durasi'] ?> Hari</strong></td>
                                     <td><span class="<?= badge_class_for($l['status']) ?>"><?= htmlspecialchars($l['status']) ?></span></td>
-                                    <td><?= htmlspecialchars($l['alasan'] ?: '-') ?></td>
+                                    <td class="col-keterangan"><?= htmlspecialchars($l['alasan'] ?: '-') ?></td>
                                     <td>
                                         <?php if (!empty($l['lampiran'])): ?>
                                             <a href="../<?= htmlspecialchars($l['lampiran']) ?>" target="_blank" class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem; border-radius: 8px;">
@@ -581,7 +581,7 @@ $dipakaiSakit  = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year
                         <input type="date" name="tgl_mulai" id="tahunanTglMulai" class="form-control-custom" onchange="hitungDurasi('tahunan')" required>
                     </div>
                     <div class="col-6">
-                        <label class="form-label fw-semibold fs-7 mb-2">Tanggal Masuk *</label>
+                        <label class="form-label fw-semibold fs-7 mb-2">Tanggal Selesai *</label>
                         <input type="date" name="tgl_selesai" id="tahunanTglSelesai" class="form-control-custom" onchange="hitungDurasi('tahunan')" required>
                     </div>
                 </div>
@@ -625,7 +625,7 @@ $dipakaiSakit  = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year
                         <input type="date" name="tgl_mulai" id="khususTglMulai" class="form-control-custom" onchange="hitungDurasi('khusus')" required>
                     </div>
                     <div class="col-6">
-                        <label class="form-label fw-semibold fs-7 mb-2">Tanggal Masuk *</label>
+                        <label class="form-label fw-semibold fs-7 mb-2">Tanggal Selesai *</label>
                         <input type="date" name="tgl_selesai" id="khususTglSelesai" class="form-control-custom" onchange="hitungDurasi('khusus')" required>
                     </div>
                 </div>

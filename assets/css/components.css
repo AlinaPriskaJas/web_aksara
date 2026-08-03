@@ -333,6 +333,17 @@
   vertical-align: middle;
 }
 
+/* Kolom Keterangan/Alasan: teks panjang wrap ke bawah & rata kiri-kanan,
+   TIDAK melebarkan tabel ke samping */
+   .table-custom td.col-keterangan {
+    max-width: 260px;
+    white-space: normal;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    text-align: left;
+    line-height: 1.5;
+  }
+
 /* Hover Row */
 .table-custom tbody tr:hover td {
   background-color: #f8fafc;
