@@ -365,6 +365,15 @@
   border-bottom: none;
 }
 
+.btn-primary-custom i,
+.btn-secondary-custom i,
+.btn-danger-custom i {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
 /* ============================================================
    TABLE ROW ACTIONS — reusable pattern (apply anywhere)
    Keeps view/download/delete/edit buttons in one horizontal row
