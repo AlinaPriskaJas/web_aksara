@@ -1663,6 +1663,52 @@ function mergeFieldsPreservingLabels(array $hasilScanBaru, array $fieldsLamaJson
     ];
 }
 
+function muatFieldsTemplateLive(PDO $pdo, array $kodeRow): array
+{
+    $decodedLama = !empty($kodeRow['fields_json']) ? (json_decode($kodeRow['fields_json'], true) ?: []) : [];
+    $fallback = [
+        'fields' => $decodedLama['fields'] ?? [],
+        'table_fields' => $decodedLama['table_fields'] ?? [],
+        'blocks' => $decodedLama['blocks'] ?? [],
+    ];
+
+    if (empty($kodeRow['file_path']) || ($kodeRow['format'] ?? '') !== 'word_pdf') {
+        return $fallback;
+    }
+
+    $fullPath = BASE_PATH . '/' . $kodeRow['file_path'];
+    if (!is_file($fullPath)) {
+        return $fallback;
+    }
+
+    // Scan langsung dari file fisik saat ini (bukan dari cache DB).
+    // PENTING: $hasilScanBaru['fields'] & ['table_fields'] di sini masih
+    // berupa array NAMA FIELD POLOS (string), BUKAN array ['field'=>,'label'=>].
+    // mergeFieldsPreservingLabels() butuh bentuk polos ini karena dipakai
+    // sebagai key saat mencocokkan dengan label lama.
+    $hasilScanBaru = scanPlaceholdersFromDocx($fullPath);
+
+    $digabung = mergeFieldsPreservingLabels($hasilScanBaru, $decodedLama);
+
+    // Blok tidak ditangani oleh mergeFieldsPreservingLabels, jadi labelnya
+    // dibangun terpisah lewat buildFieldsWithDefaultLabels() (blok selalu
+    // ikut hasil scan terbaru, tidak mempertahankan label lama).
+    $digabung['blocks'] = buildFieldsWithDefaultLabels($hasilScanBaru)['blocks'];
+
+    // Tulis balik ke DB kalau memang berubah, supaya cache tetap sinkron.
+    $jsonBaru = json_encode($digabung, JSON_UNESCAPED_UNICODE);
+    if (!empty($kodeRow['template_id']) && $jsonBaru !== ($kodeRow['fields_json'] ?? null)) {
+        try {
+            $pdo->prepare("UPDATE template_master SET fields_json = ? WHERE id = ?")
+                ->execute([$jsonBaru, (int) $kodeRow['template_id']]);
+        } catch (\Throwable $e) {
+            // Kalau gagal update, abaikan -- form tetap pakai hasil scan live ini.
+        }
+    }
+
+    return $digabung;
+}
+
 // ==========================================
 // BACA TEKS "Perihal : ..." STATIS DI DALAM WORD (fallback)
 // ==========================================

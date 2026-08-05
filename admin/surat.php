@@ -1195,15 +1195,11 @@ if ($active_tab === 'tabPanelBuatSurat' && $kodeIdTerpilih && $templateIdTerpili
     $stmt->execute([$templateIdTerpilih, $kodeIdTerpilih]);
     $kodeTerpilih = $stmt->fetch();
 
-    if ($kodeTerpilih && !empty($kodeTerpilih['fields_json'])) {
-        $decoded = json_decode($kodeTerpilih['fields_json'], true) ?: [];
-        if (isset($decoded['fields']) || isset($decoded['table_fields'])) {
-            $fields_dinamis = $decoded['fields'] ?? [];
-            $fields_tabel = $decoded['table_fields'] ?? [];
-            $fields_blok = $decoded['blocks'] ?? [];
-        } else {
-            $fields_dinamis = $decoded;
-        }
+    if ($kodeTerpilih) {
+        $hasilFields = muatFieldsTemplateLive($pdo, $kodeTerpilih);
+        $fields_dinamis = $hasilFields['fields'];
+        $fields_tabel = $hasilFields['table_fields'];
+        $fields_blok = $hasilFields['blocks'];
 
         if (defined('FIELD_OTOMATIS_SISTEM')) {
             $fields_dinamis = array_values(array_filter(
