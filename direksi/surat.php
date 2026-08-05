@@ -1,5 +1,5 @@
 <?php
-// direksi/surat.php — Modul Persuratan untuk Ahli K3 (tab Surat & Buat Surat saja)
+// direksi/surat.php — Modul Persuratan untuk Direksi (tab Surat & Buat Surat saja)
 require_once "../config/koneksi.php";
 
 if (session_status() === PHP_SESSION_NONE)
@@ -114,8 +114,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
 
             $pdo->beginTransaction();
 
-            $noUrutManualPost = trim($_POST['no_urut_manual'] ?? '');
-            $nomorSurat = resolveNomorSurat($pdo, $kodeIdPost, $noUrutManualPost);
+            // Kalau template pakai ${no_surat} (format khusus JD+kode/bulan/tahun),
+            // pakai format itu SEBAGAI nomor surat -- jangan generate nomor ARP
+            // biasa juga, supaya tidak ada dua sistem penomoran berjalan sekaligus.
+            $adaNoSuratKhususPost = in_array('no_surat', scanAutoFieldsFromDocx(BASE_PATH . '/' . $kode['file_path']), true);
+
+            if ($adaNoSuratKhususPost) {
+                $noSuratManualPost = trim($_POST['no_surat_manual'] ?? '');
+                $nomorSurat = buatNoSuratKhusus($noSuratManualPost);
+                $cekNomorDup = $pdo->prepare("SELECT id FROM surat WHERE nomor = ?");
+                $cekNomorDup->execute([$nomorSurat]);
+                if ($cekNomorDup->fetch()) {
+                    throw new RuntimeException("Nomor surat \"{$nomorSurat}\" sudah digunakan surat lain.");
+                }
+            } else {
+                $noUrutManualPost = trim($_POST['no_urut_manual'] ?? '');
+                $nomorSurat = resolveNomorSurat($pdo, $kodeIdPost, $noUrutManualPost);
+            }
             $nomorAgenda = generateNomorAgenda($pdo, 'Keluar');
 
             $dataForm = [];
@@ -133,6 +148,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
             }
             if (isset($_POST['dp_input'])) {
                 $dataForm['dp_input'] = trim((string) $_POST['dp_input']);
+            }
+            if (isset($_POST['no_surat_manual'])) {          // ⬅ BARU
+                $dataForm['no_surat_manual'] = trim((string) $_POST['no_surat_manual']);
             }
 
             $items = [];
@@ -548,6 +566,7 @@ $ada_diskon = in_array('diskon', $auto_fields_template, true);
 $ada_grand_total = in_array('grand_total', $auto_fields_template, true);
 $ada_dp = in_array('down_payment', $auto_fields_template, true);
 $ada_total_alat = in_array('total_alat', $auto_fields_template, true);
+$ada_no_surat_khusus = in_array('no_surat', $auto_fields_template, true);
 $ada_ringkasan_total = $ada_total || $ada_ppn || $ada_pph23 || $ada_diskon || $ada_total_bayar || $ada_grand_total || $ada_dp || $ada_sisa_pelunasan;
 
 $isPostBuatSurat = $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generate_surat';
@@ -1076,21 +1095,39 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
                                     <input type="text" class="form-control-custom field-readonly"
                                         value="<?= e($kodeTerpilih['nama']) ?> (<?= e($kodeTerpilih['kode']) ?>)" readonly>
                                 </div>
-                                <div class="col-md-6">
-                                    <label class="form-label fw-semibold mb-2">No Urut Surat</label>
-                                    <div class="nomor-surat-group">
-                                        <input type="text" name="no_urut_manual"
-                                            class="form-control-custom nomor-surat-input"
-                                            value="<?= e($_POST['no_urut_manual'] ?? sprintf('%03d', $counterPreview)) ?>"
-                                            placeholder="<?= e(sprintf('%03d', $counterPreview)) ?>">
-                                        <div class="form-control-custom field-readonly text-secondary nomor-surat-suffix">
-                                            /<?= e($kodeTerpilih['kode']) ?>/ARP/<?= e($bulanRomawi) ?>/<?= e($tahun) ?>
+                                <?php if (!$ada_no_surat_khusus): ?>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-semibold mb-2">No Urut Surat</label>
+                                        <div class="nomor-surat-group">
+                                            <input type="text" name="no_urut_manual"
+                                                class="form-control-custom nomor-surat-input"
+                                                value="<?= e($_POST['no_urut_manual'] ?? sprintf('%03d', $counterPreview)) ?>"
+                                                placeholder="<?= e(sprintf('%03d', $counterPreview)) ?>">
+                                            <div class="form-control-custom field-readonly text-secondary nomor-surat-suffix">
+                                                /<?= e($kodeTerpilih['kode']) ?>/ARP/<?= e($bulanRomawi) ?>/<?= e($tahun) ?>
+                                            </div>
                                         </div>
+                                        <!-- <small ...> -->
                                     </div>
-                                    <!-- <small class="text-secondary text-xs d-block mt-1">Otomatis:
-                                        <b><?= e(sprintf('%03d', $counterPreview)) ?></b> — kode jenis/ARP/bulan/tahun
-                                        tetap otomatis, hanya angka urut yang bisa Anda ganti.</small> -->
-                                </div>
+                                <?php endif; ?>
+                                <?php if ($ada_no_surat_khusus): ?>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-semibold mb-2">Kode Nomor Surat</label>
+                                        <div class="nomor-surat-group">
+                                            <div class="form-control-custom field-readonly nomor-surat-suffix">JD</div>
+                                            <input type="text" name="no_surat_manual"
+                                                class="form-control-custom nomor-surat-input" style="text-transform:uppercase;"
+                                                value="<?= e($_POST['no_surat_manual'] ?? '') ?>" placeholder="75T4EM">
+                                            <div class="form-control-custom field-readonly text-secondary nomor-surat-suffix">
+                                                /<?= e(date('m')) ?>/<?= e(date('Y')) ?>
+                                            </div>
+                                        </div>
+                                        <small class="text-secondary text-xs d-block mt-1">
+                                            Format otomatis: <b>JD</b> + kode Anda + <b>/bulan/tahun</b>.
+                                            Contoh: <code>JD75T4EM/<?= e(date('m')) ?>/<?= e(date('Y')) ?></code>
+                                        </small>
+                                    </div>
+                                <?php endif; ?>
                             </div>
 
                             <?php if (!empty($kodeTerpilih['deskripsi'])): ?>
@@ -1364,9 +1401,10 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
                                                     </label>
                                                 <?php endif; ?>
                                                 <?php if ($ada_sisa_pelunasan): ?>
-                                                    <label class="d-flex align-items-center gap-2 text-xs fw-semibold mb-0" style="cursor:pointer;">
-                                                        <input type="checkbox" id="checkbox-sertakan-sisa-pelunasan" name="sertakan_sisa_pelunasan" value="1"
-                                                            <?= $checkedSertakanSisaPelunasan ? 'checked' : '' ?>>
+                                                    <label class="d-flex align-items-center gap-2 text-xs fw-semibold mb-0"
+                                                        style="cursor:pointer;">
+                                                        <input type="checkbox" id="checkbox-sertakan-sisa-pelunasan"
+                                                            name="sertakan_sisa_pelunasan" value="1" <?= $checkedSertakanSisaPelunasan ? 'checked' : '' ?>>
                                                         Sertakan Sisa Pelunasan di surat
                                                     </label>
                                                 <?php endif; ?>
@@ -1567,19 +1605,34 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
                         </p>
 
                         <table class="preview-kv w-100 mb-3">
-                            <tr>
-                                <td>Nomor</td>
-                                <td style="font-family:monospace;">
-                                    <?php
-                                    $noUrutPreviewTampil = trim($_POST['no_urut_manual'] ?? '');
-                                    if ($noUrutPreviewTampil !== '' && ctype_digit($noUrutPreviewTampil)) {
-                                        echo e(sprintf('%03d/%s/ARP/%s/%d', (int) $noUrutPreviewTampil, $kodeTerpilih['kode'], $bulanRomawi, $tahun));
-                                    } else {
-                                        echo e($preview_nomor);
-                                    }
-                                    ?>
-                                </td>
-                            </tr>
+                            <?php if (!$ada_no_surat_khusus): ?>
+                                <tr>
+                                    <td>Nomor</td>
+                                    <td style="font-family:monospace;">
+                                        <?php
+                                        $noUrutPreviewTampil = trim($_POST['no_urut_manual'] ?? '');
+                                        if ($noUrutPreviewTampil !== '' && ctype_digit($noUrutPreviewTampil)) {
+                                            echo e(sprintf('%03d/%s/ARP/%s/%d', (int) $noUrutPreviewTampil, $kodeTerpilih['kode'], $bulanRomawi, $tahun));
+                                        } else {
+                                            echo e($preview_nomor);
+                                        }
+                                        ?>
+                                    </td>
+                                </tr>
+                            <?php endif; ?>
+                            <?php if ($ada_no_surat_khusus): ?>
+                                <tr>
+                                    <td>No Surat</td>
+                                    <td style="font-family:monospace;">
+                                        <?php
+                                        $kodeManualPreview = trim($_POST['no_surat_manual'] ?? '');
+                                        echo $kodeManualPreview !== ''
+                                            ? e('JD' . strtoupper($kodeManualPreview) . '/' . date('m') . '/' . date('Y'))
+                                            : '<i>(isi kode di sebelah kiri)</i>';
+                                        ?>
+                                    </td>
+                                </tr>
+                            <?php endif; ?>
                             <?php foreach ($fields_dinamis as $f): ?>
                                 <tr>
                                     <td><?= e($f['label']) ?></td>
@@ -1728,7 +1781,7 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
                                     data-ada-grand-total="<?= $ada_grand_total ? '1' : '0' ?>"
                                     data-ada-dp="<?= $ada_dp ? '1' : '0' ?>"
                                     data-ada-total-bayar="<?= $ada_total_bayar ? '1' : '0' ?>"
-                                    data-ada-sisa-pelunasan="<?= $ada_sisa_pelunasan ? '1' : '0' ?>">   <!-- ⬅ BARU -->
+                                    data-ada-sisa-pelunasan="<?= $ada_sisa_pelunasan ? '1' : '0' ?>"> <!-- ⬅ BARU -->
 
 
                                     <?php if ($ada_total): ?>
@@ -1756,9 +1809,10 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
                                             <span>DP</span><span id="preview-dp" style="font-family:monospace;">Rp. 0</span>
                                         </div>
                                     <?php endif; ?>
-                                    <?php if ($ada_sisa_pelunasan): ?>                                  <!-- ⬅ BARU -->
+                                    <?php if ($ada_sisa_pelunasan): ?> <!-- ⬅ BARU -->
                                         <div class="ringkasan-total-row">
-                                            <span>Sisa Pelunasan</span><span id="preview-sisa-pelunasan" style="font-family:monospace;">Rp. 0</span>
+                                            <span>Sisa Pelunasan</span><span id="preview-sisa-pelunasan"
+                                                style="font-family:monospace;">Rp. 0</span>
                                         </div>
                                     <?php endif; ?>
                                     <?php if ($ada_total_bayar): ?>

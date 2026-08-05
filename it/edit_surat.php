@@ -102,9 +102,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
                 throw new RuntimeException("Template ini bukan file Word (.docx), tidak bisa digenerate otomatis lewat form ini.");
             }
 
-            $nomorBaru = trim($_POST['nomor_surat'] ?? '');
-            if ($nomorBaru === '') {
-                throw new RuntimeException("Nomor surat wajib diisi.");
+            $adaNoSuratKhususPost = in_array('no_surat', scanAutoFieldsFromDocx(BASE_PATH . '/' . $kode['file_path']), true);
+
+            if ($adaNoSuratKhususPost) {
+                $noSuratManualPost = trim($_POST['no_surat_manual'] ?? '');
+                $nomorBaru = buatNoSuratKhusus($noSuratManualPost);
+            } else {
+                $nomorBaru = trim($_POST['nomor_surat'] ?? '');
+                if ($nomorBaru === '') {
+                    throw new RuntimeException("Nomor surat wajib diisi.");
+                }
             }
             if ($nomorBaru !== $surat['nomor']) {
                 $cekNomor = $pdo->prepare("SELECT id FROM surat WHERE nomor = ? AND id != ?");
@@ -129,6 +136,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
             }
             if (isset($_POST['dp_input'])) {
                 $dataForm['dp_input'] = trim((string) $_POST['dp_input']);
+            }
+            if (isset($_POST['no_surat_manual'])) {          // ⬅ BARU
+                $dataForm['no_surat_manual'] = trim((string) $_POST['no_surat_manual']);
             }
 
             $items = [];
@@ -322,6 +332,7 @@ $ada_diskon = in_array('diskon', $auto_fields_template, true);
 $ada_grand_total = in_array('grand_total', $auto_fields_template, true);
 $ada_dp = in_array('down_payment', $auto_fields_template, true);
 $ada_total_alat = in_array('total_alat', $auto_fields_template, true);
+$ada_no_surat_khusus = in_array('no_surat', $auto_fields_template, true);
 $ada_ringkasan_total = $ada_total || $ada_ppn || $ada_pph23 || $ada_diskon || $ada_total_bayar || $ada_grand_total || $ada_dp || $ada_sisa_pelunasan;
 
 $isPostEditSurat = $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_edit_surat';
@@ -337,6 +348,8 @@ $checkedSertakanDp = $isPostEditSurat ? isset($_POST['sertakan_dp']) : ($ringkas
 // Prefill: dari $_POST (kalau baru submit/preview), kalau tidak ada -> dari isi_data
 // surat yang sudah tersimpan (inilah yang membuat form otomatis terisi / prefill).
 $nilai_dinamis = [];
+$nilai_no_surat_manual = $_POST['no_surat_manual'] ?? ($isiDataAsli['no_surat_manual'] ?? '');
+
 foreach ($fields_dinamis as $f) {
     $nilai_dinamis[$f['field']] = $_POST['dinamis'][$f['field']] ?? ($isiDataAsli[$f['field']] ?? '');
 }
@@ -495,13 +508,34 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
                             <input type="text" class="form-control-custom field-readonly"
                                 value="<?= e($kodeTerpilih['nama']) ?> (<?= e($kodeTerpilih['kode']) ?>)" readonly>
                         </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-semibold mb-2">Nomor Surat</label>
-                            <input type="text" name="nomor_surat" class="form-control-custom" style="font-family:monospace;"
-                                value="<?= e($_POST['nomor_surat'] ?? $surat['nomor']) ?>" required>
-                            <!-- <small class="text-secondary text-xs d-block mt-1">Ubah hanya jika benar-benar
-                                        perlu -- nomor ini sudah dipakai sebagai identitas resmi surat.</small> -->
-                        </div>
+                        <?php if (!$ada_no_surat_khusus): ?>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold mb-2">Nomor Surat</label>
+                                <input type="text" name="nomor_surat" class="form-control-custom" style="font-family:monospace;"
+                                    value="<?= e($_POST['nomor_surat'] ?? $surat['nomor']) ?>" required>
+                            </div>
+                        <?php else: ?>
+                            <input type="hidden" name="nomor_surat" value="<?= e($_POST['nomor_surat'] ?? $surat['nomor']) ?>">
+                        <?php endif; ?>
+
+                        <?php if ($ada_no_surat_khusus): ?>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold mb-2">Kode Nomor Surat</label>
+                                <div class="nomor-surat-group">
+                                    <div class="form-control-custom field-readonly nomor-surat-suffix">JD</div>
+                                    <input type="text" name="no_surat_manual" class="form-control-custom nomor-surat-input"
+                                        style="text-transform:uppercase;" value="<?= e($nilai_no_surat_manual) ?>"
+                                        placeholder="75T4EM">
+                                    <div class="form-control-custom field-readonly text-secondary nomor-surat-suffix">
+                                        /<?= e(date('m')) ?>/<?= e(date('Y')) ?>
+                                    </div>
+                                </div>
+                                <small class="text-secondary text-xs d-block mt-1">
+                                    Format otomatis: <b>JD</b> + kode Anda + <b>/bulan/tahun</b>.
+                                    Contoh: <code>JD75T4EM/<?= e(date('m')) ?>/<?= e(date('Y')) ?></code>
+                                </small>
+                            </div>
+                        <?php endif; ?>
                     </div>
 
                     <div class="row g-3 mb-3">
@@ -1000,10 +1034,25 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
                 </p>
 
                 <table class="preview-kv w-100 mb-3">
-                    <tr>
-                        <td>Nomor</td>
-                        <td style="font-family:monospace;"><?= e($_POST['nomor_surat'] ?? $surat['nomor']) ?></td>
-                    </tr>
+                    <?php if (!$ada_no_surat_khusus): ?>
+                        <tr>
+                            <td>Nomor</td>
+                            <td style="font-family:monospace;"><?= e($_POST['nomor_surat'] ?? $surat['nomor']) ?></td>
+                        </tr>
+                    <?php endif; ?>
+                    <?php if ($ada_no_surat_khusus): ?>
+                        <tr>
+                            <td>No Surat</td>
+                            <td style="font-family:monospace;">
+                                <?php
+                                $kodeManualPreviewEdit = trim($nilai_no_surat_manual);
+                                echo $kodeManualPreviewEdit !== ''
+                                    ? e('JD' . strtoupper($kodeManualPreviewEdit) . '/' . date('m') . '/' . date('Y'))
+                                    : '<i>(isi kode di atas)</i>';
+                                ?>
+                            </td>
+                        </tr>
+                    <?php endif; ?>
                     <tr>
                         <td>Perihal</td>
                         <td><?= e(($_POST['perihal_manual'] ?? $surat['perihal'] ?? '') ?: '-') ?></td>
@@ -1359,6 +1408,7 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
                                             ? formatRupiahJs(sisaPelunasan)
                                             : (adaSisaPelunasan ? 'Tidak disertakan' : elSisaPelunasan.textContent);
                                     }
+
                                 };
 
                                 var observer = new MutationObserver(window.hitungUlangTotalSurat);

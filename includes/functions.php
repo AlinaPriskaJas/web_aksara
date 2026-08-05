@@ -333,7 +333,7 @@ const KOLOM_SUBTOTAL = 'item_sub_total';    // subtotal per baris, dihitung otom
 // selalu konsisten format "Rp. 1.234.567").
 // - total/ppn/pph_23/total_bayar/terbilang : untuk tabel item bertipe uang (qty x harga)
 // - total_alat : untuk tabel item bertipe kuantitas saja (tanpa harga), cth "13 Unit"
-const FIELD_OTOMATIS_SISTEM = ['nomor', 'nomor_surat', 'total', 'ppn', 'pph_23', 'diskon', 'diskon_persen', 'total_bayar', 'terbilang', 'total_alat', 'grand_total', 'down_payment', 'down_payment_persen', 'sisa_pelunasan'];
+const FIELD_OTOMATIS_SISTEM = ['nomor', 'nomor_surat', 'no_surat', 'total', 'ppn', 'pph_23', 'diskon', 'diskon_persen', 'total_bayar', 'terbilang', 'total_alat', 'grand_total', 'down_payment', 'down_payment_persen', 'sisa_pelunasan'];
 
 // ==========================================
 // PENANDA BLOK LIST BERULANG (BUKAN tabel Word), cth di dalam .docx:
@@ -740,6 +740,12 @@ function generateSuratDocx(string $templatePath, array $dataForm, array $items, 
             : $totalKuantitasBulat;
     }
 
+    // ${no_surat} format khusus (JD + kode manual + /bulan/tahun)
+    if (!empty($dataForm['no_surat_manual'])) {
+        $dataForm['no_surat'] = buatNoSuratKhusus($dataForm['no_surat_manual']);
+    }
+    unset($dataForm['no_surat_manual']); // jangan sampai ke-set sebagai placeholder biasa
+
     // -----------------------------------------------------
     // 3) FIELD BIASA (termasuk nomor surat & hasil hitung di atas)
     // -----------------------------------------------------
@@ -881,7 +887,25 @@ function generateSuratDocx(string $templatePath, array $dataForm, array $items, 
     return 'storage/generated/' . $namaFileHasil;
 }
 
+// ==========================================
+// FORMAT KHUSUS ${no_surat}:
+//   PREFIX_TETAP + KODE_MANUAL + "/" + bulan(2 digit) + "/" + tahun
+// Contoh: JD75T4EM/04/2026
+// "JD", bulan, tahun -> otomatis. Kode tengah -> diisi manual user.
+// ==========================================
+const PREFIX_NO_SURAT_KHUSUS = 'JD';
 
+function buatNoSuratKhusus(string $kodeManual): string
+{
+    $kodeManual = strtoupper(trim($kodeManual));
+    if ($kodeManual === '') {
+        throw new RuntimeException("Kode nomor surat (bagian setelah \"JD\") wajib diisi.");
+    }
+    if (!preg_match('/^[A-Z0-9]+$/', $kodeManual)) {
+        throw new RuntimeException("Kode nomor surat hanya boleh huruf & angka, tanpa spasi/simbol.");
+    }
+    return PREFIX_NO_SURAT_KHUSUS . $kodeManual . '/' . date('m') . '/' . date('Y');
+}
 
 function mergeGrupKolomVertikalDocx(string $docxFullPath, array $items, string $kolomKunci, array $kolomDigabung = []): void
 {
@@ -1688,6 +1712,7 @@ function e(?string $value): string
 {
     return htmlspecialchars($value ?? '', ENT_QUOTES, 'UTF-8');
 }
+
 
 
 // ==========================================
