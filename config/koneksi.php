@@ -12,7 +12,7 @@ date_default_timezone_set('Asia/Jakarta');
 $host = "localhost";
 $username = "root";
 $password = "";
-$database = "arp_aksara";
+$database = "web_aksara";
 
 try {
     // Create PDO connection
