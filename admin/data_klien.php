@@ -339,6 +339,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
 
                 $conn->commit();
 
+<<<<<<< HEAD
                 // Batasi panjang detail_error sebagai pengaman terakhir, supaya kalau pun
                 // kolomnya di database ternyata masih terbatas ukurannya, insert log ini
                 // tidak akan pernah gagal dan menutupi keberhasilan import di atas.
@@ -365,6 +366,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
                     // log tidak boleh membuat pengguna mengira proses importnya gagal.
                     error_log('Gagal menyimpan Import_Log: ' . $eLog->getMessage());
                 }
+=======
+                $conn->prepare("
+                    INSERT INTO Import_Log (nama_file, total_baris, berhasil, gagal, duplikat, detail_error, diupload_oleh)
+                    VALUES (:nama_file, :total, :berhasil, :gagal, :duplikat, :detail, :user_id)
+                ")->execute([
+                    ':nama_file' => $namaFileAsli,
+                    ':total'     => $total,
+                    ':berhasil'  => $berhasil,
+                    ':gagal'     => $gagal,
+                    ':duplikat'  => $duplikat,
+                    ':detail'    => implode("\n", $daftarError) ?: null,
+                    ':user_id'   => $admin_id,
+                ]);
+>>>>>>> 93ec78b (fix: resolve switchTab ReferenceError and clean duplicate code in data_klien.php)
 
                 $flash = [
                     'type'    => ($berhasil > 0 || $diperbarui > 0) ? 'success' : 'danger',

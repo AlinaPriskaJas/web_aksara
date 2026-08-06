@@ -86,17 +86,22 @@ document.addEventListener('DOMContentLoaded', function () {
 
 // Smooth Scroll
 document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-
     anchor.addEventListener('click', function(e) {
-
-        e.preventDefault();
-
-        document.querySelector(this.getAttribute('href')).scrollIntoView({
-            behavior: 'smooth'
-        });
-
+        const href = this.getAttribute('href');
+        if (href && href.length > 1) {
+            try {
+                const target = document.querySelector(href);
+                if (target) {
+                    e.preventDefault();
+                    target.scrollIntoView({
+                        behavior: 'smooth'
+                    });
+                }
+            } catch (err) {
+                // Ignore invalid selectors like '#'
+            }
+        }
     });
-
 });
 
 // === Modal Global Functions ===
@@ -319,6 +324,7 @@ function renderTablePaginationControls(tableId, totalRows, totalPages) {
 
 
 function switchTab(targetId, btnEl) {
+    if (!btnEl) return;
     const scope = btnEl.closest('.arp-tab-group') || document;
 
     scope.querySelectorAll('.arp-tab-panel').forEach(function (panel) {
@@ -329,24 +335,18 @@ function switchTab(targetId, btnEl) {
     });
     btnEl.classList.add('active');
 }
-
-
+window.switchTab = switchTab;
 
 // Navbar Shadow Saat Scroll
 window.addEventListener("scroll", function(){
-
     const navbar = document.querySelector(".navbar");
-
-    if(window.scrollY > 20){
-
-        navbar.style.boxShadow = "0 5px 20px rgba(0,0,0,.12)";
-
-    }else{
-
-        navbar.style.boxShadow = "0 3px 10px rgba(0,0,0,.08)";
-
+    if (navbar) {
+        if(window.scrollY > 20){
+            navbar.style.boxShadow = "0 5px 20px rgba(0,0,0,.12)";
+        }else{
+            navbar.style.boxShadow = "0 3px 10px rgba(0,0,0,.08)";
+        }
     }
-
 });
 
 
