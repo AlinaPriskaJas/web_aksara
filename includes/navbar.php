@@ -16,12 +16,14 @@
             <div class="col-md-6 text-end">
 
                 <i class="fa-solid fa-envelope"></i>
-                info@arp.co.id
+                aksara.riksa.perdana@gmail.com
 
                 &nbsp;
 
                 <i class="fa-solid fa-phone"></i>
-                (022) 000-0000
+                
+                0821-2984-9515
+
 
             </div>
 
