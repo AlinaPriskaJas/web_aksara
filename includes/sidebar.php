@@ -70,7 +70,7 @@ switch ($current_role) {
             ['label' => 'Dashboard', 'url' => 'dashboard.php', 'icon' => 'bi-speedometer2'],
             ['label' => 'Jadwal Pemeriksaan', 'url' => 'jadwal.php', 'icon' => 'bi-calendar-event'],
             ['label' => 'Upload Laporan', 'url' => 'upload.php', 'icon' => 'bi-upload'],
-            ['label' => 'Input Hasil', 'url' => 'input_hasil.php', 'icon' => 'bi-file-earmark-medical'],
+            ['label' => 'Laporan Pemeriksaan', 'url' => 'pemeriksaan.php', 'icon' => 'bi-file-earmark-medical'],
             ['label' => 'Rekomendasi', 'url' => 'rekomendasi.php', 'icon' => 'bi-exclamation-triangle'],
             ['label' => 'Laporan Insiden', 'url' => 'insiden.php', 'icon' => 'bi-cone-striped'],
             ['label' => 'Sertifikat Ahli K3', 'url' => 'sertifikat_ahli.php', 'icon' => 'bi-award'],

@@ -57,12 +57,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $success_msg = "Suket K3 berhasil diperbarui!";
                 } else {
                     // Insert
-                    $stmt = $conn->prepare("INSERT INTO Suket_K3 (pengajuan_id, klien_id, objek_id, nomor_laporan, jenis_pemeriksaan, tanggal_jadwal, tanggal_pemeriksaan, tanggal_expiry, ahli_k3_id, verifikator_disnaker, hasil_pemeriksaan, rekomendasi_teknis) VALUES (:pengajuan_id, :klien_id, :objek_id, :nomor_laporan, :jenis_pemeriksaan, :tanggal_jadwal, :tanggal_pemeriksaan, :tanggal_expiry, :ahli_k3_id, :verifikator_disnaker, :hasil_pemeriksaan, :rekomendasi_teknis)");
+                    $stmt = $conn->prepare("INSERT INTO Suket_K3 (pengajuan_id, laporan_id, klien_id, objek_id, nomor_laporan, jenis_pemeriksaan, tanggal_jadwal, tanggal_pemeriksaan, tanggal_expiry, ahli_k3_id, verifikator_disnaker, hasil_pemeriksaan, rekomendasi_teknis) VALUES (:pengajuan_id, :laporan_id, :klien_id, :objek_id, :nomor_laporan, :jenis_pemeriksaan, :tanggal_jadwal, :tanggal_pemeriksaan, :tanggal_expiry, :ahli_k3_id, :verifikator_disnaker, :hasil_pemeriksaan, :rekomendasi_teknis)");
                     $stmt->execute([
                         'pengajuan_id' => $pengajuan_id,
+                        'laporan_id' => $_POST['laporan_id'] ?: null,
                         'klien_id' => $klien_id,
                         'objek_id' => $objek_id,
-                        'nomor_laporan' => $nomor_laporan,
+                        'nomor_laporan' => $nomor_laporan, // ini nomor suket resmi, bisa beda dari nomor laporan asal
                         'jenis_pemeriksaan' => $jenis_pemeriksaan,
                         'tanggal_jadwal' => $tanggal_jadwal,
                         'tanggal_pemeriksaan' => $tanggal_pemeriksaan,
@@ -75,7 +76,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     $new_suket_id = $conn->lastInsertId();
 
-                    // If referenced to a pengajuan, update it
+                    // Tandai laporan sebagai sudah diterbitkan
+                    if (!empty($_POST['laporan_id'])) {
+                        $updLap = $conn->prepare("UPDATE Laporan_Pemeriksaan SET status = 'Sudah Diterbitkan', suket_id = :suket_id WHERE id = :laporan_id");
+                        $updLap->execute(['suket_id' => $new_suket_id, 'laporan_id' => $_POST['laporan_id']]);
+                    }
+
                     if ($pengajuan_id) {
                         $upd = $conn->prepare("UPDATE Pengajuan_Pemeriksaan SET status = 'Selesai', suket_id = :suket_id WHERE id = :pengajuan_id");
                         $upd->execute(['suket_id' => $new_suket_id, 'pengajuan_id' => $pengajuan_id]);
@@ -90,11 +96,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+// Fetch Laporan_Pemeriksaan
+$laporan_list = $conn->query("
+    SELECT lp.*, dk.nama_perusahaan, o.nama_unit
+    FROM Laporan_Pemeriksaan lp
+    JOIN Data_Klien dk ON lp.klien_id = dk.id
+    JOIN Objek_K3 o ON lp.objek_id = o.id
+    WHERE lp.status != 'Sudah Diterbitkan'
+    ORDER BY lp.created_at DESC
+")->fetchAll();
+
 // Fetch lists
+$klien_list = $conn->query("SELECT id, nama_perusahaan FROM Data_Klien ORDER BY nama_perusahaan ASC")->fetchAll();
 
+$objek_list = $conn->query("
+    SELECT o.id, o.nama_unit, o.serial_number, dk.nama_perusahaan
+    FROM Objek_K3 o
+    JOIN Data_Klien dk ON o.id_client = dk.id
+    ORDER BY dk.nama_perusahaan ASC
+")->fetchAll();
 
+$ahli_list = $conn->query("SELECT id, nama_lengkap, tingkat_ahli, bidang_keahlian FROM Sertifikat_Ahli ORDER BY nama_lengkap ASC")->fetchAll();
 
 $pengajuan_list = $conn->query("SELECT id, jenis_pemeriksaan, klasifikasi_objek_k3 FROM Pengajuan_Pemeriksaan ORDER BY id DESC")->fetchAll();
+
 
 // Fetch Suket listings
 $sukets = $conn->query("
@@ -217,7 +242,22 @@ $sukets = $conn->query("
                                 <option value="">-- Tanpa Rujukan Pengajuan --</option>
                                 <?php foreach ($pengajuan_list as $p): ?>
                                     <option value="<?= $p['id'] ?>">ID: #<?= $p['id'] ?> -
-                                        <?= htmlspecialchars($p['klasifikasi_objek_k3']) ?></option>
+                                        <?= htmlspecialchars($p['klasifikasi_objek_k3']) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label fw-semibold fs-7 mb-1">Pilih Laporan Pemeriksaan</label>
+                            <select id="form-laporan-id" name="laporan_id" class="select-custom"
+                                onchange="pilihLaporan(this.value)">
+                                <option value="">-- Tanpa Rujukan Laporan --</option>
+                                <?php foreach ($laporan_list as $lp): ?>
+                                    <option value="<?= $lp['id'] ?>">
+                                        <?= htmlspecialchars($lp['nomor_laporan']) ?> —
+                                        <?= htmlspecialchars($lp['nama_perusahaan']) ?>
+                                        (<?= htmlspecialchars($lp['nama_unit']) ?>)
+                                    </option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
@@ -242,7 +282,8 @@ $sukets = $conn->query("
                                 <?php foreach ($objek_list as $o): ?>
                                     <option value="<?= $o['id'] ?>"><?= htmlspecialchars($o['nama_perusahaan']) ?> -
                                         <?= htmlspecialchars($o['nama_unit']) ?> (SN:
-                                        <?= htmlspecialchars($o['serial_number'] ?: '-') ?>)</option>
+                                        <?= htmlspecialchars($o['serial_number'] ?: '-') ?>)
+                                    </option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
@@ -252,7 +293,9 @@ $sukets = $conn->query("
                                 <option value="">-- Pilih Ahli K3 --</option>
                                 <?php foreach ($ahli_list as $a): ?>
                                     <option value="<?= $a['id'] ?>"><?= htmlspecialchars($a['nama_lengkap']) ?> -
-                                        <?= htmlspecialchars($a['tingkat_ahli']) ?> (<?= htmlspecialchars($a['bidang_keahlian']) ?>)</option>
+                                        <?= htmlspecialchars($a['tingkat_ahli']) ?>
+                                        (<?= htmlspecialchars($a['bidang_keahlian']) ?>)
+                                    </option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
@@ -314,6 +357,7 @@ $sukets = $conn->query("
     });
 
     function resetForm() {
+        document.getElementById('form-pilih-laporan').value = '';
         document.getElementById('form-id').value = '';
         document.getElementById('form-pengajuan-id').value = '';
         document.getElementById('form-nomor-laporan').value = '';
@@ -345,6 +389,23 @@ $sukets = $conn->query("
         document.getElementById('form-hasil').value = data.hasil_pemeriksaan || '';
         document.getElementById('form-rekomendasi').value = data.rekomendasi_teknis || '';
         document.getElementById('suketModalLabel').textContent = 'Edit Suket K3';
+    }
+
+    const laporanDataAll = <?= json_encode($laporan_list) ?>;
+
+    function pilihLaporan(id) {
+        if (!id) return;
+        const lp = laporanDataAll.find(l => String(l.id) === String(id));
+        if (!lp) return;
+        document.getElementById('form-klien-id').value = lp.klien_id;
+        document.getElementById('form-objek-id').value = lp.objek_id;
+        document.getElementById('form-ahli-id').value = lp.ahli_k3_id;
+        document.getElementById('form-jenis-pemeriksaan').value = lp.jenis_pemeriksaan;
+        document.getElementById('form-tgl-pemeriksaan').value = lp.tanggal_pemeriksaan || '';
+        document.getElementById('form-tgl-expiry').value = lp.tanggal_expiry || '';
+        document.getElementById('form-hasil').value = lp.hasil_pemeriksaan || '';
+        document.getElementById('form-rekomendasi').value = lp.rekomendasi_teknis || '';
+        // Nomor laporan suket dikosongkan / diketik admin sendiri sebagai nomor resmi baru
     }
 </script>
 
