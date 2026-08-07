@@ -1,3 +1,4 @@
+<?php $current_page = basename($_SERVER['PHP_SELF']); ?>
 <!-- Topbar -->
 <div class="topbar">
 
@@ -74,33 +75,27 @@
             <ul class="navbar-nav ms-auto align-items-center">
 
                 <li class="nav-item">
-
-                    <a class="nav-link" href="index.php">
-
-                        Beranda
-
-                    </a>
+               
+                <a class="nav-link <?php echo ($current_page == 'index.php') ? 'active' : ''; ?>" href="index.php">
+                    Beranda
+                </a>
 
                 </li>
 
                 <li class="nav-item">
 
-                    <a class="nav-link" href="tentang.php">
-
-                        Tentang
-
-                    </a>
+                <a class="nav-link <?php echo ($current_page == 'tentang.php') ? 'active' : ''; ?>" href="tentang.php">
+                     Tentang
+                </a>
 
                 </li>
 
               
                 <li class="nav-item">
 
-                    <a class="nav-link" href="kontak.php">
-
+                <a class="nav-link <?php echo ($current_page == 'kontak.php') ? 'active' : ''; ?>" href="kontak.php">
                         Kontak
-
-                    </a>
+                </a>
 
                 </li>
 
