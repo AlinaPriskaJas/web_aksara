@@ -44,7 +44,7 @@
 
                     <p>
 
-                        Database klien, sertifikat digital,
+                        Database client, sertifikat digital,
                         jadwal pemeriksaan, approval,
                         hingga arsip perusahaan dalam satu platform.
 
@@ -174,7 +174,7 @@
                         <h4>Admin</h4>
 
                         <ul>
-                            <li>Kelola data klien dan unit</li>
+                            <li>Kelola data client dan unit</li>
                             <li>Atur jadwal pemeriksaan</li>
                             <li>Terbitkan sertifikat digital</li>
                             <li>Kelola akun pengguna</li>

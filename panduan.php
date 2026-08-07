@@ -276,7 +276,7 @@
                         <h4>Admin</h4>
 
                         <ul>
-                            <li>Mengelola data klien dan unit</li>
+                            <li>Mengelola data client dan unit</li>
                             <li>Mengatur jadwal pemeriksaan</li>
                             <li>Menerbitkan sertifikat digital</li>
                             <li>Memverifikasi pengajuan pemeriksaan</li>

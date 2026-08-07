@@ -13,7 +13,7 @@ switch ($current_role) {
         $menus = [
             ['label' => 'Dashboard', 'url' => 'dashboard.php', 'icon' => 'bi-speedometer2'],
             ['label' => 'Approval', 'url' => 'approval.php', 'icon' => 'bi-check-circle'],
-            ['label' => 'Data Klien', 'url' => 'data_klien.php', 'icon' => 'bi-people'],
+            ['label' => 'Data Client', 'url' => 'data_client.php', 'icon' => 'bi-people'],
             ['label' => 'Digital Sign', 'url' => 'digital.php', 'icon' => 'bi-pencil-square'],
             ['label' => 'Print Center', 'url' => 'print.php', 'icon' => 'bi-printer'],
             ['label' => 'Stock Gudang', 'url' => 'stock.php', 'icon' => 'bi-box-seam'],
