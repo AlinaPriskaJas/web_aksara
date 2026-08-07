@@ -4,11 +4,14 @@ require_once __DIR__ . '/../vendor/autoload.php';
 use PhpOffice\PhpWord\TemplateProcessor;
 
 // Define directory constants if not already defined
-if (!defined('GENERATED_DIR')) {
-    define('GENERATED_DIR', __DIR__ . '/../storage/generated/');
-}
 if (!defined('TEMPLATE_DIR')) {
     define('TEMPLATE_DIR', __DIR__ . '/../storage/templates/');
+}
+if (!defined('SURAT_KELUAR_DIR')) {
+    define('SURAT_KELUAR_DIR', __DIR__ . '/../storage/surat_keluar/');
+}
+if (!defined('SURAT_MASUK_DIR')) {
+    define('SURAT_MASUK_DIR', __DIR__ . '/../storage/surat_masuk/');
 }
 
 // ==========================================
@@ -813,7 +816,11 @@ function generateSuratDocx(string $templatePath, array $dataForm, array $items, 
 
     $namaFileHasil .= '.docx';
 
-    $outputPath = GENERATED_DIR . $namaFileHasil;
+    if (!is_dir(SURAT_KELUAR_DIR)) {
+        @mkdir(SURAT_KELUAR_DIR, 0775, true);
+    }
+
+    $outputPath = SURAT_KELUAR_DIR . $namaFileHasil;
 
     $processor->saveAs($outputPath);
 
@@ -884,7 +891,7 @@ function generateSuratDocx(string $templatePath, array $dataForm, array $items, 
         }
     }
 
-    return 'storage/generated/' . $namaFileHasil;
+    return 'storage/surat_keluar/' . $namaFileHasil;
 }
 
 // ==========================================
@@ -1267,36 +1274,51 @@ function convertDocxToPdf(string $docxFullPath): ?string
 }
 
 // ==========================================
-// UPLOAD FILE TEMPLATE MASTER (.docx / .pdf)
-// Catatan: fungsi ini juga dipakai untuk upload berkas Surat Masuk
-// (lihat aksi 'simpan_surat_masuk' di index.php), karena kebutuhannya
-// sama: terima .docx/.pdf, simpan dengan nama unik, dan kembalikan
-// path relatif "storage/templates/...". Untuk surat masuk, file yang
-// diupload memang bukan template isian, melainkan berkas surat fisik
-// hasil scan/kiriman -- tapi lokasi & validasi format cukup dipakai bersama.
+// HELPER GENERIK: upload file ke direktori storage tertentu
 // ==========================================
-function uploadTemplateFile(array $file): string
+function uploadFileKeStorage(array $file, string $direktoriTujuanAbsolut, string $prefixPathRelatif, array $allowedExt = ['docx', 'pdf']): string
 {
-    $allowedExt = ['docx', 'pdf'];
     $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
 
     if (!in_array($ext, $allowedExt, true)) {
-        throw new RuntimeException("Format file tidak didukung. Hanya .docx dan .pdf.");
+        $daftarExt = implode(', ', array_map(fn($e) => '.' . $e, $allowedExt));
+        throw new RuntimeException("Format file tidak didukung. Hanya {$daftarExt}.");
     }
 
     if ($file['error'] !== UPLOAD_ERR_OK) {
         throw new RuntimeException("Terjadi kesalahan saat upload file.");
     }
 
+    if (!is_dir($direktoriTujuanAbsolut)) {
+        @mkdir($direktoriTujuanAbsolut, 0775, true);
+    }
+
     $namaFile = 'tpl_' . uniqid() . '.' . $ext;
-    $tujuan = TEMPLATE_DIR . $namaFile;
+    $tujuan = $direktoriTujuanAbsolut . $namaFile;
 
     if (!move_uploaded_file($file['tmp_name'], $tujuan)) {
         throw new RuntimeException("Gagal menyimpan file ke server.");
     }
 
-    return 'storage/templates/' . $namaFile;
+    return $prefixPathRelatif . $namaFile;
 }
+
+// ==========================================
+// UPLOAD FILE TEMPLATE MASTER (.docx / .pdf) -> storage/templates/
+// ==========================================
+function uploadTemplateFile(array $file): string
+{
+    return uploadFileKeStorage($file, TEMPLATE_DIR, 'storage/templates/', ['docx', 'pdf']);
+}
+
+// ==========================================
+// UPLOAD LAMPIRAN SURAT MASUK -> storage/surat_masuk/
+// ==========================================
+function uploadSuratMasukFile(array $file): string
+{
+    return uploadFileKeStorage($file, SURAT_MASUK_DIR, 'storage/surat_masuk/', ['docx', 'doc', 'pdf']);
+}
+
 
 // ==========================================
 // SCAN PLACEHOLDER ${...} ATAU {...} DARI FILE .DOCX
@@ -1758,7 +1780,6 @@ function e(?string $value): string
 {
     return htmlspecialchars($value ?? '', ENT_QUOTES, 'UTF-8');
 }
-
 
 
 // ==========================================

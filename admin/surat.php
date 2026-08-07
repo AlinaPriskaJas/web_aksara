@@ -456,7 +456,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'catat_s
 
         $fileRelatif = null;
         if (!empty($_FILES['lampiran']['name'])) {
-            $fileRelatif = uploadTemplateFile($_FILES['lampiran']);
+            $fileRelatif = uploadSuratMasukFile($_FILES['lampiran']);
         }
 
         $stmtKodeManual = $pdo->prepare("SELECT id FROM kode_surat WHERE kode = ?");
@@ -2140,20 +2140,20 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
                                                         Sertakan PPH 23 (2%) di surat
                                                     </label>
                                                 <?php endif; ?>
-                                                <?php if ($ada_grand_total): ?>
-                                                    <label class="d-flex align-items-center gap-2 text-xs fw-semibold mb-0"
-                                                        style="cursor:pointer;">
-                                                        <input type="checkbox" id="checkbox-sertakan-grand-total"
-                                                            name="sertakan_grand_total" value="1" <?= $checkedSertakanGrandTotal ? 'checked' : '' ?>>
-                                                        Sertakan Grand Total di surat
-                                                    </label>
-                                                <?php endif; ?>
                                                 <?php if ($ada_total_bayar): ?> <!-- ⬅ BARU -->
                                                     <label class="d-flex align-items-center gap-2 text-xs fw-semibold mb-0"
                                                         style="cursor:pointer;">
                                                         <input type="checkbox" id="checkbox-sertakan-total-bayar"
                                                             name="sertakan_total_bayar" value="1" <?= $checkedSertakanTotalBayar ? 'checked' : '' ?>>
                                                         Sertakan Total Bayar di surat
+                                                    </label>
+                                                <?php endif; ?>
+                                                <?php if ($ada_grand_total): ?>
+                                                    <label class="d-flex align-items-center gap-2 text-xs fw-semibold mb-0"
+                                                        style="cursor:pointer;">
+                                                        <input type="checkbox" id="checkbox-sertakan-grand-total"
+                                                            name="sertakan_grand_total" value="1" <?= $checkedSertakanGrandTotal ? 'checked' : '' ?>>
+                                                        Sertakan Grand Total di surat
                                                     </label>
                                                 <?php endif; ?>
                                                 <?php if ($ada_sisa_pelunasan): ?>
