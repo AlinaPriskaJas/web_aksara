@@ -575,8 +575,8 @@ include "../includes/topbar.php";
                                             <?php endif; ?>
                                         </td>
                                         <td>
-                                            <?= htmlspecialchars($a['nama_pemohon'] ?? '-') ?>
-                                            <div class="fs-7 text-muted"><?= htmlspecialchars(ucfirst($a['role_pemohon'] ?? '-')) ?>
+                                            <strong><?= htmlspecialchars($a['nama_pemohon'] ?? '-') ?></strong>
+                                            <br><small class="text-secondary"><?= htmlspecialchars(ucfirst($a['role_pemohon'] ?? '-')) ?></small>
                                             </div>
                                         </td>
                                         <td class="fs-7"><?= ambil_detail_ref($conn, $a['jenis_pengajuan'], (int) $a['ref_id']) ?>
