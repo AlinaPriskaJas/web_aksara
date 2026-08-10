@@ -1,5 +1,5 @@
 <?php
-// ahlik3/edit_surat.php — Edit surat keluar yang sudah pernah dibuat.
+// ahli_k3/edit_surat.php — Edit surat keluar yang sudah pernah dibuat.
 // Memanfaatkan ulang proses generate surat yang sudah ada (generateSuratDocx dkk
 // di includes/functions.php) -- TIDAK membuat baris/nomor surat baru, hanya
 // meng-update record & meng-generate ulang berkas .docx-nya.
@@ -73,6 +73,16 @@ if ($surat['arah'] !== 'Keluar') {
 }
 
 $isiDataAsli = json_decode($surat['isi_data'] ?? '', true) ?: [];
+$revisiKeSaatIni = (int) ($surat['revisi_ke'] ?? 0);
+
+// idRootFamily = id baris ASLI dari "keluarga" surat ini (surat asli + semua
+// revisinya, nomor surat sama). Kalau baris ini sendiri sudah punya induk,
+// pakai induknya; kalau tidak, berarti baris ini sendiri adalah akarnya.
+$idRootFamily = (int) ($surat['induk_surat_id'] ?: $surat['id']);
+
+$stmtMaxRevisiPreview = $pdo->prepare("SELECT MAX(revisi_ke) FROM surat WHERE id = ? OR induk_surat_id = ?");
+$stmtMaxRevisiPreview->execute([$idRootFamily, $idRootFamily]);
+$revisiBerikutnyaPreview = (int) ($stmtMaxRevisiPreview->fetchColumn() ?: 0) + 1;
 
 // ==========================================
 // [SIMPAN PERUBAHAN] regenerate docx + update record surat (bukan insert baru)
@@ -102,24 +112,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
                 throw new RuntimeException("Template ini bukan file Word (.docx), tidak bisa digenerate otomatis lewat form ini.");
             }
 
+            $tandaiRevisiBaru = isset($_POST['tandai_revisi']);
             $adaNoSuratKhususPost = in_array('no_surat', scanAutoFieldsFromDocx(BASE_PATH . '/' . $kode['file_path']), true);
 
-            if ($adaNoSuratKhususPost) {
-                $noSuratManualPost = trim($_POST['no_surat_manual'] ?? '');
-                $nomorBaru = buatNoSuratKhusus($noSuratManualPost);
+            if ($tandaiRevisiBaru) {
+                // REVISI: nomor surat WAJIB tetap sama persis dengan surat asli/family-nya,
+                // apapun yang diketik user di field nomor -- supaya satu nomor surat tetap
+                // konsisten di semua baris (asli & revisi-revisinya).
+                $nomorBaru = $surat['nomor'];
             } else {
-                $nomorBaru = trim($_POST['nomor_surat'] ?? '');
-                if ($nomorBaru === '') {
-                    throw new RuntimeException("Nomor surat wajib diisi.");
+                if ($adaNoSuratKhususPost) {
+                    $noSuratManualPost = trim($_POST['no_surat_manual'] ?? '');
+                    $nomorBaru = buatNoSuratKhusus($noSuratManualPost);
+                } else {
+                    $nomorBaru = trim($_POST['nomor_surat'] ?? '');
+                    if ($nomorBaru === '') {
+                        throw new RuntimeException("Nomor surat wajib diisi.");
+                    }
+                }
+                if ($nomorBaru !== $surat['nomor']) {
+                    // Cek duplikat KECUALI ke sesama anggota family (baris asli/revisi lain
+                    // yang memang sengaja punya nomor sama).
+                    $cekNomor = $pdo->prepare("
+                        SELECT id FROM surat
+                        WHERE nomor = ? AND id != ? AND COALESCE(induk_surat_id, id) != ?
+                    ");
+                    $cekNomor->execute([$nomorBaru, $surat_id, $idRootFamily]);
+                    if ($cekNomor->fetch()) {
+                        throw new RuntimeException("Nomor surat \"$nomorBaru\" sudah dipakai surat lain.");
+                    }
                 }
             }
-            if ($nomorBaru !== $surat['nomor']) {
-                $cekNomor = $pdo->prepare("SELECT id FROM surat WHERE nomor = ? AND id != ?");
-                $cekNomor->execute([$nomorBaru, $surat_id]);
-                if ($cekNomor->fetch()) {
-                    throw new RuntimeException("Nomor surat \"$nomorBaru\" sudah dipakai surat lain.");
-                }
-            }
+
+            // Nomor revisi baris BARU ini dihitung dari revisi TERTINGGI di seluruh
+            // family (bukan cuma baris yang sedang dibuka) -- supaya tetap benar walau
+            // user membuka & merevisi dari baris revisi lama, bukan dari yang terbaru.
+            $stmtMaxRevisi = $pdo->prepare("SELECT MAX(revisi_ke) FROM surat WHERE id = ? OR induk_surat_id = ?");
+            $stmtMaxRevisi->execute([$idRootFamily, $idRootFamily]);
+            $revisiTertinggiFamily = (int) ($stmtMaxRevisi->fetchColumn() ?: 0);
+            $revisiKeDipakai = $tandaiRevisiBaru ? ($revisiTertinggiFamily + 1) : $revisiKeSaatIni;
 
             $dataForm = [];
             foreach ($_POST['dinamis'] ?? [] as $fieldName => $fieldValue) {
@@ -198,7 +229,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
                 $blocksData,
                 $kode['nama'],
                 $tujuanManual !== '' ? $tujuanManual : null,
-                $ringkasanDisertakan
+                $ringkasanDisertakan,
+                $revisiKeDipakai
             );
 
             $perihalDariWord = extractPerihalFromDocxText(BASE_PATH . '/' . $fileHasilBaru);
@@ -226,7 +258,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
             }
             $isiDataDisimpan['__ringkasan'] = $ringkasanDisertakan;
 
+            if ($tandaiRevisiBaru) {
+                // REVISI = baris BARU di tabel surat, nomor sama persis dengan asalnya.
+                // Baris asli/lama TIDAK disentuh sama sekali -- filenya tetap utuh &
+                // tetap bisa dibuka langsung dari daftar Surat Keluar.
+                $nomorAgendaRevisi = generateNomorAgenda($pdo, 'Keluar');
+
+                $insertRevisi = $pdo->prepare("INSERT INTO surat
+                    (induk_surat_id, nomor_agenda, nomor, kode_id, template_id, perihal, status, arah, tujuan, dibuat_oleh, tgl_dibuat, tanggal_diterima, file_hasil, revisi_ke, isi_data)
+                    VALUES (?, ?, ?, ?, ?, ?, 'Draft', 'Keluar', ?, ?, CURDATE(), NULL, ?, ?, ?)");
+                $insertRevisi->execute([
+                    $idRootFamily,
+                    $nomorAgendaRevisi,
+                    $nomorBaru,
+                    $kodeIdPost,
+                    $templateIdPost,
+                    $perihalSimpan,
+                    $tujuanSimpan,
+                    $current_user_id,
+                    $fileHasilBaru,
+                    $revisiKeDipakai,
+                    json_encode($isiDataDisimpan, JSON_UNESCAPED_UNICODE),
+                ]);
+
+                $_SESSION['flash'] = [
+                    'type' => 'success',
+                    'msg' => "Revisi ke-{$revisiKeDipakai} berhasil dibuat sebagai baris baru di daftar Surat Keluar (nomor tetap {$nomorBaru}). Surat asli tidak diubah/dihapus. Status revisi baru diset ulang ke Draft.",
+                ];
+                header('Location: surat.php?tab=surat_keluar');
+                exit;
+            }
+
+            // EDIT BIASA (BUKAN revisi): update baris yang sama seperti sebelumnya.
             $fileLama = $surat['file_hasil'];
+            if ($fileLama && $fileLama !== $fileHasilBaru && is_file(BASE_PATH . '/' . $fileLama)) {
+                @unlink(BASE_PATH . '/' . $fileLama);
+            }
 
             $upd = $pdo->prepare("UPDATE surat SET nomor = ?, kode_id = ?, template_id = ?, perihal = ?, tujuan = ?, file_hasil = ?, isi_data = ? WHERE id = ?");
             $upd->execute([
@@ -240,12 +307,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
                 $surat_id,
             ]);
 
-            // Kalau nama berkas berubah (karena nomor/perusahaan berubah), hapus berkas lama biar tidak numpuk file yatim.
-            if ($fileLama && $fileLama !== $fileHasilBaru && is_file(BASE_PATH . '/' . $fileLama)) {
-                @unlink(BASE_PATH . '/' . $fileLama);
-            }
-
-            // Muat ulang data surat supaya form & pratinjau menampilkan hasil terbaru.
             $stmtSurat->execute([$surat_id]);
             $surat = $stmtSurat->fetch();
             $isiDataAsli = json_decode($surat['isi_data'] ?? '', true) ?: [];
@@ -384,18 +445,6 @@ include "../includes/topbar.php";
 ?>
 
 <main class="main-content">
-    <div class="d-flex align-items-center justify-content-between mb-3">
-        <div>
-            <a href="surat.php?tab=surat_keluar" class="text-secondary text-xs">
-                <i class="bi bi-arrow-left"></i> Kembali ke Daftar Surat Keluar
-            </a>
-            <h4 class="fw-bold mt-2 mb-0">Edit Surat <span
-                    style="font-family:monospace;"><?= e($surat['nomor']) ?></span>
-            </h4>
-        </div>
-        <span class="<?= badgeStatus($surat['status'] ?? '') ?>"><?= e($surat['status']) ?></span>
-    </div>
-
     <?php if ($success_msg): ?>
         <div class="alert alert-success-custom align-items-center">
             <i class="bi bi-check-circle-fill fs-5"></i>
@@ -409,8 +458,27 @@ include "../includes/topbar.php";
         </div>
     <?php endif; ?>
 
-    <div class="buat-surat-grid">
+    <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-3">
+            <a href="surat.php?tab=surat_keluar" class="btn-icon-back" title="Kembali ke Daftar Surat Keluar"
+                aria-label="Kembali ke Daftar Surat Keluar">
+                <i class="bi bi-arrow-left"></i>
+            </a>
 
+            <h4 class="fw-bold mb-0 d-flex align-items-center flex-wrap gap-2">
+                <span>Edit Surat <span style="font-family:monospace;"><?= e($surat['nomor']) ?></span></span>
+                <?php if ($revisiKeSaatIni > 0): ?>
+                    <span class="badge-warning" style="font-size:0.7rem;">
+                        Revisi ke-<?= (int) $revisiKeSaatIni ?>
+                    </span>
+                <?php endif; ?>
+            </h4>
+        </div>
+
+        <span class="<?= badgeStatus($surat['status'] ?? '') ?>"><?= e($surat['status']) ?></span>
+    </div>
+
+    <div class="buat-surat-grid">
         <section class="card-box">
             <h5 class="fw-bold mb-3">Edit Surat</h5>
 
@@ -533,6 +601,51 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
                             </div>
                         <?php endif; ?>
                     </div>
+
+                    <div class="alert" id="box-tandai-revisi"
+                        style="background:#fff8e6; border:2px solid #f5d78e; border-radius:8px; padding:12px 16px; margin-bottom:1.25rem;">
+                        <label class="d-flex align-items-start gap-2 mb-0" style="cursor:pointer;">
+                            <input type="checkbox" name="tandai_revisi" id="checkbox-tandai-revisi" value="1"
+                                style="margin-top:3px; width:16px; height:16px;"
+                                <?= ($isPostEditSurat && isset($_POST['tandai_revisi'])) ? 'checked' : '' ?>>
+                            <span class="text-xs">
+                                <b style="font-size:0.85rem;">
+                                    <i class="bi bi-clock-history"></i> Tandai sebagai Revisi
+                                </b><br>
+                                Surat asli (nomor <b><?= e($surat['nomor']) ?></b>, berkas
+                                <code><?= e($surat['file_hasil'] ? basename($surat['file_hasil']) : '-') ?></code>)
+                                <b>tidak diubah/dihapus sama sekali</b>. Sistem akan membuat <b>baris baru</b> di daftar
+                                Surat Keluar dengan nomor yang <b>sama persis</b>, ditandai
+                                "<b id="label-revisi-preview">Revisi ke-<?= (int) $revisiBerikutnyaPreview ?></b>" di bawah
+                                nomornya,
+                                dan posisinya akan <b>berdekatan</b> dengan surat aslinya di tabel.
+                                Field nomor surat di atas akan dikunci ke nomor asli selama kotak ini dicentang.
+                                Biarkan <b>tidak dicentang</b> kalau ini cuma perbaikan kecil (typo dll), supaya baris &amp;
+                                berkas yang sama langsung diperbarui seperti biasa.
+                            </span>
+                        </label>
+                    </div>
+                    <script>
+                        (function () {
+                            var cb = document.getElementById('checkbox-tandai-revisi');
+                            var box = document.getElementById('box-tandai-revisi');
+                            var inputNomor = document.querySelector('input[name="nomor_surat"]');
+                            var inputNoSuratManual = document.querySelector('input[name="no_surat_manual"]');
+                            if (!cb || !box) return;
+
+                            function updateTampilan() {
+                                box.style.background = cb.checked ? '#fff3cd' : '#fff8e6';
+                                box.style.borderColor = cb.checked ? '#f0ad4e' : '#f5d78e';
+                                [inputNomor, inputNoSuratManual].forEach(function (el) {
+                                    if (!el) return;
+                                    el.readOnly = cb.checked;
+                                    el.classList.toggle('field-readonly', cb.checked);
+                                });
+                            }
+                            cb.addEventListener('change', updateTampilan);
+                            updateTampilan();
+                        })();
+                    </script>
 
                     <div class="row g-3 mb-3">
                         <div class="col-md-6">
@@ -809,18 +922,18 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
                                                 Sertakan PPH 23 (2%) di surat
                                             </label>
                                         <?php endif; ?>
-                                        <?php if ($ada_grand_total): ?>
-                                            <label class="d-flex align-items-center gap-2 text-xs fw-semibold mb-0" style="cursor:pointer;">
-                                                <input type="checkbox" id="checkbox-sertakan-grand-total" name="sertakan_grand_total"
-                                                    value="1" <?= $checkedSertakanGrandTotal ? 'checked' : '' ?>>
-                                                Sertakan Grand Total di surat
-                                            </label>
-                                        <?php endif; ?>
                                         <?php if ($ada_total_bayar): ?> <!-- ⬅ BARU -->
                                             <label class="d-flex align-items-center gap-2 text-xs fw-semibold mb-0" style="cursor:pointer;">
                                                 <input type="checkbox" id="checkbox-sertakan-total-bayar" name="sertakan_total_bayar"
                                                     value="1" <?= $checkedSertakanTotalBayar ? 'checked' : '' ?>>
                                                 Sertakan Total Bayar di surat
+                                            </label>
+                                        <?php endif; ?>
+                                        <?php if ($ada_grand_total): ?>
+                                            <label class="d-flex align-items-center gap-2 text-xs fw-semibold mb-0" style="cursor:pointer;">
+                                                <input type="checkbox" id="checkbox-sertakan-grand-total" name="sertakan_grand_total"
+                                                    value="1" <?= $checkedSertakanGrandTotal ? 'checked' : '' ?>>
+                                                Sertakan Grand Total di surat
                                             </label>
                                         <?php endif; ?>
                                         <?php if ($ada_sisa_pelunasan): ?>
@@ -993,6 +1106,7 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
                             })();
                         </script>
                     <?php endif; ?>
+
 
                     <div class="d-flex gap-2 mt-4">
                         <button type="submit" name="preview_only" value="1" class="btn-secondary-custom">

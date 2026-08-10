@@ -1128,18 +1128,23 @@ if ($errorGenerateSurat) {
     $flash = ['type' => 'error', 'msg' => $errorGenerateSurat];
 }
 
-// ==========================================
-// [DATA: TAB SURAT] Daftar surat (pencarian & pagination dilakukan di sisi
-// klien lewat handleTableSearch()/initTablePagination() seperti modul lain)
-// ==========================================
+// Satu FAMILY (surat asli + semua revisinya, nomor surat sama) selalu
+// ditampilkan BERDEKATAN: family diurutkan berdasarkan tanggal surat ASLI-nya
+// (jadi posisi family tidak "meloncat" ke atas cuma karena baru direvisi),
+// lalu di dalam satu family diurutkan dari revisi terkecil (asli) ke terbesar.
 $daftar_surat_semua = $pdo->query("
     SELECT s.*, k.kode AS kode_str, k.nama AS jenis_surat_kode,
-           u.nama_lengkap AS pembuat_nama, u.role AS pembuat_role
+           u.nama_lengkap AS pembuat_nama, u.role AS pembuat_role,
+           COALESCE(s.induk_surat_id, s.id) AS root_id,
+           COALESCE(rootS.tgl_dibuat, s.tgl_dibuat) AS root_tgl_dibuat,
+           (SELECT COUNT(*) FROM surat child WHERE child.induk_surat_id = s.id) AS jumlah_revisi_turunan
     FROM surat s
     JOIN kode_surat k ON s.kode_id = k.id
     LEFT JOIN Users u ON s.dibuat_oleh = u.id
-    ORDER BY s.tgl_dibuat DESC, s.id DESC
+    LEFT JOIN surat rootS ON rootS.id = COALESCE(s.induk_surat_id, s.id)
+    ORDER BY root_tgl_dibuat DESC, root_id DESC, s.revisi_ke DESC
 ")->fetchAll();
+
 $daftar_surat_keluar = array_values(array_filter($daftar_surat_semua, fn($s) => $s['arah'] === 'Keluar'));
 $daftar_surat_masuk = array_values(array_filter($daftar_surat_semua, fn($s) => $s['arah'] === 'Masuk'));
 
@@ -1435,8 +1440,12 @@ include "../includes/topbar.php";
                                 <tr>
                                     <td><?= $no++; ?></td>
                                     <td><strong><?= e($s['nomor']) ?></strong>
-                                        <?php if (!empty($s['nomor_agenda'])): ?>
+                                        <!-- <?php if (!empty($s['nomor_agenda'])): ?>
                                             <br><small class="text-secondary"><?= e($s['nomor_agenda']) ?></small>
+                                        <?php endif; ?> -->
+                                        <?php if (!empty($s['revisi_ke']) && (int) $s['revisi_ke'] > 0): ?>
+                                            <br><span class="badge-warning" style="font-size:0.65rem;">Revisi
+                                                ke-<?= (int) $s['revisi_ke'] ?></span>
                                         <?php endif; ?>
                                     </td>
                                     <td><?= e($s['jenis_surat_kode']) ?> <span
@@ -1596,9 +1605,9 @@ include "../includes/topbar.php";
                                 <tr>
                                     <td><?= $no++; ?></td>
                                     <td><strong><?= e($s['nomor']) ?></strong>
-                                        <?php if (!empty($s['nomor_agenda'])): ?>
+                                        <!-- <?php if (!empty($s['nomor_agenda'])): ?>
                                             <br><small class="text-secondary"><?= e($s['nomor_agenda']) ?></small>
-                                        <?php endif; ?>
+                                        <?php endif; ?> -->
                                     </td>
                                     <td><?= e($s['jenis_surat_kode']) ?></td>
                                     <td style="white-space:normal; word-break:break-word; max-width:280px;">

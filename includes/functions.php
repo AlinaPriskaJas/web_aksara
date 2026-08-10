@@ -369,7 +369,7 @@ const PREFIX_BLOK = 'blok_';
 //             harga), tapi tetap menghitung ${total_alat} = jumlah semua
 //             kolom kuantitas (qty-like) digabung, cth "13 Unit".
 // ==========================================
-function generateSuratDocx(string $templatePath, array $dataForm, array $items, string $nomorSurat, array $blocks = [], string $jenisSurat = '', ?string $tujuanManual = null, array $ringkasanDisertakan = []): string
+function generateSuratDocx(string $templatePath, array $dataForm, array $items, string $nomorSurat, array $blocks = [], string $jenisSurat = '', ?string $tujuanManual = null, array $ringkasanDisertakan = [], int $revisiKe = 0): string
 {
     if (!file_exists($templatePath)) {
         throw new RuntimeException("File template master tidak ditemukan: {$templatePath}");
@@ -806,8 +806,17 @@ function generateSuratDocx(string $templatePath, array $dataForm, array $items, 
     // Susun nama file
     $namaFileHasil = $nomor;
 
+    // Label revisi: kosong kalau revisi_ke = 0 (surat asli / belum pernah direvisi).
+    // revisi_ke = 1 -> "REVISI", revisi_ke = 2 -> "REVISI 2", dst.
+    // Nomor surat TIDAK berubah -- hanya nama file yang menandai ini revisi ke berapa.
+    $labelRevisi = $revisiKe > 0 ? ('REVISI' . ($revisiKe > 1 ? ' ' . $revisiKe : '')) : '';
+
+    if ($labelRevisi !== '') {
+        $namaFileHasil .= '. ' . $labelRevisi;
+    }
+
     if ($jenis !== '') {
-        $namaFileHasil .= '. ' . $jenis;
+        $namaFileHasil .= ($labelRevisi !== '' ? ' ' : '. ') . $jenis;
     }
 
     if ($perusahaan !== '') {

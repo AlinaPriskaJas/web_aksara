@@ -463,22 +463,23 @@ if ($errorGenerateSurat) {
     $flash = ['type' => 'error', 'msg' => $errorGenerateSurat];
 }
 
-// ==========================================
-// [DATA: TAB SURAT] Daftar surat (pencarian & pagination dilakukan di sisi
-// klien lewat handleTableSearch()/initTablePagination() seperti modul lain)
-// ==========================================
-// Semua surat KELUAR bisa dilihat (read-only) oleh siapa saja di sini,
-// tapi aksi (ajukan/revisi/kirim/arsipkan/hapus) hanya boleh dilakukan oleh
-// pembuat surat itu sendiri -- dicek lagi di kolom Tindakan/Aksi & di setiap
-// handler POST di atas.
+
+// Satu FAMILY (surat asli + semua revisinya, nomor surat sama) selalu
+// ditampilkan BERDEKATAN: family diurutkan berdasarkan tanggal surat ASLI-nya,
+// lalu di dalam satu family diurutkan dari revisi TERBARU ke yang lebih lama
+// (revisi terbaru di atas, surat asli paling bawah di kelompoknya).
 $daftar_surat = $pdo->query("
     SELECT s.*, k.kode AS kode_str, k.nama AS jenis_surat_kode,
-           u.nama_lengkap AS pembuat_nama, u.role AS pembuat_role
+           u.nama_lengkap AS pembuat_nama, u.role AS pembuat_role,
+           COALESCE(s.induk_surat_id, s.id) AS root_id,
+           COALESCE(rootS.tgl_dibuat, s.tgl_dibuat) AS root_tgl_dibuat,
+           (SELECT COUNT(*) FROM surat child WHERE child.induk_surat_id = s.id) AS jumlah_revisi_turunan
     FROM surat s
     JOIN kode_surat k ON s.kode_id = k.id
     LEFT JOIN Users u ON s.dibuat_oleh = u.id
+    LEFT JOIN surat rootS ON rootS.id = COALESCE(s.induk_surat_id, s.id)
     WHERE s.arah = 'Keluar'
-    ORDER BY s.tgl_dibuat DESC, s.id DESC
+    ORDER BY root_tgl_dibuat DESC, root_id DESC, s.revisi_ke DESC
 ")->fetchAll();
 
 // Surat MASUK hanya dicatat oleh Admin. Di sini sifatnya referensi bacaan
@@ -758,8 +759,12 @@ include "../includes/topbar.php";
                                 <tr>
                                     <td><?= $no++; ?></td>
                                     <td><strong><?= e($s['nomor']) ?></strong>
-                                        <?php if (!empty($s['nomor_agenda'])): ?>
+                                        <!-- <?php if (!empty($s['nomor_agenda'])): ?>
                                             <br><small class="text-secondary"><?= e($s['nomor_agenda']) ?></small>
+                                        <?php endif; ?> -->
+                                        <?php if (!empty($s['revisi_ke']) && (int) $s['revisi_ke'] > 0): ?>
+                                            <br><span class="badge-warning" style="font-size:0.65rem;">Revisi
+                                                ke-<?= (int) $s['revisi_ke'] ?></span>
                                         <?php endif; ?>
                                     </td>
                                     <td><?= e($s['jenis_surat_kode']) ?> <span
@@ -922,9 +927,9 @@ include "../includes/topbar.php";
                                 <tr>
                                     <td><?= $no++; ?></td>
                                     <td><strong><?= e($s['nomor']) ?></strong>
-                                        <?php if (!empty($s['nomor_agenda'])): ?>
+                                        <!-- <?php if (!empty($s['nomor_agenda'])): ?>
                                             <br><small class="text-secondary"><?= e($s['nomor_agenda']) ?></small>
-                                        <?php endif; ?>
+                                        <?php endif; ?> -->
                                     </td>
                                     <td><?= e($s['jenis_surat_kode']) ?></td>
                                     <td style="white-space:normal; word-break:break-word; max-width:280px;">
@@ -1380,20 +1385,20 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
                                                         Sertakan PPH 23 (2%) di surat
                                                     </label>
                                                 <?php endif; ?>
-                                                <?php if ($ada_grand_total): ?>
-                                                    <label class="d-flex align-items-center gap-2 text-xs fw-semibold mb-0"
-                                                        style="cursor:pointer;">
-                                                        <input type="checkbox" id="checkbox-sertakan-grand-total"
-                                                            name="sertakan_grand_total" value="1" <?= $checkedSertakanGrandTotal ? 'checked' : '' ?>>
-                                                        Sertakan Grand Total di surat
-                                                    </label>
-                                                <?php endif; ?>
                                                 <?php if ($ada_total_bayar): ?> <!-- ⬅ BARU -->
                                                     <label class="d-flex align-items-center gap-2 text-xs fw-semibold mb-0"
                                                         style="cursor:pointer;">
                                                         <input type="checkbox" id="checkbox-sertakan-total-bayar"
                                                             name="sertakan_total_bayar" value="1" <?= $checkedSertakanTotalBayar ? 'checked' : '' ?>>
                                                         Sertakan Total Bayar di surat
+                                                    </label>
+                                                <?php endif; ?>
+                                                <?php if ($ada_grand_total): ?>
+                                                    <label class="d-flex align-items-center gap-2 text-xs fw-semibold mb-0"
+                                                        style="cursor:pointer;">
+                                                        <input type="checkbox" id="checkbox-sertakan-grand-total"
+                                                            name="sertakan_grand_total" value="1" <?= $checkedSertakanGrandTotal ? 'checked' : '' ?>>
+                                                        Sertakan Grand Total di surat
                                                     </label>
                                                 <?php endif; ?>
                                                 <?php if ($ada_sisa_pelunasan): ?>
@@ -1602,19 +1607,19 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
 
                         <table class="preview-kv w-100 mb-3">
                             <?php if (!$ada_no_surat_khusus): ?>
-                                <tr>
-                                    <td>Nomor</td>
-                                    <td style="font-family:monospace;">
-                                        <?php
-                                        $noUrutPreviewTampil = trim($_POST['no_urut_manual'] ?? '');
-                                        if ($noUrutPreviewTampil !== '' && ctype_digit($noUrutPreviewTampil)) {
-                                            echo e(sprintf('%03d/%s/ARP/%s/%d', (int) $noUrutPreviewTampil, $kodeTerpilih['kode'], $bulanRomawi, $tahun));
-                                        } else {
-                                            echo e($preview_nomor);
-                                        }
-                                        ?>
-                                    </td>
-                                </tr>
+                            <tr>
+                                <td>Nomor</td>
+                                <td style="font-family:monospace;">
+                                    <?php
+                                    $noUrutPreviewTampil = trim($_POST['no_urut_manual'] ?? '');
+                                    if ($noUrutPreviewTampil !== '' && ctype_digit($noUrutPreviewTampil)) {
+                                        echo e(sprintf('%03d/%s/ARP/%s/%d', (int) $noUrutPreviewTampil, $kodeTerpilih['kode'], $bulanRomawi, $tahun));
+                                    } else {
+                                        echo e($preview_nomor);
+                                    }
+                                    ?>
+                                </td>
+                            </tr>
                             <?php endif; ?>
                             <?php if ($ada_no_surat_khusus): ?>
                                 <tr>

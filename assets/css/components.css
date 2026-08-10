@@ -652,6 +652,28 @@
     color: #fff;
 }
 
+/* Tombol icon "Kembali" — reuse pola .btn-icon-bukti, bentuk bulat */
+.btn-icon-back {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 1px solid var(--border-color, #e2e8f0);
+    background: var(--bg-glass, #f1f5f9);
+    color: var(--text-secondary, #64748b);
+    cursor: pointer;
+    text-decoration: none;
+    flex-shrink: 0;
+    transition: background var(--transition, 0.2s ease), color var(--transition, 0.2s ease);
+}
+
+.btn-icon-back:hover {
+    background: var(--primary, #3b82f6);
+    color: #fff;
+}
+
 /* Gambar bukti foto di dalam modal preview */
 .arp-bukti-foto-preview {
     max-width: 100%;
