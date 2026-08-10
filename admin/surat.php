@@ -1481,16 +1481,7 @@ include "../includes/topbar.php";
                                                     </button>
                                                 </form>
                                             <?php elseif ($s['status'] === 'Menunggu Persetujuan'): ?>
-                                                <button type="button" class="btn-primary-custom"
-                                                    style="height:28px; padding:0 10px; font-size:0.75rem;"
-                                                    onclick="openSuratApprovalModal(<?= (int) $s['id'] ?>, 'approve', '<?= e(addslashes($s['perihal'])) ?>')">
-                                                    <i class="bi bi-check-lg"></i> Setujui
-                                                </button>
-                                                <button type="button" class="btn-secondary-custom"
-                                                    style="height:28px; padding:0 10px; font-size:0.75rem; color: var(--danger); border-color: var(--danger);"
-                                                    onclick="openSuratApprovalModal(<?= (int) $s['id'] ?>, 'reject', '<?= e(addslashes($s['perihal'])) ?>')">
-                                                    <i class="bi bi-x-lg"></i> Tolak
-                                                </button>
+                                                <span class="text-secondary text-xs">Menunggu persetujuan</span>
                                             <?php elseif ($s['status'] === 'Ditolak'): ?>
                                                 <form method="POST" action="surat.php" class="d-inline"
                                                     onsubmit="return confirm('Kembalikan surat ini ke Draft untuk direvisi?');">
