@@ -186,9 +186,14 @@ include "../includes/topbar.php";
 ?>
 
 <main class="main-content">
-    <div class="mb-4">
-        <h4 class="fw-bold mb-1">Monitoring Operasional</h4>
-        <p class="text-secondary mb-0">Pantauan kondisi lapangan &amp; sumber daya perusahaan secara real time</p>
+    <div class="mb-4 d-flex justify-content-between align-items-start flex-wrap gap-3">
+        <div>
+            <h4 class="fw-bold mb-1">Monitoring Operasional</h4>
+            <p class="text-secondary mb-0">Pantauan kondisi lapangan &amp; sumber daya perusahaan secara real time</p>
+        </div>
+        <button type="button" class="btn-primary-custom" onclick="bukaModalRekapBulanan()">
+            <i class="bi bi-file-earmark-pdf me-1"></i> Rekap Bulanan
+        </button>
     </div>
 
     <div class="row g-4 mb-4">
@@ -563,6 +568,49 @@ include "../includes/topbar.php";
         initTablePagination('tabelSisaCuti', 10);
         initTablePagination('tabelRekapCutiLain', 10);
     });
+</script>
+
+<!-- Modal Rekap Bulanan -->
+<div class="modal fade modal-custom" id="modalRekapBulanan" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form action="rekap_bulanan.php" method="GET" target="_blank">
+                <div class="modal-header">
+                    <h5 class="modal-title">Rekap Bulanan</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-secondary fs-7 mb-3">
+                        Pilih jenis rekap dan bulan yang ingin dicetak. Rekap akan dibuka di tab baru
+                        dalam bentuk halaman siap cetak, lalu tinggal disimpan sebagai PDF lewat dialog cetak browser.
+                    </p>
+
+                    <label class="form-label fw-semibold fs-7 mb-2">Jenis Rekap</label>
+                    <select name="jenis" class="select-custom mb-3" style="width:100%;" required>
+                        <option value="absensi">Rekap Absensi</option>
+                        <option value="cuti">Rekap Cuti</option>
+                    </select>
+
+                    <label class="form-label fw-semibold fs-7 mb-2">Pilih Bulan</label>
+                    <input type="month" name="bulan" class="form-control-custom" style="width:100%;"
+                        value="<?= date('Y-m') ?>" required>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary-custom" data-bs-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn-primary-custom">
+                        <i class="bi bi-file-earmark-pdf"></i> Buka &amp; Cetak PDF
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    function bukaModalRekapBulanan() {
+        const modal = new bootstrap.Modal(document.getElementById('modalRekapBulanan'));
+        modal.show();
+    }
 </script>
 
 <?php
