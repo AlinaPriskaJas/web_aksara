@@ -473,7 +473,11 @@ $daftar_surat = $pdo->query("
            u.nama_lengkap AS pembuat_nama, u.role AS pembuat_role,
            COALESCE(s.induk_surat_id, s.id) AS root_id,
            COALESCE(rootS.tgl_dibuat, s.tgl_dibuat) AS root_tgl_dibuat,
-           (SELECT COUNT(*) FROM surat child WHERE child.induk_surat_id = s.id) AS jumlah_revisi_turunan
+           (SELECT COUNT(*) FROM surat child WHERE child.direvisi_dari_id = s.id) AS jumlah_revisi_turunan,
+           (SELECT MAX(child.revisi_ke) FROM surat child WHERE child.direvisi_dari_id = s.id) AS revisi_terbaru_ke,
+           (SELECT ap.catatan FROM Approval ap
+              WHERE ap.jenis_pengajuan = 'Surat' AND ap.ref_id = s.id AND ap.status = 'Ditolak'
+              ORDER BY ap.tgl_aksi DESC LIMIT 1) AS catatan_ditolak
     FROM surat s
     JOIN kode_surat k ON s.kode_id = k.id
     LEFT JOIN Users u ON s.dibuat_oleh = u.id
@@ -787,7 +791,14 @@ include "../includes/topbar.php";
                                     </td>
                                     <td><?= !empty($s['tgl_dibuat']) ? date('d-m-Y', strtotime($s['tgl_dibuat'])) : '-' ?>
                                     </td>
-                                    <td><span class="<?= badgeStatus($s['status'] ?? '') ?>"><?= e($s['status']) ?></span>
+                                    <td>
+                                        <span class="<?= badgeStatus($s['status'] ?? '') ?>"><?= e($s['status']) ?></span>
+                                        <?php if ($s['status'] === 'Ditolak' && !empty($s['catatan_ditolak'])): ?>
+                                            <br><small class="text-danger d-block mt-1"
+                                                style="font-size:0.7rem; max-width:220px; white-space:normal;">
+                                                <i class="bi bi-info-circle"></i> <?= e($s['catatan_ditolak']) ?>
+                                            </small>
+                                        <?php endif; ?>
                                     </td>
                                     <td style="text-align:center;">
                                         <?php if (!$suratMilikSaya): ?>
@@ -807,15 +818,18 @@ include "../includes/topbar.php";
                                                 <?php elseif ($s['status'] === 'Menunggu Persetujuan'): ?>
                                                     <span class="text-secondary text-xs">Menunggu persetujuan</span>
                                                 <?php elseif ($s['status'] === 'Ditolak'): ?>
-                                                    <form method="POST" action="surat.php" class="d-inline"
-                                                        onsubmit="return confirm('Kembalikan surat ini ke Draft untuk direvisi?');">
-                                                        <input type="hidden" name="aksi" value="revisi_surat">
-                                                        <input type="hidden" name="surat_id" value="<?= (int) $s['id'] ?>">
-                                                        <button type="submit" class="btn-secondary-custom"
-                                                            style="height:28px; padding:0 10px; font-size:0.75rem;">
+                                                    <?php if ((int) ($s['jumlah_revisi_turunan'] ?? 0) > 0): ?>
+                                                        <span class="text-secondary text-xs">
+                                                            <i class="bi bi-check2-circle"></i> Direvisi
+                                                            ke-<?= (int) $s['revisi_terbaru_ke'] ?>
+                                                        </span>
+                                                    <?php else: ?>
+                                                        <a href="edit_surat.php?id=<?= (int) $s['id'] ?>&auto_revisi=1"
+                                                            class="btn-secondary-custom"
+                                                            style="height:28px; padding:0 10px; font-size:0.75rem; display:inline-flex; align-items:center; gap:4px; text-decoration:none;">
                                                             <i class="bi bi-arrow-counterclockwise"></i> Revisi
-                                                        </button>
-                                                    </form>
+                                                        </a>
+                                                    <?php endif; ?>
                                                 <?php elseif ($s['status'] === 'Disetujui'): ?>
                                                     <form method="POST" action="surat.php" class="d-inline"
                                                         onsubmit="return confirm('Kirim surat ini ke client sekarang?');">
@@ -1607,19 +1621,19 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
 
                         <table class="preview-kv w-100 mb-3">
                             <?php if (!$ada_no_surat_khusus): ?>
-                            <tr>
-                                <td>Nomor</td>
-                                <td style="font-family:monospace;">
-                                    <?php
-                                    $noUrutPreviewTampil = trim($_POST['no_urut_manual'] ?? '');
-                                    if ($noUrutPreviewTampil !== '' && ctype_digit($noUrutPreviewTampil)) {
-                                        echo e(sprintf('%03d/%s/ARP/%s/%d', (int) $noUrutPreviewTampil, $kodeTerpilih['kode'], $bulanRomawi, $tahun));
-                                    } else {
-                                        echo e($preview_nomor);
-                                    }
-                                    ?>
-                                </td>
-                            </tr>
+                                <tr>
+                                    <td>Nomor</td>
+                                    <td style="font-family:monospace;">
+                                        <?php
+                                        $noUrutPreviewTampil = trim($_POST['no_urut_manual'] ?? '');
+                                        if ($noUrutPreviewTampil !== '' && ctype_digit($noUrutPreviewTampil)) {
+                                            echo e(sprintf('%03d/%s/ARP/%s/%d', (int) $noUrutPreviewTampil, $kodeTerpilih['kode'], $bulanRomawi, $tahun));
+                                        } else {
+                                            echo e($preview_nomor);
+                                        }
+                                        ?>
+                                    </td>
+                                </tr>
                             <?php endif; ?>
                             <?php if ($ada_no_surat_khusus): ?>
                                 <tr>

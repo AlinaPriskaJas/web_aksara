@@ -75,6 +75,28 @@ if ($surat['arah'] !== 'Keluar') {
 $isiDataAsli = json_decode($surat['isi_data'] ?? '', true) ?: [];
 $revisiKeSaatIni = (int) ($surat['revisi_ke'] ?? 0);
 
+// ganti jadi:
+$autoRevisi = (($_GET['auto_revisi'] ?? '') === '1') || (($_POST['auto_revisi'] ?? '') === '1');
+
+// Surat berstatus Ditolak WAJIB menghasilkan revisi baru saat disimpan,
+// baik dibuka lewat tombol "Revisi" di daftar maupun lewat ikon "Edit" biasa --
+// supaya surat yang sudah ditolak tidak pernah diam-diam ditimpa tanpa jejak revisi.
+$statusDitolakSaatDibuka = ($surat['status'] === 'Ditolak');
+
+
+// Ambil alasan penolakan terakhir (kalau surat ini memang berstatus Ditolak),
+// supaya bisa ditampilkan sebagai konteks saat user membuat revisi.
+$catatanDitolak = null;
+if ($surat['status'] === 'Ditolak') {
+    $stmtCatatan = $pdo->prepare("
+        SELECT catatan FROM Approval
+        WHERE jenis_pengajuan = 'Surat' AND ref_id = ? AND status = 'Ditolak'
+        ORDER BY tgl_aksi DESC LIMIT 1
+    ");
+    $stmtCatatan->execute([$surat_id]);
+    $catatanDitolak = $stmtCatatan->fetchColumn() ?: null;
+}
+
 // idRootFamily = id baris ASLI dari "keluarga" surat ini (surat asli + semua
 // revisinya, nomor surat sama). Kalau baris ini sendiri sudah punya induk,
 // pakai induknya; kalau tidak, berarti baris ini sendiri adalah akarnya.
@@ -112,7 +134,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
                 throw new RuntimeException("Template ini bukan file Word (.docx), tidak bisa digenerate otomatis lewat form ini.");
             }
 
-            $tandaiRevisiBaru = isset($_POST['tandai_revisi']);
+            $tandaiRevisiBaru = isset($_POST['tandai_revisi']) || $statusDitolakSaatDibuka;
             $adaNoSuratKhususPost = in_array('no_surat', scanAutoFieldsFromDocx(BASE_PATH . '/' . $kode['file_path']), true);
 
             if ($tandaiRevisiBaru) {
@@ -265,10 +287,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
                 $nomorAgendaRevisi = generateNomorAgenda($pdo, 'Keluar');
 
                 $insertRevisi = $pdo->prepare("INSERT INTO surat
-                    (induk_surat_id, nomor_agenda, nomor, kode_id, template_id, perihal, status, arah, tujuan, dibuat_oleh, tgl_dibuat, tanggal_diterima, file_hasil, revisi_ke, isi_data)
-                    VALUES (?, ?, ?, ?, ?, ?, 'Draft', 'Keluar', ?, ?, CURDATE(), NULL, ?, ?, ?)");
+                    (induk_surat_id, direvisi_dari_id, nomor_agenda, nomor, kode_id, template_id, perihal, status, arah, tujuan, dibuat_oleh, tgl_dibuat, tanggal_diterima, file_hasil, revisi_ke, isi_data)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 'Draft', 'Keluar', ?, ?, CURDATE(), NULL, ?, ?, ?)");
                 $insertRevisi->execute([
                     $idRootFamily,
+                    $surat_id,
                     $nomorAgendaRevisi,
                     $nomorBaru,
                     $kodeIdPost,
@@ -457,6 +480,16 @@ include "../includes/topbar.php";
             <div><?= e($error_msg) ?></div>
         </div>
     <?php endif; ?>
+    <?php if ($catatanDitolak): ?>
+        <div class="alert alert-danger-custom align-items-center">
+            <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+            <div>
+                <b>Surat ini ditolak Direksi.</b> Alasan: <?= e($catatanDitolak) ?>
+                <br><small class="text-secondary">Perbaiki isian di bawah, lalu centang "Tandai sebagai Revisi" sebelum
+                    menyimpan.</small>
+            </div>
+        </div>
+    <?php endif; ?>
 
     <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
         <div class="d-flex align-items-center gap-3">
@@ -604,24 +637,38 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
 
                     <div class="alert" id="box-tandai-revisi"
                         style="background:#fff8e6; border:2px solid #f5d78e; border-radius:8px; padding:12px 16px; margin-bottom:1.25rem;">
-                        <label class="d-flex align-items-start gap-2 mb-0" style="cursor:pointer;">
+                        <label class="d-flex align-items-start gap-2 mb-0"
+                            style="cursor:<?= $statusDitolakSaatDibuka ? 'default' : 'pointer' ?>;">
                             <input type="checkbox" name="tandai_revisi" id="checkbox-tandai-revisi" value="1"
-                                style="margin-top:3px; width:16px; height:16px;"
-                                <?= ($isPostEditSurat && isset($_POST['tandai_revisi'])) ? 'checked' : '' ?>>
+                                style="margin-top:3px; width:16px; height:16px;" <?= $statusDitolakSaatDibuka
+                                    ? 'checked disabled'
+                                    : (($isPostEditSurat ? isset($_POST['tandai_revisi']) : $autoRevisi) ? 'checked' : '') ?>>
+                            <?php if ($statusDitolakSaatDibuka): ?>
+                                <input type="hidden" name="tandai_revisi" value="1">
+                            <?php endif; ?>
+                            <input type="hidden" name="auto_revisi" value="<?= $autoRevisi ? '1' : '0' ?>">
                             <span class="text-xs">
                                 <b style="font-size:0.85rem;">
                                     <i class="bi bi-clock-history"></i> Tandai sebagai Revisi
+                                    <?php if ($statusDitolakSaatDibuka): ?>
+                                        <span class="text-secondary fw-normal">(wajib — surat ini berstatus Ditolak)</span>
+                                    <?php endif; ?>
                                 </b><br>
+                                <?php if ($statusDitolakSaatDibuka): ?>
+                                    Surat ini berstatus <b>Ditolak</b>, jadi menyimpan perubahan di sini <b>otomatis dibuat
+                                        sebagai revisi baru</b> — baik lewat tombol "Revisi" maupun ikon Edit biasa.
+                                <?php endif; ?>
                                 Surat asli (nomor <b><?= e($surat['nomor']) ?></b>, berkas
                                 <code><?= e($surat['file_hasil'] ? basename($surat['file_hasil']) : '-') ?></code>)
                                 <b>tidak diubah/dihapus sama sekali</b>. Sistem akan membuat <b>baris baru</b> di daftar
                                 Surat Keluar dengan nomor yang <b>sama persis</b>, ditandai
                                 "<b id="label-revisi-preview">Revisi ke-<?= (int) $revisiBerikutnyaPreview ?></b>" di bawah
-                                nomornya,
-                                dan posisinya akan <b>berdekatan</b> dengan surat aslinya di tabel.
+                                nomornya, dan posisinya akan <b>berdekatan</b> dengan surat aslinya di tabel.
                                 Field nomor surat di atas akan dikunci ke nomor asli selama kotak ini dicentang.
-                                Biarkan <b>tidak dicentang</b> kalau ini cuma perbaikan kecil (typo dll), supaya baris &amp;
-                                berkas yang sama langsung diperbarui seperti biasa.
+                                <?php if (!$statusDitolakSaatDibuka): ?>
+                                    Biarkan <b>tidak dicentang</b> kalau ini cuma perbaikan kecil (typo dll), supaya baris
+                                    &amp; berkas yang sama langsung diperbarui seperti biasa.
+                                <?php endif; ?>
                             </span>
                         </label>
                     </div>
