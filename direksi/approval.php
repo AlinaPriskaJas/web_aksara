@@ -335,6 +335,29 @@ function ambil_keterangan_ref(PDO $conn, string $jenis, int $ref_id): string
     return '-';
 }
 
+// Lampiran/berkas bukti pengajuan (dipakai kolom "Aksi" -> tombol File).
+// Kendaraan tidak punya berkas pendukung, jadi otomatis null.
+function ambil_file_ref(PDO $conn, string $jenis, int $ref_id): ?string
+{
+    try {
+        switch ($jenis) {
+            case 'Cuti':
+                $s = $conn->prepare("SELECT lampiran FROM Cuti WHERE id = :id");
+                $s->execute([':id' => $ref_id]);
+                $v = $s->fetchColumn();
+                return $v !== false && $v !== null && $v !== '' ? (string) $v : null;
+            case 'Reimburse':
+                $s = $conn->prepare("SELECT lampiran_bukti FROM Reimburse WHERE id = :id");
+                $s->execute([':id' => $ref_id]);
+                $v = $s->fetchColumn();
+                return $v !== false && $v !== null && $v !== '' ? (string) $v : null;
+        }
+    } catch (PDOException $e) {
+        return null;
+    }
+    return null;
+}
+
 // Untuk pengajuan jenis "Cuti", kolom Jenis di tabel Approval Center cuma
 // nunjukin "Cuti" secara umum (sesuai ENUM Approval.jenis_pengajuan) —
 // nggak kelihatan apakah itu Cuti Tahunan, Cuti Khusus, atau Cuti Sakit
@@ -414,7 +437,7 @@ $daftar_surat = [];
 if ($tab_aktif === 'surat') {
     try {
         $sqlSurat = "
-            SELECT s.*, u.nama_lengkap AS nama_pembuat, ks.nama AS nama_jenis_surat
+            SELECT s.*, u.nama_lengkap AS nama_pembuat, u.role AS role_pembuat, ks.nama AS nama_jenis_surat
             FROM surat s
             LEFT JOIN Users u ON s.dibuat_oleh = u.id
             LEFT JOIN kode_surat ks ON s.kode_id = ks.id
@@ -552,13 +575,14 @@ include "../includes/topbar.php";
                                 <th>Detail</th>
                                 <th>Keterangan</th>
                                 <th>Status</th>
+                                <th style="text-align:center;">Tindakan</th>
                                 <th style="text-align:center;">Aksi</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php if (empty($daftar_approval)): ?>
                                 <tr>
-                                    <td colspan="8" class="text-center text-muted py-4">Tidak ada data untuk status ini.</td>
+                                    <td colspan="9" class="text-center text-muted py-4">Tidak ada data untuk status ini.</td>
                                 </tr>
                             <?php else: ?>
                                 <?php foreach ($daftar_approval as $i => $a): ?>
@@ -603,6 +627,20 @@ include "../includes/topbar.php";
                                             <?php else: ?>
                                                 <span
                                                     class="text-muted fs-7"><?= !empty($a['catatan']) ? htmlspecialchars($a['catatan']) : '-' ?></span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td style="text-align:center;">
+                                            <?php $fileRefUmum = ambil_file_ref($conn, $a['jenis_pengajuan'], (int) $a['ref_id']); ?>
+                                            <?php if ($fileRefUmum):
+                                                $hrefFileUmum = str_starts_with($fileRefUmum, 'http') ? $fileRefUmum : '../' . $fileRefUmum;
+                                            ?>
+                                                <button type="button" class="btn-icon-bukti"
+                                                    onclick="openFileModal('<?= htmlspecialchars($hrefFileUmum, ENT_QUOTES) ?>', '<?= htmlspecialchars(addslashes($a['jenis_pengajuan']), ENT_QUOTES) ?>')"
+                                                    title="Lihat File">
+                                                    <i class="bi bi-paperclip"></i>
+                                                </button>
+                                            <?php else: ?>
+                                                <span class="text-muted fs-7">-</span>
                                             <?php endif; ?>
                                         </td>
                                     </tr>
@@ -684,13 +722,14 @@ include "../includes/topbar.php";
                             <th>Jenis Surat</th>
                             <th>Dibuat Oleh</th>
                             <th>Status</th>
+                            <th style="text-align: center;">Tindakan</th>
                             <th style="text-align: center;">Aksi</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php if (empty($daftar_surat)): ?>
                             <tr>
-                                <td colspan="8" class="text-center text-muted py-4">Tidak ada data surat untuk status ini.</td>
+                                <td colspan="9" class="text-center text-muted py-4">Tidak ada data surat untuk status ini.</td>
                             </tr>
                         <?php else: ?>
                             <?php foreach ($daftar_surat as $i => $s): ?>
@@ -704,7 +743,11 @@ include "../includes/topbar.php";
                                     <td class="align-middle">
                                         <?= htmlspecialchars($s['nama_jenis_surat'] ?? ($s['jenis_surat'] ?? '-')) ?>
                                     </td>
-                                    <td class="align-middle"><?= htmlspecialchars($s['nama_pembuat'] ?? '-') ?></td>
+                                    <td class="align-middle">
+                                        <strong><?= htmlspecialchars($s['nama_pembuat'] ?? '-') ?></strong>
+                                        <br><small
+                                            class="text-secondary"><?= htmlspecialchars(ucfirst($s['role_pembuat'] ?? '-')) ?></small>
+                                    </td>
                                     <td class="align-middle"><span
                                             class="<?= badge_class_status_surat($s['status']) ?>"><?= htmlspecialchars($s['status']) ?></span>
                                     </td>
@@ -723,14 +766,20 @@ include "../includes/topbar.php";
                                                 </button>
                                             </div>
                                         <?php else: ?>
-                                            <?php if (!empty($s['file_hasil'])): ?>
-                                                <a href="../<?= htmlspecialchars($s['file_hasil']) ?>" target="_blank"
-                                                    class="fs-7 fw-semibold text-decoration-none">
-                                                    <i class="bi bi-download"></i> Unduh
-                                                </a>
-                                            <?php else: ?>
-                                                <span class="text-muted fs-7">-</span>
-                                            <?php endif; ?>
+                                            <span class="text-muted fs-7">-</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td class="align-middle" style="text-align: center;">
+                                        <?php if (!empty($s['file_hasil'])):
+                                            $hrefFileSurat = str_starts_with($s['file_hasil'], 'http') ? $s['file_hasil'] : '../' . $s['file_hasil'];
+                                        ?>
+                                            <button type="button" class="btn-icon-bukti"
+                                                onclick="openFileModal('<?= htmlspecialchars($hrefFileSurat, ENT_QUOTES) ?>', '<?= htmlspecialchars(addslashes($s['nomor'] ?? $s['perihal'] ?? 'Surat'), ENT_QUOTES) ?>')"
+                                                title="Lihat File">
+                                                <i class="bi bi-paperclip"></i>
+                                            </button>
+                                        <?php else: ?>
+                                            <span class="text-muted fs-7">-</span>
                                         <?php endif; ?>
                                     </td>
                                 </tr>
@@ -805,6 +854,93 @@ include "../includes/topbar.php";
         </div>
     </div>
 </div>
+
+<!-- Modal Lihat File -->
+<div class="modal fade modal-custom" id="modalLihatFile" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalLihatFileTitle">Lampiran</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="modalLihatFileBody" style="min-height: 200px;">
+                <!-- diisi via JS -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-primary-custom" id="modalLihatFilePrint" style="display:none;">
+                    <i class="bi bi-printer"></i> Cetak
+                </button>
+                <a href="#" id="modalLihatFileDownload" target="_blank" class="btn-secondary-custom">
+                    <i class="bi bi-box-arrow-up-right"></i> Buka di Tab Baru
+                </a>
+                <button type="button" class="btn-secondary-custom" data-bs-dismiss="modal">Tutup</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function openFileModal(fileUrl, label) {
+        const body = document.getElementById('modalLihatFileBody');
+        const title = document.getElementById('modalLihatFileTitle');
+        const downloadBtn = document.getElementById('modalLihatFileDownload');
+        const printBtn = document.getElementById('modalLihatFilePrint');
+
+        title.textContent = 'Lampiran' + (label ? ' - ' + label : '');
+        downloadBtn.href = fileUrl;
+        printBtn.onclick = null;
+        printBtn.style.display = 'none';
+
+        const ext = fileUrl.split('?')[0].split('.').pop().toLowerCase();
+        const gambarExt = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
+
+        if (gambarExt.includes(ext)) {
+            body.innerHTML = `<img id="modalLihatFileImg" src="${fileUrl}" alt="Lampiran" style="max-width:100%; height:auto; display:block; margin:0 auto;">`;
+            printBtn.style.display = 'inline-flex';
+            printBtn.onclick = function () { cetakGambarLampiran(fileUrl); };
+        } else if (ext === 'pdf') {
+            body.innerHTML = `<iframe id="modalLihatFileFrame" src="${fileUrl}" style="width:100%; height:70vh; border:0;"></iframe>`;
+            printBtn.style.display = 'inline-flex';
+            printBtn.onclick = function () { cetakPdfLampiran(); };
+        } else {
+            body.innerHTML = `
+                <div class="text-center py-4">
+                    <i class="bi bi-file-earmark-text" style="font-size:2.5rem;"></i>
+                    <p class="text-secondary mt-2 mb-0">Pratinjau tidak tersedia untuk tipe berkas ini (mis. Word).<br>Silakan gunakan tombol "Buka di Tab Baru", lalu cetak dari aplikasi/pembacanya (mis. Word, Google Docs).</p>
+                </div>`;
+        }
+
+        const modal = new bootstrap.Modal(document.getElementById('modalLihatFile'));
+        modal.show();
+    }
+
+    function cetakPdfLampiran() {
+        const frame = document.getElementById('modalLihatFileFrame');
+        if (frame && frame.contentWindow) {
+            try {
+                frame.contentWindow.focus();
+                frame.contentWindow.print();
+            } catch (e) {
+                // Fallback kalau viewer PDF bawaan browser memblokir akses contentWindow
+                window.open(frame.src, '_blank');
+            }
+        }
+    }
+
+    function cetakGambarLampiran(fileUrl) {
+        const jendelaCetak = window.open('', '_blank', 'width=800,height=600');
+        if (!jendelaCetak) return;
+        jendelaCetak.document.write(`
+            <html>
+            <head><title>Cetak Lampiran</title></head>
+            <body style="margin:0; display:flex; justify-content:center; align-items:center;">
+                <img src="${fileUrl}" style="max-width:100%;" onload="window.print();">
+            </body>
+            </html>
+        `);
+        jendelaCetak.document.close();
+    }
+</script>
 
 <script>
     function openApprovalModal(approvalId, decision) {
