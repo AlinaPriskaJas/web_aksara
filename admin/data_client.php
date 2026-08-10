@@ -1,5 +1,5 @@
 <?php
-// admin/data_klien.php
+// admin/data_client.php
 session_start();
 require_once "../config/koneksi.php";
 
@@ -52,7 +52,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
         }
     }
     $_SESSION['data_klien_flash'] = $flash;
-    header("Location: data_klien.php");
+    header("Location: data_client.php");
     exit;
 }
 
@@ -124,7 +124,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
         }
     }
     $_SESSION['data_klien_flash'] = $flash;
-    header("Location: data_klien.php");
+    header("Location: data_client.php");
     exit;
 }
 
@@ -166,7 +166,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
         }
     }
     $_SESSION['data_klien_flash'] = $flash;
-    header("Location: data_klien.php?tab=" . $tab_asal);
+    header("Location: data_client.php?tab=" . $tab_asal);
     exit;
 }
 
@@ -200,7 +200,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
         }
     }
     $_SESSION['data_klien_flash'] = $flash;
-    header("Location: data_klien.php?tab=daftar");
+    header("Location: data_client.php?tab=daftar");
     exit;
 }
 
@@ -380,7 +380,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
     }
 
     $_SESSION['data_klien_flash'] = $flash;
-    header("Location: data_klien.php?tab=daftar");
+    header("Location: data_client.php?tab=daftar");
     exit;
 }
 
@@ -727,7 +727,7 @@ include "../includes/topbar.php";
                                                         ]) ?>, "daftar")'>
                                                         <i class="bi bi-pencil-square"></i> Edit
                                                     </button>
-                                                    <form method="POST" action="data_klien.php" class="d-inline"
+                                                    <form method="POST" action="data_client.php" class="d-inline"
                                                         onsubmit="return confirm('Hapus data perusahaan \'<?= htmlspecialchars(addslashes($k['nama_perusahaan'])) ?>\'? Tindakan ini tidak bisa dibatalkan.');">
                                                         <input type="hidden" name="aksi" value="hapus_klien">
                                                         <input type="hidden" name="klien_id" value="<?= (int) $k['id'] ?>">
@@ -773,7 +773,7 @@ include "../includes/topbar.php";
                 </ul>
 
                 <!-- Tab: Tautkan ke Data_Klien existing -->
-                <form action="data_klien.php" method="POST" id="formTautkanExisting">
+                <form action="data_client.php" method="POST" id="formTautkanExisting">
                     <input type="hidden" name="aksi" value="tautkan_existing">
                     <input type="hidden" name="user_id" id="tautkanExistingUserId" value="">
 
@@ -799,7 +799,7 @@ include "../includes/topbar.php";
                 </form>
 
                 <!-- Tab: Buat Data_Klien baru -->
-                <form action="data_klien.php" method="POST" id="formTautkanBaru" style="display:none;">
+                <form action="data_client.php" method="POST" id="formTautkanBaru" style="display:none;">
                     <input type="hidden" name="aksi" value="tautkan_baru">
                     <input type="hidden" name="user_id" id="tautkanBaruUserId" value="">
 
@@ -858,7 +858,7 @@ include "../includes/topbar.php";
 <div class="modal fade modal-custom" id="modalEditKlien" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
-            <form action="data_klien.php" method="POST">
+            <form action="data_client.php" method="POST">
                 <input type="hidden" name="aksi" value="edit_klien">
                 <input type="hidden" name="klien_id" id="editKlienId" value="">
                 <input type="hidden" name="tab_asal" id="editTabAsal" value="akun">
@@ -930,7 +930,7 @@ include "../includes/topbar.php";
 <div class="modal fade modal-custom" id="modalImportKlien" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
-            <form action="data_klien.php" method="POST" enctype="multipart/form-data">
+            <form action="data_client.php" method="POST" enctype="multipart/form-data">
                 <input type="hidden" name="aksi" value="import_klien">
                 <div class="modal-header">
                     <h5 class="modal-title"><i class="bi bi-file-earmark-arrow-up me-2"></i>Import Data Klien</h5>
