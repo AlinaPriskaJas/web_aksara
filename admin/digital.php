@@ -2,6 +2,7 @@
 // admin/digital.php
 session_start();
 require_once "../config/koneksi.php";
+require_once "../includes/drive_helper.php";
 
 // TODO: ganti dengan user_id dari sesi login sebenarnya (proses_login.php belum tersambung penuh).
 $admin_id = $_SESSION['user_id'] ?? 1;
@@ -39,14 +40,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
         } elseif ($_FILES['file_dokumen']['size'] > MAX_UKURAN_FILE) {
             $flash = ['type' => 'danger', 'message' => 'Ukuran file maksimal 10 MB.'];
         } else {
-            $upload_dir = "../uploads/dokumen_digital/";
-            if (!is_dir($upload_dir)) {
-                mkdir($upload_dir, 0755, true);
-            }
-            $filename = 'dok_' . slug_nama($nama_dokumen) . '_' . time() . '.' . $ext;
-
-            if (move_uploaded_file($_FILES['file_dokumen']['tmp_name'], $upload_dir . $filename)) {
-                $file_path = 'uploads/dokumen_digital/' . $filename;
+            $hasil_drive = arp_upload_ke_drive($_FILES['file_dokumen']['tmp_name'], $_FILES['file_dokumen']['name'], $_FILES['file_dokumen']['type'], 0, 'Dokumen_Digital');
+            if ($hasil_drive && !empty($hasil_drive['link'])) {
+                $file_path = $hasil_drive['link'];
                 try {
                     $stmt = $conn->prepare("
                         INSERT INTO Dokumen_Digital (nama_dokumen, kategori, file_path, modul_sumber, ref_id, klien_id, visibilitas, diupload_oleh)
@@ -62,11 +58,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
                     ]);
                     $flash = ['type' => 'success', 'message' => 'Dokumen berhasil diunggah ke Arsip Digital.'];
                 } catch (PDOException $e) {
-                    @unlink($upload_dir . $filename);
                     $flash = ['type' => 'danger', 'message' => 'Gagal menyimpan data dokumen: ' . $e->getMessage()];
                 }
             } else {
-                $flash = ['type' => 'danger', 'message' => 'Gagal mengunggah file, silakan coba lagi.'];
+                $flash = ['type' => 'danger', 'message' => 'Gagal mengunggah file ke Drive, silakan coba lagi.'];
             }
         }
     }
@@ -107,16 +102,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
                 if ($_FILES['file_dokumen']['size'] > MAX_UKURAN_FILE) {
                     throw new RuntimeException("Ukuran file maksimal 10 MB.");
                 }
-                $upload_dir = "../uploads/dokumen_digital/";
-                if (!is_dir($upload_dir)) {
-                    mkdir($upload_dir, 0755, true);
-                }
-                $filename = 'dok_' . slug_nama($nama_dokumen) . '_' . time() . '.' . $ext;
-                if (!move_uploaded_file($_FILES['file_dokumen']['tmp_name'], $upload_dir . $filename)) {
-                    throw new RuntimeException("Gagal mengunggah file baru.");
+                $hasil_drive = arp_upload_ke_drive($_FILES['file_dokumen']['tmp_name'], $_FILES['file_dokumen']['name'], $_FILES['file_dokumen']['type'], $id, 'Dokumen_Digital');
+                if (!$hasil_drive || empty($hasil_drive['link'])) {
+                    throw new RuntimeException("Gagal mengunggah file baru ke Drive.");
                 }
                 $file_lama = $file_path;
-                $file_path = 'uploads/dokumen_digital/' . $filename;
+                $file_path = $hasil_drive['link'];
             }
 
             $stmt = $conn->prepare("
@@ -134,7 +125,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
                 ':id'           => $id,
             ]);
 
-            if ($file_lama && file_exists("../" . $file_lama)) {
+            if ($file_lama && !str_starts_with($file_lama, 'http') && file_exists("../" . $file_lama)) {
                 @unlink("../" . $file_lama);
             }
 
@@ -161,7 +152,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
                 $stmt = $conn->prepare("DELETE FROM Dokumen_Digital WHERE id = :id");
                 $stmt->execute([':id' => $id]);
 
-                if (!empty($row['file_path']) && file_exists("../" . $row['file_path'])) {
+                if (!empty($row['file_path']) && !str_starts_with($row['file_path'], 'http') && file_exists("../" . $row['file_path'])) {
                     @unlink("../" . $row['file_path']);
                 }
                 $flash = ['type' => 'success', 'message' => 'Dokumen berhasil dihapus dari arsip.'];
@@ -415,6 +406,7 @@ include "../includes/topbar.php";
                         </tr>
                     <?php else: ?>
                         <?php foreach ($daftar_dokumen as $i => $d): ?>
+                            <?php $hrefDok = str_starts_with($d['file_path'], 'http') ? $d['file_path'] : '../' . $d['file_path']; ?>
                             <tr>
                                 <td><?= $i + 1 ?></td>
                                 <td>
@@ -447,7 +439,7 @@ include "../includes/topbar.php";
                                             ]) ?>)'>
                                             <i class="bi bi-eye-fill"></i>
                                         </button>
-                                        <a href="../<?= htmlspecialchars($d['file_path']) ?>" target="_blank" download class="btn-secondary-custom" style="height:32px; padding:0 10px; font-size:0.8rem;" title="Unduh">
+                                        <a href="<?= htmlspecialchars($hrefDok) ?>" target="_blank" download class="btn-secondary-custom" style="height:32px; padding:0 10px; font-size:0.8rem;" title="Unduh">
                                             <i class="bi bi-download"></i>
                                         </a>
                                         <button type="button" class="btn-secondary-custom" style="height:32px; padding:0 10px; font-size:0.8rem;" title="Edit"
@@ -705,20 +697,26 @@ function setupDropzone(dropzoneId, inputId, fileListId) {
 setupDropzone('uploadDropzoneNew', 'fileUploadNew', 'fileListNew');
 setupDropzone('uploadDropzoneEdit', 'fileUploadEdit', 'fileListEdit');
 
+function resolveFilePath(path) {
+    if (!path) return '#';
+    return path.startsWith('http') ? path : '../' + path;
+}
+
 function openEditModal(data) {
     document.getElementById('editId').value = data.id;
     document.getElementById('editNamaDokumen').value = data.nama_dokumen || '';
     document.getElementById('editKategori').value = data.kategori || '';
     document.getElementById('editVisibilitas').value = data.visibilitas || 'Internal';
     document.getElementById('editKlienId').value = data.klien_id || '';
-    document.getElementById('editFileLamaLink').href = data.file_path.startsWith('http') ? data.file_path : '../' + data.file_path;
+    document.getElementById('editFileLamaLink').href = resolveFilePath(data.file_path);
     document.getElementById('fileListEdit').innerHTML = '';
     new bootstrap.Modal(document.getElementById('modalEdit')).show();
 }
 
 function openPreviewModal(data) {
-    const filePath = data.file_path.startsWith('http') ? data.file_path : '../' + data.file_path;
+    const filePath = resolveFilePath(data.file_path);
     const ext = (data.file_path.split('.').pop() || '').toLowerCase();
+    const body = document.getElementById('previewBody');
     const imageExt = ['jpg', 'jpeg', 'png'];
 
     document.getElementById('previewNamaDokumen').textContent = data.nama_dokumen || 'Lihat Dokumen';

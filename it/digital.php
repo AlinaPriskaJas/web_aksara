@@ -1,6 +1,7 @@
 <?php
 // it/digital.php
 require_once "../config/koneksi.php";
+require_once "../includes/drive_helper.php";
 
 if (session_status() === PHP_SESSION_NONE)
     session_start();
@@ -37,17 +38,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!in_array($ext, $allowed)) {
                 $error_msg = "Format berkas tidak didukung.";
             } else {
-                $dir = "../uploads/dokumen/";
-                if (!is_dir($dir))
-                    mkdir($dir, 0777, true);
-                $fname = "dok_" . time() . "_" . uniqid() . "." . $ext;
-                if (move_uploaded_file($file['tmp_name'], $dir . $fname)) {
+                $hasil_drive = arp_upload_ke_drive($file['tmp_name'], $file['name'], $file['type'], 0, 'Dokumen_Digital');
+                if ($hasil_drive && !empty($hasil_drive['link'])) {
                     try {
                         $stmt = $conn->prepare("INSERT INTO Dokumen_Digital (nama_dokumen, kategori, file_path, modul_sumber, klien_id, visibilitas, diupload_oleh) VALUES (:nama, :kategori, :path, 'IT Repository', :klien_id, :visibilitas, :user_id)");
                         $stmt->execute([
                             'nama' => $nama_dokumen,
                             'kategori' => $kategori,
-                            'path' => "uploads/dokumen/" . $fname,
+                            'path' => $hasil_drive['link'],
                             'klien_id' => $klien_id,
                             'visibilitas' => $visibilitas,
                             'user_id' => $current_user_id
@@ -57,7 +55,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $error_msg = "Gagal menyimpan data dokumen: " . $e->getMessage();
                     }
                 } else {
-                    $error_msg = "Gagal mengunggah berkas.";
+                    $error_msg = "Gagal mengunggah berkas ke Drive.";
                 }
             }
         }
@@ -171,6 +169,7 @@ $klienList = $conn->query("SELECT id, nama_perusahaan FROM Data_Klien ORDER BY n
                         </tr>
                     <?php else: ?>
                         <?php foreach ($dokumen as $d): ?>
+                            <?php $hrefDok = str_starts_with($d['file_path'], 'http') ? $d['file_path'] : '../' . $d['file_path']; ?>
                             <tr>
                                 <td class="fw-bold"><?= htmlspecialchars($d['nama_dokumen']) ?></td>
                                 <td><span class="badge-warning"><?= htmlspecialchars($d['kategori']) ?></span></td>
@@ -188,7 +187,7 @@ $klienList = $conn->query("SELECT id, nama_perusahaan FROM Data_Klien ORDER BY n
                                 <td><?= htmlspecialchars($d['nama_lengkap']) ?></td>
                                 <td><?= date('d-m-Y', strtotime($d['created_at'])) ?></td>
                                 <td style="text-align:center;">
-                                    <a href="../<?= htmlspecialchars($d['file_path']) ?>" target="_blank"
+                                    <a href="<?= htmlspecialchars($hrefDok) ?>" target="_blank"
                                         class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;">
                                         <i class="bi bi-eye-fill"></i>
                                     </a>

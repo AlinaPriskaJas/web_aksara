@@ -1,6 +1,7 @@
 <?php
 // direksi/surat.php — Modul Persuratan untuk IT (tab Surat & Buat Surat saja)
 require_once "../config/koneksi.php";
+require_once "../includes/drive_helper.php";
 
 if (session_status() === PHP_SESSION_NONE)
     session_start();
@@ -197,6 +198,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
 
 
             $fileHasilRelatif = generateSuratDocx(BASE_PATH . '/' . $kode['file_path'], $dataForm, $items, $nomorSurat, $blocksData, $kode['nama'], null, $ringkasanDisertakan);
+
+            $hasilDriveKeluar = arp_upload_ke_drive(
+                BASE_PATH . '/' . $fileHasilRelatif,
+                basename($fileHasilRelatif),
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                0,
+                'Surat_Keluar'
+            );
+            $fileHasilTersimpan = ($hasilDriveKeluar && !empty($hasilDriveKeluar['link']))
+                ? $hasilDriveKeluar['link']
+                : $fileHasilRelatif;
+
             $perihalDariWord = extractPerihalFromDocxText(BASE_PATH . '/' . $fileHasilRelatif);
             $perihalSimpan = $perihalDariWord
                 ?? $dataForm['perihal']
