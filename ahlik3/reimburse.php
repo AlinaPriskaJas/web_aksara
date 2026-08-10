@@ -1,6 +1,7 @@
 <?php
 // ahlik3/remburse.php
 require_once "../config/koneksi.php";
+require_once "../includes/drive_helper.php";
 
 if (session_status() === PHP_SESSION_NONE)
     session_start();
@@ -35,15 +36,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!in_array(strtolower($ext), $allowed)) {
             $error_msg = "Format bukti tidak valid! Hanya diperbolehkan JPG, PNG, PDF.";
         } else {
-            $target_dir = "../uploads/reimburse/";
-            if (!is_dir($target_dir))
-                mkdir($target_dir, 0777, true);
+            $hasil_drive = arp_upload_ke_drive($file['tmp_name'], $file['name'], $file['type'], $current_user_id, 'Reimburse');
 
-            $filename = "reimb_" . time() . "_" . uniqid() . "." . $ext;
-            $db_path = "uploads/reimburse/" . $filename;
-            $target_file = $target_dir . $filename;
-
-            if (move_uploaded_file($file['tmp_name'], $target_file)) {
+            if ($hasil_drive && !empty($hasil_drive['link'])) {
                 try {
                     $stmt = $conn->prepare("INSERT INTO Reimburse (user_id, tanggal_pengeluaran, kategori, keterangan, nominal, lampiran_bukti, status) VALUES (:user_id, :tgl, :kategori, :ket, :nominal, :bukti, 'Menunggu')");
                     $stmt->execute([
@@ -52,14 +47,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'kategori' => $kategori,
                         'ket' => $keterangan,
                         'nominal' => $nominal,
-                        'bukti' => $db_path
+                        'bukti' => $hasil_drive['link']
                     ]);
                     $success_msg = "Pengajuan reimbursement berhasil dikirim dan menunggu persetujuan Admin!";
                 } catch (PDOException $e) {
                     $error_msg = "Gagal memproses penyimpanan database: " . $e->getMessage();
                 }
             } else {
-                $error_msg = "Gagal mengunggah berkas bukti pengeluaran.";
+                $error_msg = "Gagal mengunggah berkas bukti pengeluaran ke Drive.";
             }
         }
     }
@@ -156,7 +151,8 @@ try {
                                     <span class="<?= $badgeClass ?>"><?= htmlspecialchars($r['status']) ?></span>
                                 </td>
                                 <td>
-                                    <a href="../<?= htmlspecialchars($r['lampiran_bukti']) ?>" target="_blank"
+                                    <?php $hrefBukti = str_starts_with($r['lampiran_bukti'], 'http') ? $r['lampiran_bukti'] : '../' . $r['lampiran_bukti']; ?>
+                                    <a href="<?= htmlspecialchars($hrefBukti) ?>" target="_blank"
                                         class="btn btn-outline-secondary btn-sm py-1"
                                         style="font-size:0.75rem; border-radius: 8px;">
                                         Lihat Nota

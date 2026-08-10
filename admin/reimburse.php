@@ -1,6 +1,7 @@
 <?php
 // admin/reimburse.php
 require_once "../config/koneksi.php";
+require_once "../includes/drive_helper.php";
 
 if (session_status() === PHP_SESSION_NONE)
     session_start();
@@ -39,15 +40,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!in_array($ext, $allowed)) {
                 $error_msg = "Format bukti tidak valid! Hanya diperbolehkan JPG, PNG, PDF.";
             } else {
-                $target_dir = "../uploads/reimburse/";
-                if (!is_dir($target_dir))
-                    mkdir($target_dir, 0777, true);
+                $hasil_drive = arp_upload_ke_drive($file['tmp_name'], $file['name'], $file['type'], $current_user_id, 'Reimburse');
 
-                $filename = "reimb_" . time() . "_" . uniqid() . "." . $ext;
-                $db_path = "uploads/reimburse/" . $filename;
-                $target_file = $target_dir . $filename;
-
-                if (move_uploaded_file($file['tmp_name'], $target_file)) {
+                if ($hasil_drive && !empty($hasil_drive['link'])) {
+                    $db_path = $hasil_drive['link'];
                     try {
                         $stmt = $conn->prepare("INSERT INTO Reimburse (user_id, tanggal_pengeluaran, kategori, keterangan, nominal, lampiran_bukti, status) VALUES (:user_id, :tgl, :kategori, :ket, :nominal, :bukti, 'Menunggu')");
                         $stmt->execute([
@@ -281,7 +277,8 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
                                     <span class="<?= $badgeClass ?>"><?= htmlspecialchars($r['status']) ?></span>
                                 </td>
                                 <td>
-                                    <a href="../<?= htmlspecialchars($r['lampiran_bukti']) ?>" target="_blank"
+                                    <?php $hrefBukti = str_starts_with($r['lampiran_bukti'], 'http') ? $r['lampiran_bukti'] : '../' . $r['lampiran_bukti']; ?>
+                                    <a href="<?= htmlspecialchars($hrefBukti) ?>" target="_blank"
                                         class="btn btn-outline-secondary btn-sm py-1"
                                         style="font-size:0.75rem; border-radius: 8px;">
                                         Lihat Nota
@@ -346,7 +343,8 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
                                         <td><strong>Rp <?= number_format($r['nominal'], 0, ',', '.') ?></strong></td>
                                         <td>
                                             <?php if ($r['lampiran_bukti']): ?>
-                                                <a href="../<?= htmlspecialchars($r['lampiran_bukti']) ?>" target="_blank"
+                                                <?php $hrefBukti2 = str_starts_with($r['lampiran_bukti'], 'http') ? $r['lampiran_bukti'] : '../' . $r['lampiran_bukti']; ?>
+                                                <a href="<?= htmlspecialchars($hrefBukti2) ?>" target="_blank"
                                                     class="btn btn-outline-secondary btn-sm py-1"
                                                     style="font-size:0.75rem; border-radius: 8px;">
                                                     <i class="bi bi-file-earmark-image"></i> Lihat Bukti

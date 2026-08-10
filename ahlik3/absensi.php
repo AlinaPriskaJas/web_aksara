@@ -1,6 +1,7 @@
 <?php
-// ahli_k3/absensi.php
+// admin/absensi.php
 require_once "../config/koneksi.php";
+require_once "../includes/drive_helper.php";
 
 if (session_status() === PHP_SESSION_NONE)
     session_start();
@@ -20,7 +21,7 @@ $success_msg = "";
 $error_msg = "";
 $today = date('Y-m-d');
 
-// Cek apakah ahli_k3 sudah absen masuk hari ini
+// Cek apakah admin sudah absen masuk hari ini
 try {
     $stmtCheck = $conn->prepare("SELECT * FROM Absensi WHERE user_id = :user_id AND tanggal = :today LIMIT 1");
     $stmtCheck->execute(['user_id' => $current_user_id, 'today' => $today]);
@@ -48,14 +49,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!in_array($ext, ['jpg', 'jpeg', 'png', 'webp'])) {
                 $error_msg = "Format foto tidak didukung. Gunakan JPG, PNG, atau WEBP.";
             } else {
-                $dir = "../uploads/absensi/";
-                if (!is_dir($dir))
-                    mkdir($dir, 0777, true);
-                $fname = "absensi_" . $current_user_id . "_" . time() . "_" . uniqid() . "." . $ext;
-                if (move_uploaded_file($file['tmp_name'], $dir . $fname)) {
-                    $bukti_foto = "uploads/absensi/" . $fname;
+                $hasil_drive = arp_upload_ke_drive($file['tmp_name'], $file['name'], $file['type'], $current_user_id, 'Absensi');
+                if ($hasil_drive && !empty($hasil_drive['link'])) {
+                    $bukti_foto = $hasil_drive['link'];
                 } else {
-                    $error_msg = "Gagal mengunggah bukti foto.";
+                    $error_msg = "Gagal mengunggah bukti foto ke Drive.";
                 }
             }
         }
@@ -115,7 +113,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 }
 
-// Riwayat absensi pribadi ahli_k3
+// Riwayat absensi pribadi admin
 $my_logs = [];
 try {
     $stmtLogs = $conn->prepare("SELECT * FROM Absensi WHERE user_id = :user_id ORDER BY tanggal DESC LIMIT 15");
@@ -251,13 +249,15 @@ try {
                                             if (strpos($log['status_kehadiran'], 'Izin') !== false || strpos($log['status_kehadiran'], 'Sakit') !== false)
                                                 $badgeClass = "badge-danger";
                                             ?>
-                                            <span class="<?= $badgeClass ?>"><?= htmlspecialchars($log['status_kehadiran']) ?></span>
+                                            <span
+                                                class="<?= $badgeClass ?>"><?= htmlspecialchars($log['status_kehadiran']) ?></span>
                                         </td>
                                         <td><?= htmlspecialchars($log['lokasi_masuk']) ?></td>
                                         <td class="text-center">
                                             <?php if (!empty($log['bukti_foto']) && $log['bukti_foto'] !== 'input_manual_admin'): ?>
+                                                <?php $hrefBukti = str_starts_with($log['bukti_foto'], 'http') ? $log['bukti_foto'] : '../' . $log['bukti_foto']; ?>
                                                 <button type="button" class="btn-icon-bukti"
-                                                    onclick="tampilkanBuktiFoto('../<?= htmlspecialchars($log['bukti_foto']) ?>')"
+                                                    onclick="tampilkanBuktiFoto('<?= htmlspecialchars($hrefBukti) ?>')"
                                                     title="Lihat Bukti Foto">
                                                     <i class="bi bi-image"></i>
                                                 </button>
@@ -309,7 +309,8 @@ try {
                     <div class="upload-dropzone" id="dropzoneCheckin" onclick="bukaKameraSelfie()">
                         <div class="upload-dropzone-icon"><i class="bi bi-camera-fill"></i></div>
                         <div>
-                            <span class="fw-semibold" style="color: var(--primary);">Tekan untuk ambil foto selfie</span>
+                            <span class="fw-semibold" style="color: var(--primary);">Tekan untuk ambil foto
+                                selfie</span>
                         </div>
                         <span class="fs-7 text-muted">Kamera akan terbuka otomatis</span>
                         <div>
@@ -363,7 +364,8 @@ try {
             <div id="errorKameraCheckin" class="alert alert-danger-custom mt-3" style="display:none;">
                 <i class="bi bi-exclamation-triangle-fill"></i>
                 <div>Tidak dapat mengakses kamera. Pastikan izin kamera diaktifkan pada browser, atau gunakan tombol
-                    <strong>Pilih File</strong> sebagai alternatif.</div>
+                    <strong>Pilih File</strong> sebagai alternatif.
+                </div>
             </div>
             <button type="button" class="btn-primary-custom w-100 mt-3" onclick="jepretFotoCheckin()">
                 <i class="bi bi-camera-fill me-1"></i> Jepret Foto

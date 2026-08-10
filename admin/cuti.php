@@ -6,6 +6,7 @@
 date_default_timezone_set('Asia/Jakarta');
 
 require_once "../config/koneksi.php";
+require_once "../includes/drive_helper.php";
 
 if (session_status() === PHP_SESSION_NONE)
     session_start();
@@ -160,14 +161,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $file = $_FILES['lampiran'];
                 $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
                 if (in_array($ext, ['pdf', 'jpg', 'jpeg', 'png'])) {
-                    $dir = "../uploads/cuti/";
-                    if (!is_dir($dir))
-                        mkdir($dir, 0777, true);
-                    $fname = "cuti_" . $current_user_id . "_" . time() . "_" . uniqid() . "." . $ext;
-                    if (move_uploaded_file($file['tmp_name'], $dir . $fname)) {
-                        $lampiran = "uploads/cuti/" . $fname;
+                    $hasil_drive = arp_upload_ke_drive($file['tmp_name'], $file['name'], $file['type'], $current_user_id, 'Cuti');
+                    if ($hasil_drive && !empty($hasil_drive['link'])) {
+                        $lampiran = $hasil_drive['link'];
                     } else {
-                        $error_msg = "Gagal mengunggah dokumen pendukung.";
+                        $error_msg = "Gagal mengunggah dokumen pendukung ke Drive.";
                     }
                 } else {
                     $error_msg = "Format dokumen tidak didukung. Gunakan PDF, JPG, atau PNG.";
@@ -367,7 +365,8 @@ $dipakaiSakit  = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year
                                     <td class="col-keterangan"><?= htmlspecialchars($l['alasan'] ?: '-') ?></td>
                                     <td>
                                         <?php if (!empty($l['lampiran'])): ?>
-                                            <a href="../<?= htmlspecialchars($l['lampiran']) ?>" target="_blank" class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem; border-radius: 8px;">
+                                            <?php $hrefLampiran = str_starts_with($l['lampiran'], 'http') ? $l['lampiran'] : '../' . $l['lampiran']; ?>
+                                            <a href="<?= htmlspecialchars($hrefLampiran) ?>" target="_blank" class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem; border-radius: 8px;">
                                                 <i class="bi bi-file-earmark-arrow-down"></i> Lihat
                                             </a>
                                         <?php else: ?>
@@ -436,7 +435,8 @@ $dipakaiSakit  = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year
                                     <td class="col-keterangan"><?= htmlspecialchars($l['alasan'] ?: '-') ?></td>
                                     <td>
                                         <?php if (!empty($l['lampiran'])): ?>
-                                            <a href="../<?= htmlspecialchars($l['lampiran']) ?>" target="_blank" class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem; border-radius: 8px;">
+                                            <?php $hrefLampiran = str_starts_with($l['lampiran'], 'http') ? $l['lampiran'] : '../' . $l['lampiran']; ?>
+                                            <a href="<?= htmlspecialchars($hrefLampiran) ?>" target="_blank" class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem; border-radius: 8px;">
                                                 <i class="bi bi-file-earmark-arrow-down"></i> Lihat
                                             </a>
                                         <?php else: ?>
@@ -503,7 +503,8 @@ $dipakaiSakit  = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year
                                     <td class="col-keterangan"><?= htmlspecialchars($l['alasan'] ?: '-') ?></td>
                                     <td>
                                         <?php if (!empty($l['lampiran'])): ?>
-                                            <a href="../<?= htmlspecialchars($l['lampiran']) ?>" target="_blank" class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem; border-radius: 8px;">
+                                            <?php $hrefLampiran = str_starts_with($l['lampiran'], 'http') ? $l['lampiran'] : '../' . $l['lampiran']; ?>
+                                            <a href="<?= htmlspecialchars($hrefLampiran) ?>" target="_blank" class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem; border-radius: 8px;">
                                                 <i class="bi bi-file-earmark-arrow-down"></i> Lihat
                                             </a>
                                         <?php else: ?>
@@ -708,11 +709,3 @@ $dipakaiSakit  = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year
             outputEl.value = '0 Hari';
             return;
         }
-        const mulai = new Date(mulaiEl.value);
-        const selesai = new Date(selesaiEl.value);
-        const selisihHari = Math.round((selesai - mulai) / (1000 * 60 * 60 * 24)) + 1;
-        outputEl.value = (selisihHari > 0 ? selisihHari : 0) + ' Hari';
-    }
-</script>
-
-<?php include "../includes/footer.php"; ?>

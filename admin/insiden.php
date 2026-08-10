@@ -705,8 +705,9 @@ include "../includes/topbar.php";
         }
 
         const fotoWrap = document.getElementById('detailFotoWrap');
+        const fotoWrap = document.getElementById('detailFotoWrap');
         if (data.foto_bukti) {
-            document.getElementById('detailFotoLink').href = '../' + data.foto_bukti;
+            document.getElementById('detailFotoLink').href = data.foto_bukti.startsWith('http') ? data.foto_bukti : '../' + data.foto_bukti;
             fotoWrap.style.display = '';
         } else {
             fotoWrap.style.display = 'none';

@@ -1,11 +1,12 @@
 <?php
-// ahlik3/sertifikat_ahli.php
+// ahliK3 /sertifikat_ahli.php
 require_once "../config/koneksi.php";
+require_once "../includes/drive_helper.php";
 
 if (session_status() === PHP_SESSION_NONE)
     session_start();
 
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'ahli_k3') {
+    if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'ahli_k3') {
     header("Location: ../login.php");
     exit;
 }
@@ -40,8 +41,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt = $conn->prepare("DELETE FROM Sertifikat_Ahli WHERE id = :id AND user_id = :uid");
                 $stmt->execute(['id' => $delete_id, 'uid' => $current_user_id]);
 
-                // Hapus file fisik jika ada
-                if (!empty($existing['file_sertifikat'])) {
+                // Catatan: file_sertifikat sekarang berupa link Drive (bukan path lokal),
+                // jadi @unlink ini otomatis jadi no-op aman untuk file yang sudah dipindah ke Drive.
+                // File di Drive TIDAK ikut terhapus otomatis — hapus manual di Drive jika perlu.
+                if (!empty($existing['file_sertifikat']) && !str_starts_with($existing['file_sertifikat'], 'http')) {
                     $filePath = "../" . $existing['file_sertifikat'];
                     if (is_file($filePath)) {
                         @unlink($filePath);
@@ -90,14 +93,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $file = $_FILES['file_sertifikat'];
                 $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
                 if (in_array($ext, ['pdf', 'jpg', 'jpeg', 'png'])) {
-                    $dir = "../uploads/sertifikat/";
-                    if (!is_dir($dir))
-                        mkdir($dir, 0777, true);
-                    $fname = "cert_" . time() . "_" . uniqid() . "." . $ext;
-                    if (move_uploaded_file($file['tmp_name'], $dir . $fname)) {
-                        $file_sertifikat = "uploads/sertifikat/" . $fname;
+                    $hasil_drive = arp_upload_ke_drive($file['tmp_name'], $file['name'], $file['type'], $current_user_id, 'Sertifikat_Ahli');
+                    if ($hasil_drive && !empty($hasil_drive['link'])) {
+                        $file_sertifikat = $hasil_drive['link'];
                     } else {
-                        $error_msg = "Gagal mengunggah file sertifikat.";
+                        $error_msg = "Gagal mengunggah file sertifikat ke Drive.";
                     }
                 } else {
                     $error_msg = "Format file tidak didukung. Gunakan PDF, JPG, atau PNG.";
@@ -167,14 +167,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $file = $_FILES['file_sertifikat'];
                 $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
                 if (in_array($ext, ['pdf', 'jpg', 'jpeg', 'png'])) {
-                    $dir = "../uploads/sertifikat/";
-                    if (!is_dir($dir))
-                        mkdir($dir, 0777, true);
-                    $fname = "cert_" . time() . "_" . uniqid() . "." . $ext;
-                    if (move_uploaded_file($file['tmp_name'], $dir . $fname)) {
-                        $file_sertifikat = "uploads/sertifikat/" . $fname;
+                    $hasil_drive = arp_upload_ke_drive($file['tmp_name'], $file['name'], $file['type'], $current_user_id, 'Sertifikat_Ahli');
+                    if ($hasil_drive && !empty($hasil_drive['link'])) {
+                        $file_sertifikat = $hasil_drive['link'];
                     } else {
-                        $error_msg = "Gagal mengunggah file sertifikat.";
+                        $error_msg = "Gagal mengunggah file sertifikat ke Drive.";
                     }
                 } else {
                     $error_msg = "Format file tidak didukung. Gunakan PDF, JPG, atau PNG.";
@@ -311,7 +308,8 @@ try {
                                 </td>
                                 <td>
                                     <?php if (!empty($c['file_sertifikat'])): ?>
-                                        <a href="../<?= htmlspecialchars($c['file_sertifikat']) ?>" target="_blank"
+                                        <?php $hrefSert = str_starts_with($c['file_sertifikat'], 'http') ? $c['file_sertifikat'] : '../' . $c['file_sertifikat']; ?>
+                                        <a href="<?= htmlspecialchars($hrefSert) ?>" target="_blank"
                                             class="btn btn-outline-secondary btn-sm py-1"
                                             style="font-size:0.75rem; border-radius: 8px;">
                                             <i class="bi bi-file-earmark-pdf"></i> Lihat

@@ -2,6 +2,7 @@
 // client/pengajuan.php
 session_start();
 require_once "../config/koneksi.php";
+require_once "../includes/drive_helper.php";
 
 // TODO: ganti dengan user_id dari sesi login sebenarnya setelah proses_login.php terhubung penuh.
 $user_id = $_SESSION['user_id'] ?? 1;
@@ -203,14 +204,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan_pengajuan'])) 
             ':requester_id' => $user_id,
         ]);
 
-        // Upload dokumen pendukung (opsional) -> Dokumen_Digital
+        // Upload dokumen pendukung (opsional) -> langsung ke Google Drive (Apps Script),
+        // link Drive-nya yang disimpan ke Dokumen_Digital.file_path (bukan path lokal lagi).
+        // Kalau upload ke Drive gagal (mis. config belum diisi / Apps Script down),
+        // file itu dilewati saja; detail errornya tercatat di error_log server lewat
+        // arp_upload_ke_drive(), supaya proses simpan pengajuan tetap lanjut & tidak macet.
         if (isset($_FILES['dokumen_pendukung']) && !empty($_FILES['dokumen_pendukung']['name'][0])) {
             $allowed_ext = ['pdf', 'jpg', 'jpeg', 'png'];
             $max_size    = 10 * 1024 * 1024;
-            $upload_dir  = "../uploads/pengajuan/";
-            if (!is_dir($upload_dir)) {
-                mkdir($upload_dir, 0755, true);
-            }
 
             $jumlah_file = count($_FILES['dokumen_pendukung']['name']);
             for ($i = 0; $i < $jumlah_file; $i++) {
@@ -221,8 +222,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan_pengajuan'])) 
                 $ext = strtolower(pathinfo($nama_asli, PATHINFO_EXTENSION));
                 if (!in_array($ext, $allowed_ext)) continue;
 
-                $nama_file = 'pengajuan_' . $pengajuan_id . '_' . time() . '_' . $i . '.' . $ext;
-                if (move_uploaded_file($_FILES['dokumen_pendukung']['tmp_name'][$i], $upload_dir . $nama_file)) {
+                $tmp_path = $_FILES['dokumen_pendukung']['tmp_name'][$i];
+                $mime     = $_FILES['dokumen_pendukung']['type'][$i] ?: 'application/octet-stream';
+
+                $hasil_drive = arp_upload_ke_drive($tmp_path, $nama_asli, $mime, $pengajuan_id, 'Pengajuan_Pemeriksaan');
+
+                if ($hasil_drive && !empty($hasil_drive['link'])) {
                     $stmt = $conn->prepare("
                         INSERT INTO Dokumen_Digital
                             (nama_dokumen, kategori, file_path, modul_sumber, ref_id, klien_id, visibilitas, diupload_oleh)
@@ -231,7 +236,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan_pengajuan'])) 
                     ");
                     $stmt->execute([
                         ':nama_dokumen'  => $nama_asli,
-                        ':file_path'     => 'uploads/pengajuan/' . $nama_file,
+                        ':file_path'     => $hasil_drive['link'],
                         ':ref_id'        => $pengajuan_id,
                         ':klien_id'      => $klien_id,
                         ':diupload_oleh' => $user_id,
@@ -524,7 +529,9 @@ unset($_SESSION['flash_alert']);
 }
 </style>
 
-<script src="../assets/js/client.js"></script>
+<!-- Catatan: logic dropzone upload dokumen sudah digabung ke assets/js/script.js,
+     yang sudah otomatis di-load di semua halaman lewat includes/footer.php,
+     jadi tidak perlu <script> tambahan di sini. -->
 
 <!-- ===== Nama Unit / Alat K3: autocomplete independen per baris + baris tambahan dinamis ===== -->
 <script>

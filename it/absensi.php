@@ -1,6 +1,7 @@
 <?php
-// it/absensi.php
+// admin/absensi.php
 require_once "../config/koneksi.php";
+require_once "../includes/drive_helper.php";
 
 if (session_status() === PHP_SESSION_NONE)
     session_start();
@@ -10,7 +11,7 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'it') {
     exit;
 }
 
-$page_title = "Absensi IT Staff";
+$page_title = "Absensi Kehadiran";
 include "../includes/header.php";
 include "../includes/sidebar.php";
 include "../includes/topbar.php";
@@ -19,7 +20,6 @@ $current_user_id = $_SESSION['user_id'];
 $success_msg = "";
 $error_msg = "";
 $today = date('Y-m-d');
-$active_tab = 'tabPanelAbsenSaya';
 
 // Cek apakah admin sudah absen masuk hari ini
 try {
@@ -49,14 +49,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!in_array($ext, ['jpg', 'jpeg', 'png', 'webp'])) {
                 $error_msg = "Format foto tidak didukung. Gunakan JPG, PNG, atau WEBP.";
             } else {
-                $dir = "../uploads/absensi/";
-                if (!is_dir($dir))
-                    mkdir($dir, 0777, true);
-                $fname = "absensi_" . $current_user_id . "_" . time() . "_" . uniqid() . "." . $ext;
-                if (move_uploaded_file($file['tmp_name'], $dir . $fname)) {
-                    $bukti_foto = "uploads/absensi/" . $fname;
+                $hasil_drive = arp_upload_ke_drive($file['tmp_name'], $file['name'], $file['type'], $current_user_id, 'Absensi');
+                if ($hasil_drive && !empty($hasil_drive['link'])) {
+                    $bukti_foto = $hasil_drive['link'];
                 } else {
-                    $error_msg = "Gagal mengunggah bukti foto.";
+                    $error_msg = "Gagal mengunggah bukti foto ke Drive.";
                 }
             }
         }
@@ -114,53 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    // Absen Manual (input/koreksi absensi karyawan secara manual, tanpa foto)
-    if (isset($_POST['action']) && $_POST['action'] === 'absen_manual') {
-        $active_tab = 'tabPanelAbsenKaryawan';
-        $user_id_manual     = intval($_POST['user_id']);
-        $tanggal_manual     = $_POST['tanggal'];
-        $jam_masuk_manual   = $_POST['jam_masuk'];
-        $jam_pulang_manual  = !empty($_POST['jam_pulang']) ? $_POST['jam_pulang'] : null;
-        $lokasi_masuk_manual = trim($_POST['lokasi_masuk']);
-        $status_manual      = $_POST['status_kehadiran'];
-        $catatan_manual     = trim($_POST['catatan_aktivitas']);
-
-        if (empty($user_id_manual) || empty($tanggal_manual) || empty($jam_masuk_manual) || empty($lokasi_masuk_manual) || empty($status_manual)) {
-            $error_msg = "Karyawan, Tanggal, Jam Masuk, Lokasi, dan Status Kehadiran wajib diisi!";
-        } else {
-            try {
-                // user_id + tanggal bersifat unik, jadi kalau hari itu sudah ada -> update (koreksi), kalau belum -> insert baru
-                $stmt = $conn->prepare("
-                    INSERT INTO Absensi (user_id, tanggal, jam_masuk, jam_pulang, lokasi_masuk, status_kehadiran, bukti_foto, catatan_aktivitas)
-                    VALUES (:user_id, :tanggal, :jam_masuk, :jam_pulang, :lokasi_masuk, :status, 'input_manual_admin', :catatan)
-                    ON DUPLICATE KEY UPDATE
-                        jam_masuk = VALUES(jam_masuk),
-                        jam_pulang = VALUES(jam_pulang),
-                        lokasi_masuk = VALUES(lokasi_masuk),
-                        status_kehadiran = VALUES(status_kehadiran),
-                        catatan_aktivitas = VALUES(catatan_aktivitas)
-                ");
-                $stmt->execute([
-                    'user_id'      => $user_id_manual,
-                    'tanggal'      => $tanggal_manual,
-                    'jam_masuk'    => $jam_masuk_manual,
-                    'jam_pulang'   => $jam_pulang_manual,
-                    'lokasi_masuk' => $lokasi_masuk_manual,
-                    'status'       => $status_manual,
-                    'catatan'      => $catatan_manual
-                ]);
-                $success_msg = "Absensi manual berhasil disimpan!";
-                $stmtCheck->execute(['user_id' => $current_user_id, 'today' => $today]);
-                $attendance_today = $stmtCheck->fetch();
-            } catch (PDOException $e) {
-                $error_msg = "Gagal menyimpan absensi manual: " . $e->getMessage();
-            }
-        }
-    }
 }
-
-// Daftar karyawan untuk dropdown Absen Manual
-$daftar_karyawan = $conn->query("SELECT id, nama_lengkap, role FROM Users ORDER BY nama_lengkap ASC")->fetchAll();
 
 // Riwayat absensi pribadi admin
 $my_logs = [];
@@ -206,22 +157,9 @@ try {
         </div>
     <?php endif; ?>
 
-    <!-- Tab Navigation -->
-    <div class="arp-tab-group">
-        <div class="arp-tab-nav">
-            <button type="button" class="arp-tab-btn<?= $active_tab === 'tabPanelAbsenSaya' ? ' active' : '' ?>"
-                data-tab-target="tabPanelAbsenSaya" onclick="switchTab('tabPanelAbsenSaya', this)">
-                <i class="bi bi-person-check me-1"></i> Absen Pribadi
-            </button>
-            <button type="button" class="arp-tab-btn<?= $active_tab === 'tabPanelAbsenKaryawan' ? ' active' : '' ?>"
-                data-tab-target="tabPanelAbsenKaryawan" onclick="switchTab('tabPanelAbsenKaryawan', this)">
-                <i class="bi bi-people me-1"></i> Absensi Karyawan
-            </button>
-        </div>
-
     <div class="row g-4">
         <!-- Card 1: Riwayat Absensi Pribadi Saya -->
-        <div class="col-12 arp-tab-panel" id="tabPanelAbsenSaya" <?= $active_tab === 'tabPanelAbsenSaya' ? '' : 'style="display:none;"' ?>>
+        <div class="col-12">
             <div class="card-box">
                 <div class="table-toolbar">
                     <h5 class="table-toolbar-title fw-bold">Riwayat Absensi Pribadi Saya</h5>
@@ -311,13 +249,15 @@ try {
                                             if (strpos($log['status_kehadiran'], 'Izin') !== false || strpos($log['status_kehadiran'], 'Sakit') !== false)
                                                 $badgeClass = "badge-danger";
                                             ?>
-                                            <span class="<?= $badgeClass ?>"><?= htmlspecialchars($log['status_kehadiran']) ?></span>
+                                            <span
+                                                class="<?= $badgeClass ?>"><?= htmlspecialchars($log['status_kehadiran']) ?></span>
                                         </td>
                                         <td><?= htmlspecialchars($log['lokasi_masuk']) ?></td>
                                         <td class="text-center">
                                             <?php if (!empty($log['bukti_foto']) && $log['bukti_foto'] !== 'input_manual_admin'): ?>
+                                                <?php $hrefBukti = str_starts_with($log['bukti_foto'], 'http') ? $log['bukti_foto'] : '../' . $log['bukti_foto']; ?>
                                                 <button type="button" class="btn-icon-bukti"
-                                                    onclick="tampilkanBuktiFoto('../<?= htmlspecialchars($log['bukti_foto']) ?>')"
+                                                    onclick="tampilkanBuktiFoto('<?= htmlspecialchars($hrefBukti) ?>')"
                                                     title="Lihat Bukti Foto">
                                                     <i class="bi bi-image"></i>
                                                 </button>
@@ -334,90 +274,6 @@ try {
                 <div class="pagination-custom" id="pagination-tabelAbsensiSaya"></div>
             </div>
         </div>
-
-        <!-- Card 2: Rekap Absensi Karyawan -->
-        <div class="col-12 arp-tab-panel" id="tabPanelAbsenKaryawan" <?= $active_tab === 'tabPanelAbsenKaryawan' ? '' : 'style="display:none;"' ?>>
-            <div class="card-box">
-                <div class="table-toolbar">
-                    <h5 class="table-toolbar-title fw-bold">Rekap Absensi Karyawan</h5>
-                    <div class="table-toolbar-actions">
-                        <div class="search-box-container">
-                            <i class="bi bi-search"></i>
-                            <input type="text" class="search-box" placeholder="Cari absensi..."
-                                data-table-search="tabelAbsensi" onkeyup="handleTableSearch('tabelAbsensi')">
-                        </div>
-                        <button class="btn-primary-custom" onclick="openModal('modalAbsensiManual')">
-                            <i class="bi bi-pencil-square me-1"></i>Absen Manual
-                        </button>
-                    </div>
-                </div>
-
-                <div class="table-responsive-custom">
-                    <table class="table-custom" id="tabelAbsensi">
-                        <thead>
-                            <tr>
-                                <th>Tanggal</th>
-                                <th>Nama Karyawan</th>
-                                <th>Role</th>
-                                <th>Jam Masuk</th>
-                                <th>Jam Pulang</th>
-                                <th>Status Kehadiran</th>
-                                <th>Lokasi Masuk</th>
-                                <th>Catatan Aktivitas</th>
-                                <th class="text-center">Bukti</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php if (count($attendances) === 0): ?>
-                                <tr>
-                                    <td colspan="9" class="text-center py-4 text-muted">Belum ada data kehadiran hari ini.
-                                    </td>
-                                </tr>
-                            <?php else: ?>
-                                <?php foreach ($attendances as $att): ?>
-                                    <tr>
-                                        <td><strong><?= date('d-m-Y', strtotime($att['tanggal'])) ?></strong></td>
-                                        <td><?= htmlspecialchars($att['nama_lengkap']) ?></td>
-                                        <td><span class="badge bg-secondary"><?= htmlspecialchars($att['role']) ?></span></td>
-                                        <td><?= htmlspecialchars(substr($att['jam_masuk'], 0, 5)) ?></td>
-                                        <td><?= $att['jam_pulang'] ? htmlspecialchars(substr($att['jam_pulang'], 0, 5)) : '<span class="text-muted italic">Belum pulang</span>' ?>
-                                        </td>
-                                        <td>
-                                            <?php
-                                            $badgeClass = "badge-success";
-                                            if (strpos($att['status_kehadiran'], 'WFH') !== false)
-                                                $badgeClass = "badge-warning";
-                                            if (strpos($att['status_kehadiran'], 'Dinas') !== false)
-                                                $badgeClass = "badge-primary";
-                                            if (strpos($att['status_kehadiran'], 'Izin') !== false)
-                                                $badgeClass = "badge-danger";
-                                            ?>
-                                            <span
-                                                class="<?= $badgeClass ?>"><?= htmlspecialchars($att['status_kehadiran']) ?></span>
-                                        </td>
-                                        <td><?= htmlspecialchars($att['lokasi_masuk']) ?></td>
-                                        <td><?= htmlspecialchars($att['catatan_aktivitas'] ?: '-') ?></td>
-                                        <td class="text-center">
-                                            <?php if (!empty($att['bukti_foto']) && $att['bukti_foto'] !== 'input_manual_admin'): ?>
-                                                <button type="button" class="btn-icon-bukti"
-                                                    onclick="tampilkanBuktiFoto('../<?= htmlspecialchars($att['bukti_foto']) ?>')"
-                                                    title="Lihat Bukti Foto">
-                                                    <i class="bi bi-image"></i>
-                                                </button>
-                                            <?php else: ?>
-                                                <span class="text-muted">-</span>
-                                            <?php endif; ?>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            <?php endif; ?>
-                        </tbody>
-                    </table>
-                </div>
-                <div class="pagination-custom" id="pagination-tabelAbsensi"></div>
-            </div>
-        </div>
-    </div>
     </div>
 </main>
 
@@ -453,7 +309,8 @@ try {
                     <div class="upload-dropzone" id="dropzoneCheckin" onclick="bukaKameraSelfie()">
                         <div class="upload-dropzone-icon"><i class="bi bi-camera-fill"></i></div>
                         <div>
-                            <span class="fw-semibold" style="color: var(--primary);">Tekan untuk ambil foto selfie</span>
+                            <span class="fw-semibold" style="color: var(--primary);">Tekan untuk ambil foto
+                                selfie</span>
                         </div>
                         <span class="fs-7 text-muted">Kamera akan terbuka otomatis</span>
                         <div>
@@ -507,7 +364,8 @@ try {
             <div id="errorKameraCheckin" class="alert alert-danger-custom mt-3" style="display:none;">
                 <i class="bi bi-exclamation-triangle-fill"></i>
                 <div>Tidak dapat mengakses kamera. Pastikan izin kamera diaktifkan pada browser, atau gunakan tombol
-                    <strong>Pilih File</strong> sebagai alternatif.</div>
+                    <strong>Pilih File</strong> sebagai alternatif.
+                </div>
             </div>
             <button type="button" class="btn-primary-custom w-100 mt-3" onclick="jepretFotoCheckin()">
                 <i class="bi bi-camera-fill me-1"></i> Jepret Foto
@@ -548,79 +406,6 @@ try {
                         onclick="closeModal('modalAbsenCheckout')">Batal</button>
                     <button type="submit" class="btn-danger-custom flex-grow-1"><i
                             class="bi bi-box-arrow-left me-1"></i> Absen Pulang</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-<!-- ===== MODAL: Absen Manual ===== -->
-<div id="modalAbsensiManual" class="arp-modal-overlay" onclick="closeModalOutside(event, 'modalAbsensiManual')">
-    <div class="arp-modal-box" style="max-width:560px;">
-        <div class="arp-modal-header">
-            <div>
-                <h5 class="fw-bold mb-0">Absen Manual</h5>
-                <small class="text-muted">Input atau koreksi kehadiran Anda sendiri secara manual</small>
-            </div>
-            <button class="arp-modal-close" onclick="closeModal('modalAbsensiManual')">&times;</button>
-        </div>
-        <div class="arp-modal-body">
-            <form method="POST" action="absensi.php">
-                <input type="hidden" name="action" value="absen_manual">
-
-                <div class="mb-3">
-                    <label class="form-label fw-semibold mb-2">Tanggal *</label>
-                    <input type="date" name="tanggal" class="form-control-custom" value="<?= date('Y-m-d') ?>" required>
-                </div>
-
-                <div class="mb-3">
-                    <label class="form-label fw-semibold mb-2">Pilih Nama Karyawan *</label>
-                    <select name="user_id" class="select-custom" required>
-                        <option value="">-- Pilih Karyawan --</option>
-                        <?php foreach ($daftar_karyawan as $k): ?>
-                            <option value="<?= $k['id'] ?>"><?= htmlspecialchars($k['nama_lengkap']) ?> (<?= htmlspecialchars($k['role']) ?>)</option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <label class="form-label fw-semibold mb-2">Jam Masuk *</label>
-                        <input type="time" name="jam_masuk" class="form-control-custom" required>
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label fw-semibold mb-2">Jam Pulang</label>
-                        <input type="time" name="jam_pulang" class="form-control-custom">
-                    </div>
-                </div>
-
-                <div class="mb-3 mt-3">
-                    <label class="form-label fw-semibold mb-2">Status Kehadiran *</label>
-                    <select name="status_kehadiran" class="select-custom" required>
-                        <option value="">-- Pilih Status --</option>
-                        <option value="WFO - Kantor Utama">WFO - Kantor Utama</option>
-                        <option value="Dinas Luar / Survey Site">Dinas Luar / Survey Site</option>
-                        <option value="WFH / Kerja Remote">WFH / Kerja Remote</option>
-                        <option value="Sakit / Izin (Setengah Hari)">Sakit / Izin (Setengah Hari)</option>
-                    </select>
-                </div>
-
-                <div class="mb-3">
-                    <label class="form-label fw-semibold mb-2">Lokasi Masuk *</label>
-                    <input type="text" name="lokasi_masuk" class="form-control-custom"
-                        placeholder="Contoh: Kantor Pusat / Site Klien">
-                </div>
-
-                <div class="mb-4">
-                    <label class="form-label fw-semibold mb-2">Catatan Aktivitas</label>
-                    <textarea name="catatan_aktivitas" class="textarea-custom"
-                        placeholder="Contoh: Koreksi absen karena kendala aplikasi"></textarea>
-                </div>
-
-                <div class="d-flex gap-2 justify-content-end">
-                    <button type="button" class="btn-secondary-custom"
-                        onclick="closeModal('modalAbsensiManual')">Batal</button>
-                    <button type="submit" class="btn-primary-custom">Simpan Absensi</button>
                 </div>
             </form>
         </div>

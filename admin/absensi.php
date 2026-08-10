@@ -1,6 +1,7 @@
 <?php
 // admin/absensi.php
 require_once "../config/koneksi.php";
+require_once "../includes/drive_helper.php";
 
 if (session_status() === PHP_SESSION_NONE)
     session_start();
@@ -48,14 +49,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!in_array($ext, ['jpg', 'jpeg', 'png', 'webp'])) {
                 $error_msg = "Format foto tidak didukung. Gunakan JPG, PNG, atau WEBP.";
             } else {
-                $dir = "../uploads/absensi/";
-                if (!is_dir($dir))
-                    mkdir($dir, 0777, true);
-                $fname = "absensi_" . $current_user_id . "_" . time() . "_" . uniqid() . "." . $ext;
-                if (move_uploaded_file($file['tmp_name'], $dir . $fname)) {
-                    $bukti_foto = "uploads/absensi/" . $fname;
+                $hasil_drive = arp_upload_ke_drive($file['tmp_name'], $file['name'], $file['type'], $current_user_id, 'Absensi');
+                if ($hasil_drive && !empty($hasil_drive['link'])) {
+                    $bukti_foto = $hasil_drive['link'];
                 } else {
-                    $error_msg = "Gagal mengunggah bukti foto.";
+                    $error_msg = "Gagal mengunggah bukti foto ke Drive.";
                 }
             }
         }

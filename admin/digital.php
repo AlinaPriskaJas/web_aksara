@@ -711,15 +711,14 @@ function openEditModal(data) {
     document.getElementById('editKategori').value = data.kategori || '';
     document.getElementById('editVisibilitas').value = data.visibilitas || 'Internal';
     document.getElementById('editKlienId').value = data.klien_id || '';
-    document.getElementById('editFileLamaLink').href = '../' + data.file_path;
+    document.getElementById('editFileLamaLink').href = data.file_path.startsWith('http') ? data.file_path : '../' + data.file_path;
     document.getElementById('fileListEdit').innerHTML = '';
     new bootstrap.Modal(document.getElementById('modalEdit')).show();
 }
 
 function openPreviewModal(data) {
-    const filePath = '../' + data.file_path;
+    const filePath = data.file_path.startsWith('http') ? data.file_path : '../' + data.file_path;
     const ext = (data.file_path.split('.').pop() || '').toLowerCase();
-    const body = document.getElementById('previewBody');
     const imageExt = ['jpg', 'jpeg', 'png'];
 
     document.getElementById('previewNamaDokumen').textContent = data.nama_dokumen || 'Lihat Dokumen';
