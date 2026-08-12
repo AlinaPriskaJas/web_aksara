@@ -55,6 +55,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             'bukti' => $db_path
                         ]);
                         $success_msg = "Pengajuan reimbursement berhasil dikirim!";
+                        catatAudit(
+                            $conn,
+                            'Reimburse',
+                            'Tambah',
+                            "Mengajukan reimburse kategori {$kategori} sebesar Rp" . number_format($nominal, 0, ',', '.'),
+                            null,
+                            ['kategori' => $kategori, 'nominal' => $nominal, 'tanggal_pengeluaran' => $tanggal_pengeluaran]
+                        );
+                        $success_msg = "Pengajuan reimbursement berhasil dikirim!";
                     } catch (PDOException $e) {
                         $error_msg = "Gagal memproses penyimpanan database: " . $e->getMessage();
                     }
@@ -119,6 +128,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ]);
 
                 $conn->commit();
+                $success_msg = "Reimburse #" . $reimburse_id . " berhasil diperbarui ke status: " . $status;
+
+                $conn->commit();
+                catatAudit(
+                    $conn,
+                    'Reimburse',
+                    'Proses',
+                    "Mengubah status reimburse #{$reimburse_id} menjadi {$status}",
+                    ['status' => $reim['status']],
+                    ['status' => $status]
+                );
                 $success_msg = "Reimburse #" . $reimburse_id . " berhasil diperbarui ke status: " . $status;
             } else {
                 $conn->rollBack();

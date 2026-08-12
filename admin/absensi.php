@@ -73,6 +73,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'bukti' => $bukti_foto,
                     'catatan' => $catatan_aktivitas
                 ]);
+                catatAudit(
+                    $conn,
+                    'Absensi',
+                    'Check-in',
+                    "Absen masuk jam {$jam_masuk} status {$status_kehadiran} di {$lokasi_masuk}",
+                    null,
+                    ['status_kehadiran' => $status_kehadiran, 'lokasi_masuk' => $lokasi_masuk, 'jam_masuk' => $jam_masuk]
+                );
                 $success_msg = "Absen Masuk Berhasil! Selamat bekerja.";
                 $stmtCheck->execute(['user_id' => $current_user_id, 'today' => $today]);
                 $attendance_today = $stmtCheck->fetch();
@@ -102,6 +110,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'user_id' => $current_user_id,
                     'today' => $today
                 ]);
+                catatAudit(
+                    $conn,
+                    'Absensi',
+                    'Check-out',
+                    "Absen pulang jam {$jam_pulang} di {$lokasi_pulang}",
+                    null,
+                    ['jam_pulang' => $jam_pulang, 'lokasi_pulang' => $lokasi_pulang]
+                );
                 $success_msg = "Absen Pulang Berhasil! Sampai jumpa besok.";
                 $stmtCheck->execute(['user_id' => $current_user_id, 'today' => $today]);
                 $attendance_today = $stmtCheck->fetch();

@@ -106,6 +106,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['proses_approval'])) {
             ]);
 
             $conn->commit();
+            catatAudit(
+                $conn,
+                'Approval',
+                $decision === 'approve' ? 'Setujui' : 'Tolak',
+                "Memproses approval #{$approval_id} ({$row['jenis_pengajuan']} #{$row['ref_id']}) -> {$status_baru}",
+                ['status' => $row['status']],
+                ['status' => $status_baru, 'catatan' => $catatan],
+                $direksi_id
+            );
             $flash = [
                 'type' => 'success',
                 'message' => $decision === 'approve' ? 'Pengajuan berhasil disetujui.' : 'Pengajuan berhasil ditolak.',
@@ -197,6 +206,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['proses_approval_surat
             }
 
             $conn->commit();
+            catatAudit(
+                $conn,
+                'Approval',
+                $decision === 'approve' ? 'Setujui Surat' : 'Tolak Surat',
+                "Memproses surat #{$surat_id} (" . ($rowSurat['nomor'] ?? '') . ") -> {$status_surat_baru}",
+                ['status' => $rowSurat['status']],
+                ['status' => $status_surat_baru, 'catatan' => $catatan],
+                $direksi_id
+            );
             $flash = [
                 'type' => 'success',
                 'message' => $decision === 'approve' ? 'Surat berhasil disetujui.' : 'Surat berhasil ditolak.',

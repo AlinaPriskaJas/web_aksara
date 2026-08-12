@@ -175,6 +175,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             'foto' => $foto_bukti_str,
                             'pelapor' => $current_user_id,
                         ]);
+                        catatAudit(
+                            $conn,
+                            'Insiden',
+                            'Tambah',
+                            "Melaporkan insiden K3: {$judul_insiden} di {$lokasi}",
+                            null,
+                            ['kode_insiden' => $kode_insiden, 'kategori_insiden' => $kategori_insiden, 'tingkat_keparahan' => $tingkat_keparahan]
+                        );
                         $success_msg = "Laporan insiden K3 (" . htmlspecialchars($kode_insiden) . ") berhasil direkam dan diproses oleh tim HSE!";
                     }
                 } catch (PDOException $e) {

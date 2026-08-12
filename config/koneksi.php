@@ -78,4 +78,9 @@ try {
 } catch (PDOException $e) {
     // Biarkan saja kalau gagal; halaman yang memakainya sudah fallback ke kolom lama.
 }
+
+// ================== AUDIT LOG ==================
+// Menyediakan fungsi catatAudit() ke semua file yang sudah require_once file ini,
+// sekaligus membuat tabel Audit_Log otomatis kalau belum ada.
+require_once __DIR__ . '/../includes/audit_helper.php';
 ?>

@@ -35,6 +35,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'jenis' => $jenis,
                     'status' => $status_kendaraan
                 ]);
+                catatAudit(
+                    $conn,
+                    'Kendaraan',
+                    'Simpan',
+                    "Menyimpan data kendaraan {$plat_nomor} ({$nama_kendaraan})",
+                    null,
+                    ['nama_kendaraan' => $nama_kendaraan, 'plat_nomor' => $plat_nomor, 'status_kendaraan' => $status_kendaraan]
+                );
                 $success_msg = "Data kendaraan berhasil disimpan!";
             } catch (PDOException $e) {
                 $error_msg = "Gagal menyimpan kendaraan: " . $e->getMessage();
@@ -65,9 +73,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmtVeh = $conn->prepare("UPDATE Kendaraan SET status_kendaraan = 'Tersedia' WHERE id = :veh_id");
                 $stmtVeh->execute(['veh_id' => $vehId]);
             }
+            catatAudit(
+                $conn,
+                'Kendaraan',
+                'Ubah Status Peminjaman',
+                "Mengubah status peminjaman #{$loan_id} menjadi {$status}",
+                null,
+                ['status_peminjaman' => $status]
+            );
             $success_msg = "Persetujuan peminjaman diperbarui!";
         } catch (PDOException $e) {
             $error_msg = "Gagal memperbarui persetujuan: " . $e->getMessage();
+        }
+    } elseif (isset($_POST['action']) && $_POST['action'] === 'request_loan') {
+        $active_tab = 'tabPanelPeminjaman';
+        $kendaraan_id = $_POST['kendaraan_id'];
+        $tgl_mulai = $_POST['tgl_mulai'];
+        $tgl_selesai = $_POST['tgl_selesai'];
+        $tujuan_lokasi = $_POST['tujuan_lokasi'];
+        $keperluan_dinas = $_POST['keperluan_dinas'];
+
+        if (empty($kendaraan_id) || empty($tgl_mulai) || empty($tgl_selesai) || empty($tujuan_lokasi)) {
+            $error_msg = "Kendaraan, tanggal, dan tujuan lokasi wajib diisi!";
+        } else {
+            try {
+                $stmt = $conn->prepare("INSERT INTO Peminjaman_Kendaraan (kendaraan_id, user_id, tgl_mulai, tgl_selesai, tujuan_lokasi, keperluan_dinas, status_peminjaman) VALUES (:kendaraan_id, :user_id, :tgl_mulai, :tgl_selesai, :tujuan_lokasi, :keperluan_dinas, 'Diajukan')");
+                $stmt->execute([
+                    'kendaraan_id' => $kendaraan_id,
+                    'user_id' => $_SESSION['user_id'],
+                    'tgl_mulai' => $tgl_mulai,
+                    'tgl_selesai' => $tgl_selesai,
+                    'tujuan_lokasi' => $tujuan_lokasi,
+                    'keperluan_dinas' => $keperluan_dinas
+                ]);
+                catatAudit(
+                    $conn,
+                    'Kendaraan',
+                    'Ajukan Peminjaman',
+                    "Mengajukan peminjaman kendaraan ID {$kendaraan_id} untuk {$tujuan_lokasi}",
+                    null,
+                    ['kendaraan_id' => $kendaraan_id, 'tgl_mulai' => $tgl_mulai, 'tgl_selesai' => $tgl_selesai]
+                );
+                $success_msg = "Pengajuan peminjaman berhasil dikirim!";
+            } catch (PDOException $e) {
+                $error_msg = "Gagal mengajukan peminjaman: " . $e->getMessage();
+            }
         }
     }
 }

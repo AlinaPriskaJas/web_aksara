@@ -114,6 +114,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['proses_approval'])) {
 
             $conn->commit();
 
+            catatAudit(
+                $conn,
+                'Approval',
+                $decision === 'approve' ? 'Verifikasi' : 'Tolak',
+                "Memverifikasi pengajuan pemeriksaan #{$pengajuan_id} -> {$status_pengajuan}",
+                ['status' => $row['status']],
+                ['status' => $status_pengajuan, 'catatan' => $catatan],
+                $admin_id
+            );
+
+
             $flash = [
                 'type' => 'success',
                 'message' => $decision === 'approve'
@@ -245,6 +256,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_pengajuan'])) {
             }
 
             $conn->commit();
+            catatAudit(
+                $conn,
+                'Approval',
+                'Ubah',
+                "Mengubah data pengajuan pemeriksaan #{$pengajuan_id}",
+                null,
+                ['nama_perusahaan' => $nama_perusahaan, 'diajukan_oleh' => $diajukan_oleh, 'tanggal_diinginkan' => $tanggal_baru],
+                $admin_id
+            );
             $flash = ['type' => 'success', 'message' => 'Pengajuan berhasil diperbarui.'];
         } catch (Exception $e) {
             $conn->rollBack();
@@ -348,6 +368,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['proses_approval_surat
             }
 
             $conn->commit();
+
+            catatAudit(
+                $conn,
+                'Approval',
+                $decision === 'approve' ? 'Setujui Surat' : 'Tolak Surat',
+                "Memverifikasi surat #{$surat_id} (" . ($rowSurat['nomor'] ?? '') . ") -> {$status_surat_baru}",
+                ['status' => $rowSurat['status']],
+                ['status' => $status_surat_baru, 'catatan' => $catatan],
+                $admin_id
+            );
 
             $flash = [
                 'type' => 'success',

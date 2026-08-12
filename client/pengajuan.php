@@ -246,6 +246,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan_pengajuan'])) 
         }
 
         $conn->commit();
+        catatAudit(
+            $conn,
+            'Pengajuan Klien',
+            'Tambah',
+            "Mengajukan pemeriksaan {$jenis_pemeriksaan_utama} untuk {$nama_perusahaan_input} ({$jenis_objek_text})",
+            null,
+            [
+                'nama_perusahaan' => $nama_perusahaan_input,
+                'jenis_pemeriksaan' => $jenis_pemeriksaan_utama,
+                'jenis_objek' => $jenis_objek_text,
+                'jumlah_unit' => count($detail_units) + 1,
+                'tanggal_diinginkan' => $tanggal_diinginkan,
+            ],
+            $user_id
+        );
     } catch (PDOException $e) {
         $conn->rollBack();
         redirect_dengan_alert('danger', 'Gagal menyimpan pengajuan: ' . $e->getMessage());

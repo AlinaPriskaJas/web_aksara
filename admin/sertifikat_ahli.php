@@ -1,12 +1,12 @@
 <?php
-// admin/sertifikat_ahli.php
+// admin /sertifikat_ahli.php
 require_once "../config/koneksi.php";
 require_once "../includes/drive_helper.php";
 
 if (session_status() === PHP_SESSION_NONE)
     session_start();
 
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
+    if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
     header("Location: ../login.php");
     exit;
 }
@@ -50,7 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         @unlink($filePath);
                     }
                 }
-
+                catatAudit($conn, 'Sertifikat Ahli', 'Hapus', "Menghapus sertifikat #{$delete_id} ({$existing['nomor_sertifikat']})", $existing, null);
                 $success_msg = "Sertifikat berhasil dihapus!";
             } catch (PDOException $e) {
                 $error_msg = "Gagal menghapus sertifikat: " . $e->getMessage();
@@ -128,6 +128,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'id' => $edit_id,
                         'uid' => $current_user_id
                     ]);
+                    catatAudit(
+                        $conn,
+                        'Sertifikat Ahli',
+                        'Ubah',
+                        "Mengubah sertifikat #{$edit_id} ({$nomor_sertifikat})",
+                        ['nomor_sertifikat' => $existing['nomor_sertifikat'], 'tingkat_ahli' => $existing['tingkat_ahli']],
+                        ['nomor_sertifikat' => $nomor_sertifikat, 'tingkat_ahli' => $tingkat_ahli, 'bidang_keahlian' => $bidang_keahlian]
+                    );
                     $success_msg = "Sertifikat berhasil diperbarui!";
                 } catch (PDOException $e) {
                     if ($e->getCode() == 23000) {
@@ -198,6 +206,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'exp' => $tanggal_kedaluwarsa,
                         'file' => $file_sertifikat
                     ]);
+                    catatAudit(
+                        $conn,
+                        'Sertifikat Ahli',
+                        'Tambah',
+                        "Menambahkan sertifikat {$nomor_sertifikat} ({$tingkat_ahli})",
+                        null,
+                        ['nomor_sertifikat' => $nomor_sertifikat, 'tingkat_ahli' => $tingkat_ahli, 'bidang_keahlian' => $bidang_keahlian]
+                    );
                     $success_msg = "Sertifikat berhasil ditambahkan ke sistem!";
                 } catch (PDOException $e) {
                     if ($e->getCode() == 23000) {

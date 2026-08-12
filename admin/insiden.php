@@ -88,6 +88,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
                     ':foto_bukti'        => $foto_bukti,
                     ':dilaporkan_oleh'   => $admin_id,
                 ]);
+                catatAudit(
+                    $conn,
+                    'Insiden',
+                    'Tambah',
+                    "Mencatat insiden {$kode_insiden}: {$judul_insiden}",
+                    null,
+                    ['kode_insiden' => $kode_insiden, 'kategori_insiden' => $kategori_insiden, 'tingkat_keparahan' => $tingkat_keparahan],
+                    $admin_id
+                );
                 $flash = ['type' => 'success', 'message' => "Insiden berhasil dicatat dengan kode $kode_insiden."];
             } catch (PDOException $e) {
                 if ($foto_bukti && file_exists("../" . $foto_bukti)) {
@@ -112,6 +121,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
         $flash = ['type' => 'danger', 'message' => 'Data status tidak valid.'];
     } else {
         try {
+            $cekLama = $conn->prepare("SELECT status, catatan_tindak_lanjut FROM Laporan_Insiden WHERE id = :id");
+            $cekLama->execute([':id' => $id]);
+            $insidenLama = $cekLama->fetch();
+
             $stmt = $conn->prepare("
                 UPDATE Laporan_Insiden
                 SET status = :status, catatan_tindak_lanjut = :catatan, ditangani_oleh = :ditangani_oleh
@@ -123,6 +136,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
                 ':ditangani_oleh' => $admin_id,
                 ':id'             => $id,
             ]);
+            catatAudit(
+                $conn,
+                'Insiden',
+                'Ubah Status',
+                "Mengubah status insiden #{$id} menjadi {$status}",
+                $insidenLama ?: null,
+                ['status' => $status, 'catatan_tindak_lanjut' => $catatan_tindak_lanjut],
+                $admin_id
+            );
             $flash = ['type' => 'success', 'message' => 'Status insiden berhasil diperbarui.'];
         } catch (PDOException $e) {
             $flash = ['type' => 'danger', 'message' => 'Gagal memperbarui status: ' . $e->getMessage()];

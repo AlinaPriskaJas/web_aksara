@@ -252,6 +252,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'upload_
 
         $pdo->commit();
 
+        catatAudit(
+            $pdo,
+            'Surat',
+            'Upload Template',
+            "Mengupload template \"{$namaTemplateInput}\" (kode {$kodeInput})",
+            null,
+            ['nama' => $namaTemplateInput, 'kode' => $kodeInput, 'format' => $format]
+        );
+
+
         $ringkasanField = [];
         if (!empty($hasilScan['fields'])) {
             $ringkasanField[] = count($hasilScan['fields']) . ' field: ' . implode(', ', $hasilScan['fields']);
@@ -297,6 +307,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'hapus_t
         $pdo->prepare("DELETE FROM kode_template WHERE template_id = ?")->execute([$templateId]);
         $pdo->prepare("DELETE FROM template_master WHERE id = ?")->execute([$templateId]);
         $pdo->commit();
+
+        catatAudit($pdo, 'Surat', 'Hapus Template', "Menghapus template \"{$tpl['nama']}\" (#{$templateId})", $tpl, null);
 
         $fullPath = BASE_PATH . '/' . $tpl['file_path'];
         if (is_file($fullPath)) {
@@ -427,6 +439,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'edit_te
         }
 
         $pdo->commit();
+        catatAudit(
+            $pdo,
+            'Surat',
+            'Ubah Template',
+            "Mengubah template \"{$namaTemplateBaru}\" (#{$templateId})",
+            $tpl,
+            ['nama' => $namaTemplateBaru, 'deskripsi' => $deskripsiBaru]
+        );
         $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Template "' . $namaTemplateBaru . '" berhasil diperbarui.'];
     } catch (Throwable $e) {
         if ($pdo->inTransaction())
@@ -496,6 +516,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'catat_s
         ]);
 
         $pdo->commit();
+        catatAudit(
+            $pdo,
+            'Surat',
+            'Catat Surat Masuk',
+            "Mencatat surat masuk {$nomorSuratInput} dari {$pengirim} (agenda {$nomorAgenda})",
+            null,
+            ['nomor' => $nomorSuratInput, 'pengirim' => $pengirim, 'perihal' => $perihal, 'status' => $status]
+        );
         $_SESSION['flash'] = ['type' => 'success', 'msg' => "Surat masuk berhasil dicatat dengan nomor agenda {$nomorAgenda}."];
     } catch (Throwable $e) {
         if ($pdo->inTransaction())
@@ -673,6 +701,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
             ]);
 
             $pdo->commit();
+            catatAudit(
+                $pdo,
+                'Surat',
+                'Buat Surat',
+                "Membuat surat {$nomorSurat} (agenda {$nomorAgenda}) - {$perihalSimpan}",
+                null,
+                ['nomor' => $nomorSurat, 'perihal' => $perihalSimpan, 'tujuan' => $tujuanSimpan, 'status' => $statusInput]
+            );
             $_SESSION['flash'] = ['type' => 'success', 'msg' => "Surat berhasil dibuat dengan nomor {$nomorSurat} (agenda {$nomorAgenda})."];
             suratRedirect('surat_keluar');
         } catch (Throwable $e) {
@@ -725,6 +761,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'proses_
 
         $pdo->prepare("UPDATE surat SET status = 'Diproses', isi_data = ? WHERE id = ?")
             ->execute([json_encode($isiData, JSON_UNESCAPED_UNICODE), $suratId]);
+
+        catatAudit($pdo, 'Surat', 'Proses Surat Masuk', "Memproses surat masuk #{$suratId} (" . ($surat['nomor'] ?? '') . ")", ['status' => $surat['status']], ['status' => 'Diproses']);
 
         $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Surat masuk mulai diproses.'];
     } catch (Throwable $e) {
@@ -799,6 +837,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'disposi
         }
 
         $pdo->commit();
+        catatAudit(
+            $pdo,
+            'Surat',
+            'Disposisi',
+            "Mendisposisikan surat #{$suratId} ke {$userTujuan['nama_lengkap']}",
+            ['status' => $surat['status']],
+            ['status' => 'Didisposisi', 'tujuan' => $userTujuan['nama_lengkap'], 'instruksi' => $instruksi]
+        );
         $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Surat berhasil didisposisikan kepada ' . $userTujuan['nama_lengkap'] . '.'];
     } catch (Throwable $e) {
         if ($pdo->inTransaction())
@@ -835,6 +881,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'selesai
         $pdo->prepare("UPDATE surat SET status = 'Selesai', isi_data = ? WHERE id = ?")
             ->execute([json_encode($isiData, JSON_UNESCAPED_UNICODE), $suratId]);
 
+        catatAudit($pdo, 'Surat', 'Selesaikan', "Menyelesaikan surat masuk #{$suratId} (" . ($surat['nomor'] ?? '') . ")", ['status' => $surat['status']], ['status' => 'Selesai']);
+
         $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Surat masuk ditandai Selesai.'];
     } catch (Throwable $e) {
         $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Gagal menyelesaikan surat: ' . $e->getMessage()];
@@ -858,6 +906,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'arsipka
         }
 
         $pdo->prepare("UPDATE surat SET status = 'Diarsipkan' WHERE id = ?")->execute([$suratId]);
+        catatAudit($pdo, 'Surat', 'Arsipkan', "Mengarsipkan surat masuk #{$suratId}", ['status' => $statusSekarang], ['status' => 'Diarsipkan']);
         $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Surat masuk berhasil diarsipkan.'];
     } catch (Throwable $e) {
         $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Gagal mengarsipkan surat: ' . $e->getMessage()];
@@ -881,6 +930,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'batalka
         }
 
         $pdo->prepare("UPDATE surat SET status = 'Diproses' WHERE id = ?")->execute([$suratId]);
+        catatAudit($pdo, 'Surat', 'Batalkan Tindakan', "Mengembalikan surat #{$suratId} ke status Diproses", ['status' => $statusSekarang], ['status' => 'Diproses']);
         $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Tindakan dibatalkan, surat dikembalikan ke status Diproses.'];
     } catch (Throwable $e) {
         $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Gagal membatalkan tindakan: ' . $e->getMessage()];
@@ -927,6 +977,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'ajukan_
         ]);
 
         $pdo->commit();
+        catatAudit($pdo, 'Surat', 'Ajukan Approval', "Mengajukan surat #{$suratId} untuk persetujuan", ['status' => $surat['status']], ['status' => 'Menunggu Persetujuan']);
         $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Surat berhasil diajukan untuk persetujuan.'];
     } catch (Throwable $e) {
         if ($pdo->inTransaction())
@@ -991,6 +1042,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'proses_
         }
 
         $pdo->commit();
+        catatAudit(
+            $pdo,
+            'Surat',
+            $decision === 'approve' ? 'Setujui' : 'Tolak',
+            "Memproses persetujuan surat #{$suratId} -> {$statusBaru}",
+            ['status' => $surat['status']],
+            ['status' => $statusBaru, 'catatan' => $catatan]
+        );
         $_SESSION['flash'] = [
             'type' => 'success',
             'msg' => $decision === 'approve' ? 'Surat berhasil disetujui.' : 'Surat berhasil ditolak.',
@@ -1016,6 +1075,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'revisi_
         }
 
         $pdo->prepare("UPDATE surat SET status = 'Draft' WHERE id = ?")->execute([$suratId]);
+        catatAudit($pdo, 'Surat', 'Revisi', "Mengembalikan surat #{$suratId} ke Draft untuk direvisi", ['status' => $statusSekarang], ['status' => 'Draft']);
         $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Surat dikembalikan ke Draft untuk direvisi.'];
     } catch (Throwable $e) {
         $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Gagal merevisi surat: ' . $e->getMessage()];
@@ -1085,6 +1145,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'kirim_s
 
         $pdo->commit();
 
+        catatAudit($pdo, 'Surat', 'Kirim', "Mengirim surat #{$suratId} (" . ($surat['nomor'] ?? '') . ") ke tujuan " . ($surat['tujuan'] ?? '-'), ['status' => $surat['status']], ['status' => 'Terkirim']);
+
         $_SESSION['flash'] = [
             'type' => 'success',
             'msg' => $klienTerkirim && !empty($klienTerkirim['user_id'])
@@ -1112,6 +1174,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'arsipka
         }
 
         $pdo->prepare("UPDATE surat SET status = 'Diarsipkan' WHERE id = ?")->execute([$suratId]);
+        catatAudit($pdo, 'Surat', 'Arsipkan', "Mengarsipkan surat keluar #{$suratId}", ['status' => $statusSekarang], ['status' => 'Diarsipkan']);
         $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Surat berhasil diarsipkan.'];
     } catch (Throwable $e) {
         $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Gagal mengarsipkan surat: ' . $e->getMessage()];
@@ -1135,6 +1198,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'hapus_s
         $tabTujuanHapus = ($s['arah'] === 'Masuk') ? 'surat_masuk' : 'surat_keluar';
 
         $pdo->prepare("DELETE FROM surat WHERE id = ?")->execute([$suratId]);
+
+        catatAudit($pdo, 'Surat', 'Hapus', "Menghapus surat #{$suratId} (" . ($s['nomor'] ?? '') . ")", $s, null);
 
         if (!empty($s['file_hasil']) && is_file(BASE_PATH . '/' . $s['file_hasil'])) {
             @unlink(BASE_PATH . '/' . $s['file_hasil']);
@@ -1464,6 +1529,7 @@ include "../includes/topbar.php";
                             <?php endif; ?>
                             <?php $no = 1; ?>
                             <?php foreach ($daftar_surat_keluar as $s): ?>
+                                <?php $suratMilikSaya = ((int) $s['dibuat_oleh'] === (int) $current_user_id); ?>
                                 <tr>
                                     <td><?= $no++; ?></td>
                                     <td><strong><?= e($s['nomor']) ?></strong>
@@ -1484,7 +1550,9 @@ include "../includes/topbar.php";
                                         <?= e($s['tujuan']) ?>
                                     </td>
                                     <td>
-                                        <?php if (!empty($s['pembuat_nama'])): ?>
+                                        <?php if ($suratMilikSaya): ?>
+                                            <span class="badge-success">Saya</span>
+                                        <?php elseif (!empty($s['pembuat_nama'])): ?>
                                             <strong><?= e($s['pembuat_nama']) ?></strong>
                                             <br><small class="text-secondary"><?= e(labelRole($s['pembuat_role'])) ?></small>
                                         <?php else: ?>
@@ -1562,7 +1630,8 @@ include "../includes/topbar.php";
                                                     <i class="bi bi-pencil-square"></i>
                                                 </a>
                                                 <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
-                                                    href="<?= e(str_starts_with($s['file_hasil'], 'http') ? $s['file_hasil'] : '../' . $s['file_hasil']) ?>" download title="Unduh">
+                                                    href="../<?= e($s['file_hasil']) ?>" download title="Unduh">
+                                                    <i class="bi bi-download"></i>
                                                 </a>
                                             <?php endif; ?>
 
@@ -1721,13 +1790,12 @@ include "../includes/topbar.php";
                                         <div class="table-actions">
                                             <?php if (!empty($s['file_hasil'])): ?>
                                                 <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
-                                                    href="<?= e(str_starts_with($s['file_hasil'], 'http') ? $s['file_hasil'] : '../' . $s['file_hasil']) ?>" target="_blank"
+                                                    href="../<?= e($s['file_hasil']) ?>" target="_blank"
                                                     title="Lihat / unduh berkas">
                                                     <i class="bi bi-eye"></i>
                                                 </a>
                                                 <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
-                                                    href="<?= e(str_starts_with($s['file_hasil'], 'http') ? $s['file_hasil'] : '../' . $s['file_hasil']) ?>" download title="Unduh">
-                                              
+                                                    href="../<?= e($s['file_hasil']) ?>" download title="Unduh">
                                                     <i class="bi bi-download"></i>
                                                 </a>
                                             <?php endif; ?>

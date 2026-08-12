@@ -1,5 +1,5 @@
 <?php
-// it/surat.php — Modul Persuratan untuk Ahli K3 (tab Surat & Buat Surat saja)
+// it/surat.php — Modul Persuratan untuk IT (tab Surat & Buat Surat saja)
 require_once "../config/koneksi.php";
 
 if (session_status() === PHP_SESSION_NONE)
@@ -252,6 +252,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
             ]);
 
             $pdo->commit();
+            catatAudit(
+                $pdo,
+                'Surat',
+                'Buat Surat',
+                "Membuat surat {$nomorSurat} (agenda {$nomorAgenda}) - {$perihalSimpan}",
+                null,
+                ['nomor' => $nomorSurat, 'perihal' => $perihalSimpan, 'tujuan' => $tujuanSimpan, 'status' => $statusInput]
+            );
             $_SESSION['flash'] = ['type' => 'success', 'msg' => "Surat berhasil dibuat dengan nomor {$nomorSurat} (agenda {$nomorAgenda})."];
             suratRedirect('surat');
         } catch (Throwable $e) {
@@ -304,6 +312,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'ajukan_
         ]);
 
         $pdo->commit();
+        catatAudit($pdo, 'Surat', 'Ajukan Approval', "Mengajukan surat #{$suratId} untuk persetujuan", ['status' => $surat['status']], ['status' => 'Menunggu Persetujuan']);
         $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Surat berhasil diajukan untuk persetujuan.'];
     } catch (Throwable $e) {
         if ($pdo->inTransaction())
@@ -332,6 +341,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'revisi_
         }
 
         $pdo->prepare("UPDATE surat SET status = 'Draft' WHERE id = ?")->execute([$suratId]);
+        catatAudit($pdo, 'Surat', 'Revisi', "Mengembalikan surat #{$suratId} ke Draft untuk direvisi", ['status' => $suratCek['status']], ['status' => 'Draft']);
         $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Surat dikembalikan ke Draft untuk direvisi.'];
     } catch (Throwable $e) {
         $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Gagal merevisi surat: ' . $e->getMessage()];
@@ -404,6 +414,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'kirim_s
 
         $pdo->commit();
 
+        catatAudit($pdo, 'Surat', 'Kirim', "Mengirim surat #{$suratId} (" . ($surat['nomor'] ?? '') . ") ke tujuan " . ($surat['tujuan'] ?? '-'), ['status' => $surat['status']], ['status' => 'Terkirim']);
+
+
         $_SESSION['flash'] = [
             'type' => 'success',
             'msg' => $klienTerkirim && !empty($klienTerkirim['user_id'])
@@ -437,6 +450,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'arsipka
         }
 
         $pdo->prepare("UPDATE surat SET status = 'Diarsipkan' WHERE id = ?")->execute([$suratId]);
+        catatAudit($pdo, 'Surat', 'Arsipkan', "Mengarsipkan surat #{$suratId}", ['status' => $suratCek['status']], ['status' => 'Diarsipkan']);
         $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Surat berhasil diarsipkan.'];
     } catch (Throwable $e) {
         $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Gagal mengarsipkan surat: ' . $e->getMessage()];
@@ -461,6 +475,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'hapus_s
         }
 
         $pdo->prepare("DELETE FROM surat WHERE id = ?")->execute([$suratId]);
+
+        catatAudit($pdo, 'Surat', 'Hapus', "Menghapus surat #{$suratId} (" . ($s['nomor'] ?? '') . ")", $s, null);
 
         if (!empty($s['file_hasil']) && is_file(BASE_PATH . '/' . $s['file_hasil'])) {
             @unlink(BASE_PATH . '/' . $s['file_hasil']);
@@ -794,18 +810,14 @@ include "../includes/topbar.php";
                                         <?= e($s['tujuan']) ?>
                                     </td>
                                     <td>
-                                    <?php if ($suratMilikSaya): ?>
-                                        <a class="btn btn-outline-primary btn-sm py-1" style="font-size:0.75rem;"
-                                            href="edit_surat.php?id=<?= (int) $s['id'] ?>" title="Edit Surat">
-                                            <i class="bi bi-pencil-square"></i>
-                                        </a>
-                                    <?php else: ?>
-                                        <?php $hrefLihat = str_starts_with($s['file_hasil'], 'http') ? $s['file_hasil'] : '../' . $s['file_hasil']; ?>
-                                        <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
-                                            href="<?= e($hrefLihat) ?>" target="_blank" title="Lihat berkas">
-                                            <i class="bi bi-eye"></i>
-                                        </a>
-                                    <?php endif; ?>
+                                        <?php if ($suratMilikSaya): ?>
+                                            <span class="badge-success">Saya</span>
+                                        <?php elseif (!empty($s['pembuat_nama'])): ?>
+                                            <strong><?= e($s['pembuat_nama']) ?></strong>
+                                            <br><small class="text-secondary"><?= e(labelRole($s['pembuat_role'])) ?></small>
+                                        <?php else: ?>
+                                            <span class="text-secondary">-</span>
+                                        <?php endif; ?>
                                     </td>
                                     <td><?= !empty($s['tgl_dibuat']) ? date('d-m-Y', strtotime($s['tgl_dibuat'])) : '-' ?>
                                     </td>
@@ -883,17 +895,15 @@ include "../includes/topbar.php";
                                                         <i class="bi bi-pencil-square"></i>
                                                     </a>
                                                 <?php else: ?>
-                                                    <?php $hrefLihat = str_starts_with($s['file_hasil'], 'http') ? $s['file_hasil'] : '../' . $s['file_hasil']; ?>
                                                     <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
-                                                        href="<?= e($hrefLihat) ?>" target="_blank" title="Lihat berkas">
+                                                        href="../<?= e($s['file_hasil']) ?>" target="_blank" title="Lihat berkas">
                                                         <i class="bi bi-eye"></i>
                                                     </a>
                                                 <?php endif; ?>
-                                                <?php $hrefUnduh1 = str_starts_with($s['file_hasil'], 'http') ? $s['file_hasil'] : '../' . $s['file_hasil']; ?>
-                                                    <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
-                                                        href="<?= e($hrefUnduh1) ?>" download title="Unduh">
-                                                        <i class="bi bi-download"></i>
-                                                    </a>
+                                                <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
+                                                    href="../<?= e($s['file_hasil']) ?>" download title="Unduh">
+                                                    <i class="bi bi-download"></i>
+                                                </a>
                                             <?php endif; ?>
 
                                             <?php if ($suratMilikSaya): ?>

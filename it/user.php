@@ -46,6 +46,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'pass' => $hash,
                         'role' => $role
                     ]);
+                    catatAudit(
+                        $conn,
+                        'User',
+                        'Tambah',
+                        "Membuat akun \"{$nama_lengkap}\" ({$email}) dengan role {$role}",
+                        null,
+                        ['nama_lengkap' => $nama_lengkap, 'email' => $email, 'role' => $role]
+                    );
                     $success_msg = "Akun pengguna \"$nama_lengkap\" berhasil dibuat.";
                 }
             } catch (PDOException $e) {
@@ -71,6 +79,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'role' => $role,
                     'id' => $user_id
                 ]);
+                catatAudit(
+                    $conn,
+                    'User',
+                    'Ubah',
+                    "Mengubah data user #{$user_id}",
+                    $userLama ?: null,
+                    ['nama_lengkap' => $nama_lengkap, 'email' => $email, 'role' => $role]
+                );
                 $success_msg = "Data pengguna berhasil diperbarui.";
             } catch (PDOException $e) {
                 $error_msg = "Gagal memperbarui pengguna: " . $e->getMessage();
@@ -89,6 +105,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $hash = password_hash($password_baru, PASSWORD_DEFAULT);
                 $stmt = $conn->prepare("UPDATE Users SET password = :pass WHERE id = :id");
                 $stmt->execute(['pass' => $hash, 'id' => $user_id]);
+                catatAudit($conn, 'User', 'Reset Password', "Mereset password user #{$user_id}");
                 $success_msg = "Password pengguna berhasil direset.";
             } catch (PDOException $e) {
                 $error_msg = "Gagal mereset password: " . $e->getMessage();
@@ -104,6 +121,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             try {
                 $stmt = $conn->prepare("DELETE FROM Users WHERE id = :id");
                 $stmt->execute(['id' => $user_id]);
+                catatAudit(
+                    $conn,
+                    'User',
+                    'Hapus',
+                    "Menghapus user #{$user_id}" . ($userLama ? " ({$userLama['nama_lengkap']})" : ''),
+                    $userLama ?: null,
+                    null
+                );
                 $success_msg = "Akun pengguna berhasil dihapus.";
             } catch (PDOException $e) {
                 $error_msg = "Gagal menghapus pengguna. Kemungkinan data masih terhubung dengan data lain.";

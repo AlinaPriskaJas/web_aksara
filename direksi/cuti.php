@@ -1,5 +1,6 @@
 <?php
 // direksi/cuti.php
+
 // Pastikan perhitungan tanggal/bulan (untuk akrual saldo cuti) selalu
 // mengikuti waktu Indonesia, bukan timezone default server (mis. UTC).
 date_default_timezone_set('Asia/Jakarta');
@@ -136,6 +137,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'batal
                 $updApp->execute(['app_id' => $cutiRow['approval_id']]);
             }
             $conn->commit();
+            catatAudit(
+                $conn,
+                'Cuti',
+                'Batalkan',
+                "Membatalkan pengajuan cuti #{$cuti_id} (" . $cutiRow['jenis_cuti'] . ")",
+                ['status' => $cutiRow['status']],
+                ['status' => 'Dibatalkan']
+            );
             $success_msg = "Pengajuan " . htmlspecialchars($cutiRow['jenis_cuti']) . " berhasil dibatalkan.";
             $active_tab = tab_from_jenis($cutiRow['jenis_cuti']);
         }
@@ -342,6 +351,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'batal
                     $updApp->execute(['cuti_id' => $cuti_id, 'app_id' => $approval_id]);
 
                     $conn->commit();
+                    catatAudit(
+                        $conn,
+                        'Cuti',
+                        'Tambah',
+                        "Mengajukan {$jenis_cuti} ({$tgl_mulai} s/d {$tgl_selesai})",
+                        null,
+                        [
+                            'jenis_cuti' => $jenis_cuti,
+                            'tgl_mulai' => $tgl_mulai,
+                            'tgl_selesai' => $tgl_selesai,
+                            'total_durasi' => $duration,
+                        ]
+                    );
                     $success_msg = "Pengajuan " . $jenis_cuti . " berhasil dikirim! Menunggu persetujuan Direksi.";
 
                     $balance = ensure_saldo_cuti($conn, $current_user_id, $current_year, $current_month, $current_year);

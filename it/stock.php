@@ -1,5 +1,5 @@
 <?php
-// admin/stock.php
+// it/stock.php
 $page_title = "Laporan Stock Opname";
 include "../includes/header.php";
 include "../includes/sidebar.php";
@@ -27,7 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $kategori_manual = trim($_POST['kategori_manual'] ?? '');
         $satuan = trim($_POST['satuan']);
         $stok_awal = intval($_POST['stok_awal']);
-        $stok_minimum = ($_POST['stok_minimum'] !== '') ? intval($_POST['stok_minimum']) : null;
+        $stok_minimum = (!empty($_POST['stok_minimum'])) ? intval($_POST['stok_minimum']) : null;
         $lokasi_rak = trim($_POST['lokasi_rak']);
 
         // Nama kategori final: kalau pilih "Lainnya" pakai input manual
@@ -99,6 +99,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 $conn->commit();
+                catatAudit(
+                    $conn,
+                    'Gudang',
+                    'Tambah Barang',
+                    "Menambahkan barang {$kode_barang} - {$nama_barang} (stok awal {$stok_awal})",
+                    null,
+                    ['kode_barang' => $kode_barang, 'nama_barang' => $nama_barang, 'stok_awal' => $stok_awal, 'lokasi_rak' => $lokasi_rak]
+                );
                 $success_msg = "Barang baru '$nama_barang' berhasil ditambahkan ke gudang!";
             } catch (Exception $e) {
                 $conn->rollBack();
@@ -141,8 +149,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmtUpd = $conn->prepare("UPDATE Gudang_Stok SET stok_sistem = :jumlah WHERE id = :barang_id");
                 }
                 $stmtUpd->execute(['jumlah' => $jumlah, 'barang_id' => $barang_id]);
-
                 $conn->commit();
+                catatAudit(
+                    $conn,
+                    'Gudang',
+                    'Mutasi Stok',
+                    "Mutasi {$jenis_mutasi} sebanyak {$jumlah} untuk barang #{$barang_id}",
+                    null,
+                    ['jenis_mutasi' => $jenis_mutasi, 'jumlah' => $jumlah, 'keterangan' => $keterangan]
+                );
+
                 $success_msg = "Mutasi stok berhasil dicatat!";
             } catch (PDOException $e) {
                 $conn->rollBack();
@@ -255,10 +271,11 @@ $mutations = $conn->query("
                                                 <?= htmlspecialchars($it['nama_jenis']) ?>
                                             </td>
                                             <td><strong><?= htmlspecialchars($it['stok_sistem']) ?></strong>
-                                                <?= htmlspecialchars($it['satuan']) ?></td>
+                                                <?= htmlspecialchars($it['satuan']) ?>
+                                            </td>
                                             <td><?= htmlspecialchars($it['lokasi_rak'] ?: '-') ?></td>
                                             <td>
-                                                <?php if ($it['stok_sistem'] <= $it['stok_minimum']): ?>
+                                                <?php if ($it['stok_minimum'] !== null && $it['stok_sistem'] <= $it['stok_minimum']): ?>
                                                     <span class="badge-danger">Stok Tipis</span>
                                                 <?php else: ?>
                                                     <span class="badge-success">Aman</span>
@@ -447,8 +464,13 @@ $mutations = $conn->query("
                             <input type="number" name="stok_awal" class="form-control-custom" min="0" value="0"
                                 required>
                         </div>
-                    </div>
 
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold mb-2">Stok Minimum</label>
+                            <input type="number" name="stok_minimum" class="form-control-custom" min="0"
+                                placeholder="Contoh: 5 (kosongkan jika tidak perlu batas minimum)">
+                        </div>
+                    </div>
 
                     <div class="mb-4">
                         <label class="form-label fw-semibold mb-2">Lokasi Penyimpanan / Rak</label>
