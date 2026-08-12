@@ -34,7 +34,6 @@ include "../includes/topbar.php";
                         <th>Tanggal Pemeriksaan</th>
                         <th>No. Laporan</th>
                         <th>Hasil</th>
-                        <th style="text-align: center;">Sertifikat</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -45,11 +44,6 @@ include "../includes/topbar.php";
                         <td>28 Juni 2026</td>
                         <td>LAP-2026-0871</td>
                         <td><span class="badge-success">Layak</span></td>
-                        <td style="text-align: center;">
-                            <button class="btn-primary-custom" style="height:32px; padding:0 12px; font-size:0.8rem;">
-                                <i class="bi bi-download"></i> PDF
-                            </button>
-                        </td>
                     </tr>
                     <tr>
                         <td>2</td>
@@ -58,11 +52,6 @@ include "../includes/topbar.php";
                         <td>2 Juli 2026</td>
                         <td>LAP-2026-0902</td>
                         <td><span class="badge-warning">Layak Bersyarat</span></td>
-                        <td style="text-align: center;">
-                            <button class="btn-primary-custom" style="height:32px; padding:0 12px; font-size:0.8rem;">
-                                <i class="bi bi-download"></i> PDF
-                            </button>
-                        </td>
                     </tr>
                     <tr>
                         <td>3</td>
@@ -71,11 +60,6 @@ include "../includes/topbar.php";
                         <td>18 Juni 2026</td>
                         <td>LAP-2026-0844</td>
                         <td><span class="badge-danger">Tidak Layak</span></td>
-                        <td style="text-align: center;">
-                            <button class="btn-primary-custom" style="height:32px; padding:0 12px; font-size:0.8rem;">
-                                <i class="bi bi-download"></i> PDF
-                            </button>
-                        </td>
                     </tr>
                 </tbody>
             </table>
