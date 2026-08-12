@@ -581,8 +581,8 @@ include "../includes/topbar.php";
                 </div>
                 <div class="modal-body">
                     <p class="text-secondary fs-7 mb-3">
-                        Pilih jenis rekap dan bulan yang ingin dicetak. Rekap akan dibuka di tab baru
-                        dalam bentuk halaman siap cetak, lalu tinggal disimpan sebagai PDF lewat dialog cetak browser.
+                        Pilih jenis rekap dan bulan yang ingin dilihat. Rekap akan dibuka di tab baru,
+                        bisa langsung dilihat di layar, dan tersedia tombol untuk mengunduhnya sebagai file CSV.
                     </p>
 
                     <label class="form-label fw-semibold fs-7 mb-2">Jenis Rekap</label>
@@ -598,7 +598,7 @@ include "../includes/topbar.php";
                 <div class="modal-footer">
                     <button type="button" class="btn-secondary-custom" data-bs-dismiss="modal">Batal</button>
                     <button type="submit" class="btn-primary-custom">
-                        <i class="bi bi-file-earmark-pdf"></i> Buka &amp; Cetak PDF
+                        <i class="bi bi-eye"></i> Lihat &amp; Unduh Rekap
                     </button>
                 </div>
             </form>

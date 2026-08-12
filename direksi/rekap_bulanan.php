@@ -1,9 +1,9 @@
 <?php
 // direksi/rekap_bulanan.php
 // Halaman rekap bulanan (Absensi / Cuti) untuk seluruh karyawan.
-// Didesain sebagai halaman "print-friendly" berdiri sendiri (tanpa sidebar/topbar)
-// supaya bisa langsung di-print / disimpan sebagai PDF lewat dialog cetak browser
-// (Ctrl+P -> Simpan sebagai PDF), tanpa perlu tambahan library PDF di server.
+// Halaman ini bisa DILIHAT langsung di browser (tanpa sidebar/topbar, biar rapi),
+// dan bisa DIUNDUH langsung sebagai file PDF (tombol "Unduh PDF") tanpa perlu dicetak
+// lewat dialog print browser. PDF dibuat pakai library FPDF (../vendor_fpdf/fpdf.php).
 session_start();
 require_once "../config/koneksi.php";
 
@@ -71,6 +71,137 @@ if ($jenis === 'absensi') {
 }
 
 $judul_rekap = $jenis === 'absensi' ? 'Rekap Absensi Bulanan' : 'Rekap Cuti Bulanan';
+
+// ================== UNDUH SEBAGAI PDF (tanpa perlu dicetak) ==================
+if (($_GET['unduh'] ?? '') === '1') {
+    require_once __DIR__ . '/../vendor_fpdf/fpdf.php';
+
+    $nama_file = ($jenis === 'absensi' ? 'Rekap_Absensi_' : 'Rekap_Cuti_')
+        . str_replace(' ', '_', $label_bulan) . '.pdf';
+
+    // Helper: konversi UTF-8 -> ISO-8859-1 karena FPDF standar belum unicode
+    $c = static function (?string $s): string {
+        $s = (string) $s;
+        return function_exists('iconv')
+            ? (iconv('UTF-8', 'ISO-8859-1//TRANSLIT', $s) ?: $s)
+            : mb_convert_encoding($s, 'ISO-8859-1', 'UTF-8');
+    };
+
+    class RekapPDF extends FPDF
+    {
+        public string $judul = '';
+        public string $periode = '';
+        public int $jumlahOrang = 0;
+
+        public function Header(): void
+        {
+            $this->SetFont('Arial', 'B', 12);
+            $this->SetTextColor(41, 151, 117); // brand color #299775
+            $this->Cell(0, 6, 'PT Aksara Riksa Perdana', 0, 1);
+            $this->SetFont('Arial', '', 8);
+            $this->SetTextColor(100, 116, 139);
+            $this->Cell(0, 5, 'Perusahaan Jasa K3 (PJK3) - Dokumen Internal', 0, 1);
+            $this->Ln(2);
+
+            $this->SetFont('Arial', 'B', 13);
+            $this->SetTextColor(30, 41, 59);
+            $this->Cell(0, 7, $this->judul, 0, 1, 'C');
+            $this->SetFont('Arial', '', 9);
+            $this->SetTextColor(100, 116, 139);
+            $this->Cell(0, 5, 'Periode: ' . $this->periode . ' - Seluruh Karyawan (' . $this->jumlahOrang . ' orang)', 0, 1, 'C');
+
+            $this->SetDrawColor(41, 151, 117);
+            $this->SetLineWidth(0.6);
+            $this->Ln(2);
+            $this->Line(10, $this->GetY(), $this->GetPageWidth() - 10, $this->GetY());
+            $this->Ln(4);
+            $this->SetTextColor(30, 41, 59);
+        }
+
+        public function Footer(): void
+        {
+            $this->SetY(-15);
+            $this->SetFont('Arial', '', 7.5);
+            $this->SetTextColor(100, 116, 139);
+            $this->Cell(0, 5, 'Dokumen ini dibuat otomatis oleh sistem ARP Digital.', 0, 0, 'L');
+            $this->Cell(0, 5, 'Halaman ' . $this->PageNo() . '/{nb}', 0, 0, 'R');
+        }
+    }
+
+    $pdf = new RekapPDF('L', 'mm', 'A4');
+    $pdf->AliasNbPages();
+    $pdf->judul = $c($judul_rekap);
+    $pdf->periode = $c($label_bulan);
+    $pdf->jumlahOrang = count($data_rekap);
+    $pdf->SetMargins(10, 12, 10);
+    $pdf->SetAutoPageBreak(true, 16);
+    $pdf->AddPage();
+
+    if ($jenis === 'absensi') {
+        $header = ['No', 'Nama Karyawan', 'Role', 'WFO', 'Dinas Luar', 'WFH', 'Sakit/Izin', 'Total Hadir'];
+        $widths = [12, 90, 35, 25, 30, 25, 28, 30];
+    } else {
+        $header = ['No', 'Nama Karyawan', 'Role', 'Cuti Tahunan (Hari)', 'Cuti Khusus (Hari)', 'Cuti Sakit (Hari)', 'Total Hari Cuti', 'Jumlah Pengajuan'];
+        $widths = [12, 75, 30, 35, 33, 30, 30, 32];
+    }
+
+    $pdf->SetFont('Arial', 'B', 8.5);
+    $pdf->SetFillColor(248, 250, 252);
+    $pdf->SetDrawColor(226, 232, 240);
+    $pdf->SetTextColor(30, 41, 59);
+    foreach ($header as $i => $h) {
+        $align = $i === 1 ? 'L' : 'C';
+        $pdf->Cell($widths[$i], 8, $c($h), 1, 0, $align, true);
+    }
+    $pdf->Ln();
+
+    $pdf->SetFont('Arial', '', 8.5);
+    if (empty($data_rekap)) {
+        $pdf->Ln(2);
+        $pdf->Cell(array_sum($widths), 10, $c('Belum ada data karyawan untuk periode ini.'), 0, 1, 'C');
+    } else {
+        $fill = false;
+        foreach ($data_rekap as $i => $r) {
+            $pdf->SetFillColor(250, 251, 252);
+            if ($jenis === 'absensi') {
+                $cols = [
+                    $i + 1,
+                    $c($r['nama_lengkap']),
+                    $c(ucfirst($r['role'])),
+                    (int) $r['wfo'],
+                    (int) $r['dinas'],
+                    (int) $r['wfh'],
+                    (int) $r['sakit_izin'],
+                    (int) $r['total_hadir'],
+                ];
+            } else {
+                $cols = [
+                    $i + 1,
+                    $c($r['nama_lengkap']),
+                    $c(ucfirst($r['role'])),
+                    (int) $r['tahunan_hari'],
+                    (int) $r['khusus_hari'],
+                    (int) $r['sakit_hari'],
+                    (int) $r['total_hari'],
+                    (int) $r['total_pengajuan'] . 'x',
+                ];
+            }
+            foreach ($cols as $ci => $val) {
+                $align = $ci === 1 ? 'L' : 'C';
+                $pdf->Cell($widths[$ci], 7.5, (string) $val, 1, 0, $align, $fill);
+            }
+            $pdf->Ln();
+            $fill = !$fill;
+        }
+    }
+
+    // Bersihkan output buffer supaya file PDF tidak rusak oleh whitespace/error sebelumnya
+    if (ob_get_level()) {
+        ob_end_clean();
+    }
+    $pdf->Output('D', $nama_file);
+    exit;
+}
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -194,9 +325,10 @@ $judul_rekap = $jenis === 'absensi' ? 'Rekap Absensi Bulanan' : 'Rekap Cuti Bula
 <body>
 
     <div class="toolbar-cetak">
-        <button type="button" class="btn-cetak" onclick="window.print()">
-            <i class="bi bi-printer"></i> Cetak / Simpan sebagai PDF
-        </button>
+        <a href="?jenis=<?= urlencode($jenis) ?>&bulan=<?= urlencode($bulan) ?>&unduh=1"
+            class="btn-cetak" style="text-decoration:none;">
+            <i class="bi bi-download"></i> Unduh PDF
+        </a>
         <button type="button" class="btn-tutup" onclick="window.close()">
             <i class="bi bi-x-lg"></i> Tutup
         </button>
@@ -209,7 +341,7 @@ $judul_rekap = $jenis === 'absensi' ? 'Rekap Absensi Bulanan' : 'Rekap Cuti Bula
                 <p>Perusahaan Jasa K3 (PJK3) &middot; Dokumen Internal</p>
             </div>
             <div style="text-align:right;">
-                <p>Dicetak: <?= date('d M Y, H:i') ?> WIB</p>
+                <p>Dilihat: <?= date('d M Y, H:i') ?> WIB</p>
             </div>
         </div>
 
