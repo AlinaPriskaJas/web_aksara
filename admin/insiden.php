@@ -10,11 +10,11 @@ $admin_id = $_SESSION['user_id'] ?? 1;
 $page_title = "Dashboard Insiden - Rekap Insiden K3";
 $flash = null;
 
-const KATEGORI_INSIDEN   = ['Kecelakaan Kerja', 'Nyaris Celaka (Near Miss)', 'Kebakaran', 'Kerusakan Alat', 'Pencemaran Lingkungan', 'Lainnya'];
-const TINGKAT_KEPARAHAN  = ['Ringan', 'Sedang', 'Berat', 'Fatal'];
-const STATUS_INSIDEN     = ['Baru', 'Investigasi', 'Tindak Lanjut', 'Selesai'];
+const KATEGORI_INSIDEN = ['Kecelakaan Kerja', 'Nyaris Celaka (Near Miss)', 'Kebakaran', 'Kerusakan Alat', 'Pencemaran Lingkungan', 'Lainnya'];
+const TINGKAT_KEPARAHAN = ['Ringan', 'Sedang', 'Berat', 'Fatal'];
+const STATUS_INSIDEN = ['Baru', 'Investigasi', 'Tindak Lanjut', 'Selesai'];
 const EXT_BUKTI_DIIZINKAN = ['jpg', 'jpeg', 'png', 'pdf'];
-const MAX_UKURAN_BUKTI    = 5 * 1024 * 1024; // 5 MB
+const MAX_UKURAN_BUKTI = 5 * 1024 * 1024; // 5 MB
 
 function buat_kode_insiden(PDO $conn): string
 {
@@ -27,19 +27,21 @@ function buat_kode_insiden(PDO $conn): string
 
 // ================== PROSES: TAMBAH INSIDEN (INPUT MANUAL ADMIN) ==================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['aksi'] === 'tambah') {
-    $judul_insiden      = trim($_POST['judul_insiden'] ?? '');
-    $klien_id           = (int) ($_POST['klien_id'] ?? 0);
-    $lokasi             = trim($_POST['lokasi'] ?? '');
-    $kategori_insiden   = $_POST['kategori_insiden'] ?? '';
-    $tingkat_keparahan  = $_POST['tingkat_keparahan'] ?? '';
-    $tanggal_kejadian   = $_POST['tanggal_kejadian'] ?? '';
-    $deskripsi          = trim($_POST['deskripsi'] ?? '');
-    $tindakan_awal      = trim($_POST['tindakan_awal'] ?? '');
+    $judul_insiden = trim($_POST['judul_insiden'] ?? '');
+    $klien_id = (int) ($_POST['klien_id'] ?? 0);
+    $lokasi = trim($_POST['lokasi'] ?? '');
+    $kategori_insiden = $_POST['kategori_insiden'] ?? '';
+    $tingkat_keparahan = $_POST['tingkat_keparahan'] ?? '';
+    $tanggal_kejadian = $_POST['tanggal_kejadian'] ?? '';
+    $deskripsi = trim($_POST['deskripsi'] ?? '');
+    $tindakan_awal = trim($_POST['tindakan_awal'] ?? '');
 
-    if ($judul_insiden === '' || $lokasi === '' || $deskripsi === '' ||
+    if (
+        $judul_insiden === '' || $lokasi === '' || $deskripsi === '' ||
         !in_array($kategori_insiden, KATEGORI_INSIDEN, true) ||
         !in_array($tingkat_keparahan, TINGKAT_KEPARAHAN, true) ||
-        $tanggal_kejadian === '') {
+        $tanggal_kejadian === ''
+    ) {
         $flash = ['type' => 'danger', 'message' => 'Judul, lokasi, kategori, tingkat keparahan, tanggal kejadian, dan deskripsi wajib diisi.'];
     } else {
         $foto_bukti = null;
@@ -76,17 +78,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
                          'Baru', :tanggal_kejadian, :deskripsi, :tindakan_awal, :foto_bukti, :dilaporkan_oleh)
                 ");
                 $stmt->execute([
-                    ':kode_insiden'      => $kode_insiden,
-                    ':judul_insiden'     => $judul_insiden,
-                    ':klien_id'          => $klien_id > 0 ? $klien_id : null,
-                    ':lokasi'            => $lokasi,
-                    ':kategori_insiden'  => $kategori_insiden,
+                    ':kode_insiden' => $kode_insiden,
+                    ':judul_insiden' => $judul_insiden,
+                    ':klien_id' => $klien_id > 0 ? $klien_id : null,
+                    ':lokasi' => $lokasi,
+                    ':kategori_insiden' => $kategori_insiden,
                     ':tingkat_keparahan' => $tingkat_keparahan,
-                    ':tanggal_kejadian'  => $tanggal_kejadian,
-                    ':deskripsi'         => $deskripsi,
-                    ':tindakan_awal'     => $tindakan_awal !== '' ? $tindakan_awal : null,
-                    ':foto_bukti'        => $foto_bukti,
-                    ':dilaporkan_oleh'   => $admin_id,
+                    ':tanggal_kejadian' => $tanggal_kejadian,
+                    ':deskripsi' => $deskripsi,
+                    ':tindakan_awal' => $tindakan_awal !== '' ? $tindakan_awal : null,
+                    ':foto_bukti' => $foto_bukti,
+                    ':dilaporkan_oleh' => $admin_id,
                 ]);
                 catatAudit(
                     $conn,
@@ -113,9 +115,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
 
 // ================== PROSES: UPDATE STATUS / TINDAK LANJUT ==================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['aksi'] === 'update_status') {
-    $id                     = (int) ($_POST['id'] ?? 0);
-    $status                 = $_POST['status'] ?? '';
-    $catatan_tindak_lanjut  = trim($_POST['catatan_tindak_lanjut'] ?? '');
+    $id = (int) ($_POST['id'] ?? 0);
+    $status = $_POST['status'] ?? '';
+    $catatan_tindak_lanjut = trim($_POST['catatan_tindak_lanjut'] ?? '');
 
     if (!$id || !in_array($status, STATUS_INSIDEN, true)) {
         $flash = ['type' => 'danger', 'message' => 'Data status tidak valid.'];
@@ -131,10 +133,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
                 WHERE id = :id
             ");
             $stmt->execute([
-                ':status'         => $status,
-                ':catatan'        => $catatan_tindak_lanjut !== '' ? $catatan_tindak_lanjut : null,
+                ':status' => $status,
+                ':catatan' => $catatan_tindak_lanjut !== '' ? $catatan_tindak_lanjut : null,
                 ':ditangani_oleh' => $admin_id,
-                ':id'             => $id,
+                ':id' => $id,
             ]);
             catatAudit(
                 $conn,
@@ -188,14 +190,17 @@ $flash = $_SESSION['insiden_flash'] ?? $flash;
 unset($_SESSION['insiden_flash']);
 
 // ================== FILTER ==================
-$q                 = trim($_GET['q'] ?? '');
-$kategori_filter   = $_GET['kategori'] ?? 'Semua';
-$keparahan_filter  = $_GET['keparahan'] ?? 'Semua';
-$status_filter     = $_GET['status'] ?? 'Semua';
+$q = trim($_GET['q'] ?? '');
+$kategori_filter = $_GET['kategori'] ?? 'Semua';
+$keparahan_filter = $_GET['keparahan'] ?? 'Semua';
+$status_filter = $_GET['status'] ?? 'Semua';
 
-if (!in_array($kategori_filter, KATEGORI_INSIDEN, true))   $kategori_filter = 'Semua';
-if (!in_array($keparahan_filter, TINGKAT_KEPARAHAN, true)) $keparahan_filter = 'Semua';
-if (!in_array($status_filter, STATUS_INSIDEN, true))       $status_filter = 'Semua';
+if (!in_array($kategori_filter, KATEGORI_INSIDEN, true))
+    $kategori_filter = 'Semua';
+if (!in_array($keparahan_filter, TINGKAT_KEPARAHAN, true))
+    $keparahan_filter = 'Semua';
+if (!in_array($status_filter, STATUS_INSIDEN, true))
+    $status_filter = 'Semua';
 
 // ================== DAFTAR KLIEN (untuk dropdown) ==================
 $daftar_klien = [];
@@ -207,11 +212,11 @@ try {
 }
 
 // ================== STATISTIK ==================
-$total_insiden       = 0;
-$insiden_bulan_ini   = 0;
+$total_insiden = 0;
+$insiden_bulan_ini = 0;
 $insiden_belum_selesai = 0;
 $insiden_berat_fatal = 0;
-$distribusi_status    = array_fill_keys(STATUS_INSIDEN, 0);
+$distribusi_status = array_fill_keys(STATUS_INSIDEN, 0);
 $distribusi_keparahan = array_fill_keys(TINGKAT_KEPARAHAN, 0);
 
 try {
@@ -322,7 +327,8 @@ include "../includes/topbar.php";
 
     <?php if ($flash): ?>
         <div class="alert alert-<?= $flash['type'] === 'success' ? 'success' : 'danger' ?>-custom mb-3">
-            <i class="bi <?= $flash['type'] === 'success' ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill' ?> fs-5"></i>
+            <i
+                class="bi <?= $flash['type'] === 'success' ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill' ?> fs-5"></i>
             <div><?= htmlspecialchars($flash['message']) ?></div>
         </div>
     <?php endif; ?>
@@ -373,9 +379,9 @@ include "../includes/topbar.php";
             <div class="card-box h-100">
                 <h6 class="fw-bold mb-3">Distribusi Status Penanganan</h6>
                 <?php foreach (STATUS_INSIDEN as $st):
-                    $jumlah  = $distribusi_status[$st];
-                    $persen  = $total_insiden > 0 ? round(($jumlah / $total_insiden) * 100) : 0;
-                    $warna   = ['Baru' => 'var(--secondary)', 'Investigasi' => 'var(--warning)', 'Tindak Lanjut' => 'var(--primary)', 'Selesai' => 'var(--success)'][$st];
+                    $jumlah = $distribusi_status[$st];
+                    $persen = $total_insiden > 0 ? round(($jumlah / $total_insiden) * 100) : 0;
+                    $warna = ['Baru' => 'var(--secondary)', 'Investigasi' => 'var(--warning)', 'Tindak Lanjut' => 'var(--primary)', 'Selesai' => 'var(--success)'][$st];
                     ?>
                     <div class="mb-3">
                         <div class="d-flex justify-content-between fs-7 mb-1">
@@ -383,7 +389,8 @@ include "../includes/topbar.php";
                             <span class="text-muted"><?= $jumlah ?> insiden (<?= $persen ?>%)</span>
                         </div>
                         <div style="height:8px; background:var(--bg-body); border-radius:4px; overflow:hidden;">
-                            <div style="height:100%; width:<?= $persen ?>%; background:<?= $warna ?>; border-radius:4px;"></div>
+                            <div style="height:100%; width:<?= $persen ?>%; background:<?= $warna ?>; border-radius:4px;">
+                            </div>
                         </div>
                     </div>
                 <?php endforeach; ?>
@@ -395,7 +402,7 @@ include "../includes/topbar.php";
                 <?php foreach (TINGKAT_KEPARAHAN as $kp):
                     $jumlah = $distribusi_keparahan[$kp];
                     $persen = $total_insiden > 0 ? round(($jumlah / $total_insiden) * 100) : 0;
-                    $warna  = ['Ringan' => 'var(--success)', 'Sedang' => 'var(--warning)', 'Berat' => 'var(--danger)', 'Fatal' => 'var(--danger-hover)'][$kp];
+                    $warna = ['Ringan' => 'var(--success)', 'Sedang' => 'var(--warning)', 'Berat' => 'var(--danger)', 'Fatal' => 'var(--danger-hover)'][$kp];
                     ?>
                     <div class="mb-3">
                         <div class="d-flex justify-content-between fs-7 mb-1">
@@ -403,7 +410,8 @@ include "../includes/topbar.php";
                             <span class="text-muted"><?= $jumlah ?> insiden (<?= $persen ?>%)</span>
                         </div>
                         <div style="height:8px; background:var(--bg-body); border-radius:4px; overflow:hidden;">
-                            <div style="height:100%; width:<?= $persen ?>%; background:<?= $warna ?>; border-radius:4px;"></div>
+                            <div style="height:100%; width:<?= $persen ?>%; background:<?= $warna ?>; border-radius:4px;">
+                            </div>
                         </div>
                     </div>
                 <?php endforeach; ?>
@@ -416,7 +424,8 @@ include "../includes/topbar.php";
         <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-3">
             <div>
                 <h5 class="mb-1 fw-bold">Rekap Laporan Insiden K3</h5>
-                <p class="fs-7 text-muted mb-0">Pantau seluruh insiden K3 di lapangan untuk keperluan evaluasi manajemen.</p>
+                <p class="fs-7 text-muted mb-0">Pantau seluruh insiden K3 di lapangan untuk keperluan evaluasi
+                    manajemen.</p>
             </div>
             <button type="button" class="btn-primary-custom" onclick="openModal('modalTambah')">
                 <i class="bi bi-plus-circle-fill me-1"></i> Catat Insiden
@@ -427,14 +436,17 @@ include "../includes/topbar.php";
             <div class="col-lg-4 col-md-12">
                 <div class="search-box-container" style="max-width:100%;">
                     <i class="bi bi-search"></i>
-                    <input type="text" name="q" class="search-box" style="width:100%;" placeholder="Cari kode, judul, lokasi, atau klien..." value="<?= htmlspecialchars($q) ?>">
+                    <input type="text" name="q" class="search-box" style="width:100%;"
+                        placeholder="Cari kode, judul, lokasi, atau klien..." value="<?= htmlspecialchars($q) ?>">
                 </div>
             </div>
             <div class="col-lg-3 col-md-4 col-6">
                 <select class="select-custom" name="kategori" onchange="this.form.submit()">
                     <option value="Semua" <?= $kategori_filter === 'Semua' ? 'selected' : '' ?>>Semua Kategori</option>
                     <?php foreach (KATEGORI_INSIDEN as $k): ?>
-                        <option value="<?= htmlspecialchars($k) ?>" <?= $kategori_filter === $k ? 'selected' : '' ?>><?= htmlspecialchars($k) ?></option>
+                        <option value="<?= htmlspecialchars($k) ?>" <?= $kategori_filter === $k ? 'selected' : '' ?>>
+                            <?= htmlspecialchars($k) ?>
+                        </option>
                     <?php endforeach; ?>
                 </select>
             </div>
@@ -442,7 +454,9 @@ include "../includes/topbar.php";
                 <select class="select-custom" name="keparahan" onchange="this.form.submit()">
                     <option value="Semua" <?= $keparahan_filter === 'Semua' ? 'selected' : '' ?>>Semua Keparahan</option>
                     <?php foreach (TINGKAT_KEPARAHAN as $kp): ?>
-                        <option value="<?= htmlspecialchars($kp) ?>" <?= $keparahan_filter === $kp ? 'selected' : '' ?>><?= htmlspecialchars($kp) ?></option>
+                        <option value="<?= htmlspecialchars($kp) ?>" <?= $keparahan_filter === $kp ? 'selected' : '' ?>>
+                            <?= htmlspecialchars($kp) ?>
+                        </option>
                     <?php endforeach; ?>
                 </select>
             </div>
@@ -450,7 +464,9 @@ include "../includes/topbar.php";
                 <select class="select-custom" name="status" onchange="this.form.submit()">
                     <option value="Semua" <?= $status_filter === 'Semua' ? 'selected' : '' ?>>Semua Status</option>
                     <?php foreach (STATUS_INSIDEN as $st): ?>
-                        <option value="<?= htmlspecialchars($st) ?>" <?= $status_filter === $st ? 'selected' : '' ?>><?= htmlspecialchars($st) ?></option>
+                        <option value="<?= htmlspecialchars($st) ?>" <?= $status_filter === $st ? 'selected' : '' ?>>
+                            <?= htmlspecialchars($st) ?>
+                        </option>
                     <?php endforeach; ?>
                 </select>
             </div>
@@ -471,7 +487,7 @@ include "../includes/topbar.php";
                         <th>Tgl. Kejadian</th>
                         <th>Status</th>
                         <th style="text-align: center;">Aksi</th>
-                        </tr>
+                    </tr>
                 </thead>
                 <tbody>
                     <?php if (count($daftar_insiden) === 0): ?>
@@ -490,17 +506,21 @@ include "../includes/topbar.php";
                                     <small class="text-secondary"><?= htmlspecialchars($ins['judul_insiden']) ?></small>
                                 </td>
                                 <td><?= htmlspecialchars($ins['kategori_insiden']) ?></td>
-                                <td><span class="<?= badge_class_keparahan($ins['tingkat_keparahan']) ?>"><?= htmlspecialchars($ins['tingkat_keparahan']) ?></span></td>
+                                <td><span
+                                        class="<?= badge_class_keparahan($ins['tingkat_keparahan']) ?>"><?= htmlspecialchars($ins['tingkat_keparahan']) ?></span>
+                                </td>
                                 <td>
                                     <div class="fw-semibold"><?= htmlspecialchars($ins['nama_perusahaan'] ?? '-') ?></div>
                                     <small class="text-secondary"><?= htmlspecialchars($ins['lokasi']) ?></small>
                                 </td>
                                 <td><?= date('d-m-Y', strtotime($ins['tanggal_kejadian'])) ?></td>
-                                <td><span class="<?= badge_class_status($ins['status']) ?>"><?= htmlspecialchars($ins['status']) ?></span></td>
+                                <td><span
+                                        class="<?= badge_class_status($ins['status']) ?>"><?= htmlspecialchars($ins['status']) ?></span>
+                                </td>
                                 <td style="text-align: center;">
                                     <div class="d-flex gap-1 justify-content-center">
-                                        <button type="button" class="btn-secondary-custom" style="height:32px; padding:0 12px; font-size:0.8rem;"
-                                            onclick='bukaModalDetail(<?= json_encode([
+                                        <button type="button" class="btn-secondary-custom"
+                                            style="height:32px; padding:0 12px; font-size:0.8rem;" onclick='bukaModalDetail(<?= json_encode([
                                                 "id" => $ins["id"],
                                                 "kode_insiden" => $ins["kode_insiden"],
                                                 "judul_insiden" => $ins["judul_insiden"],
@@ -523,7 +543,8 @@ include "../includes/topbar.php";
                                             onsubmit="return confirm('Hapus laporan insiden \'<?= htmlspecialchars(addslashes($ins['kode_insiden'])) ?>\'? Tindakan ini tidak bisa dibatalkan.');">
                                             <input type="hidden" name="aksi" value="hapus">
                                             <input type="hidden" name="id" value="<?= (int) $ins['id'] ?>">
-                                            <button type="submit" class="btn-danger-custom" style="height:32px; padding:0 12px; font-size:0.8rem;">
+                                            <button type="submit" class="btn-danger-custom"
+                                                style="height:32px; padding:0 12px; font-size:0.8rem;">
                                                 <i class="bi bi-trash-fill"></i>
                                             </button>
                                         </form>
@@ -558,14 +579,12 @@ include "../includes/topbar.php";
                     <input type="text" name="judul_insiden" class="form-control-custom" required
                         placeholder="Contoh: Terpeleset di area produksi">
                 </div>
-                <div class="mb-3">
+                <div class="mb-3" style="position:relative;">
                     <label class="form-label fw-semibold fs-7 mb-2">Klien Terkait</label>
-                    <select name="klien_id" class="select-custom">
-                        <option value="0">-- Internal / Tanpa Klien --</option>
-                        <?php foreach ($daftar_klien as $k): ?>
-                            <option value="<?= $k['id'] ?>"><?= htmlspecialchars($k['nama_perusahaan']) ?></option>
-                        <?php endforeach; ?>
-                    </select>
+                    <input type="text" id="klienSearchInput" class="form-control-custom" autocomplete="off"
+                        placeholder="Ketik nama perusahaan... (kosongkan jika internal)">
+                    <input type="hidden" name="klien_id" id="klienIdInput" value="0">
+                    <div id="klienSuggestionBox" class="arp-suggestion-box" style="display:none;"></div>
                 </div>
                 <div class="mb-3">
                     <label class="form-label fw-semibold fs-7 mb-2">Lokasi Kejadian *</label>
@@ -594,7 +613,7 @@ include "../includes/topbar.php";
                 </div>
                 <div class="mb-3">
                     <label class="form-label fw-semibold fs-7 mb-2">Tanggal Kejadian *</label>
-                    <input type="date" name="tanggal_kejadian" class="form-control-custom" required max="<?= date('Y-m-d') ?>">
+                    <input type="date" name="tanggal_kejadian" class="form-control-custom" required>
                 </div>
                 <div class="mb-3">
                     <label class="form-label fw-semibold fs-7 mb-2">Deskripsi Kejadian *</label>
@@ -612,8 +631,10 @@ include "../includes/topbar.php";
                     <small class="text-muted">Format JPG, PNG, atau PDF. Maksimal 5 MB.</small>
                 </div>
                 <div class="d-flex gap-2">
-                    <button type="button" class="btn-secondary-custom flex-grow-1" onclick="closeModal('modalTambah')">Batal</button>
-                    <button type="submit" class="btn-primary-custom flex-grow-1"><i class="bi bi-send me-1"></i> Simpan Laporan</button>
+                    <button type="button" class="btn-secondary-custom flex-grow-1"
+                        onclick="closeModal('modalTambah')">Batal</button>
+                    <button type="submit" class="btn-primary-custom flex-grow-1"><i class="bi bi-send me-1"></i> Simpan
+                        Laporan</button>
                 </div>
             </form>
         </div>
@@ -667,7 +688,8 @@ include "../includes/topbar.php";
             </div>
             <div class="mb-3" id="detailFotoWrap" style="display:none;">
                 <div class="fs-7 text-muted mb-1">Bukti Foto / Dokumen</div>
-                <a href="#" id="detailFotoLink" target="_blank" class="btn-secondary-custom" style="display:inline-flex; width:auto;">
+                <a href="#" id="detailFotoLink" target="_blank" class="btn-secondary-custom"
+                    style="display:inline-flex; width:auto;">
                     <i class="bi bi-paperclip me-1"></i> Lihat Lampiran
                 </a>
             </div>
@@ -691,8 +713,10 @@ include "../includes/topbar.php";
                         placeholder="Catatan investigasi / tindak lanjut yang dilakukan..."></textarea>
                 </div>
                 <div class="d-flex gap-2">
-                    <button type="button" class="btn-secondary-custom flex-grow-1" onclick="closeModal('modalDetail')">Tutup</button>
-                    <button type="submit" class="btn-primary-custom flex-grow-1"><i class="bi bi-check2-circle me-1"></i> Perbarui Status</button>
+                    <button type="button" class="btn-secondary-custom flex-grow-1"
+                        onclick="closeModal('modalDetail')">Tutup</button>
+                    <button type="submit" class="btn-primary-custom flex-grow-1"><i
+                            class="bi bi-check2-circle me-1"></i> Perbarui Status</button>
                 </div>
             </form>
         </div>
@@ -702,6 +726,51 @@ include "../includes/topbar.php";
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         initTablePagination('tabelInsiden', 10);
+    });
+
+    const daftarKlien = <?= json_encode(
+        array_map(fn($k) => ['id' => $k['id'], 'nama' => $k['nama_perusahaan']], $daftar_klien),
+        JSON_HEX_APOS | JSON_HEX_QUOT
+    ) ?>;
+
+    const klienSearchInput = document.getElementById('klienSearchInput');
+    const klienIdInput = document.getElementById('klienIdInput');
+    const klienSuggestionBox = document.getElementById('klienSuggestionBox');
+
+    klienSearchInput.addEventListener('input', function () {
+        const keyword = this.value.trim().toLowerCase();
+        klienIdInput.value = '0'; // reset jadi Internal sampai user benar-benar memilih dari daftar
+        klienSuggestionBox.innerHTML = '';
+
+        if (keyword === '') {
+            klienSuggestionBox.style.display = 'none';
+            return;
+        }
+
+        const hasil = daftarKlien.filter(k => k.nama.toLowerCase().includes(keyword));
+
+        if (hasil.length === 0) {
+            klienSuggestionBox.innerHTML = '<div class="arp-suggestion-empty">Tidak ditemukan, akan dicatat sebagai Internal / Tanpa Klien</div>';
+        } else {
+            hasil.forEach(k => {
+                const item = document.createElement('div');
+                item.className = 'arp-suggestion-item';
+                item.textContent = k.nama;
+                item.onclick = function () {
+                    klienSearchInput.value = k.nama;
+                    klienIdInput.value = k.id;
+                    klienSuggestionBox.style.display = 'none';
+                };
+                klienSuggestionBox.appendChild(item);
+            });
+        }
+        klienSuggestionBox.style.display = 'block';
+    });
+
+    document.addEventListener('click', function (e) {
+        if (!klienSearchInput.contains(e.target) && !klienSuggestionBox.contains(e.target)) {
+            klienSuggestionBox.style.display = 'none';
+        }
     });
 
     function bukaModalDetail(data) {
