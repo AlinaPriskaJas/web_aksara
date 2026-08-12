@@ -19,6 +19,7 @@ if (!defined('BASE_PATH')) {
     define('BASE_PATH', dirname(__DIR__));
 }
 require_once "../includes/functions.php";
+require_once "../includes/audit_helper.php";
 
 $page_title = "Edit Surat";
 $current_user_id = $_SESSION['user_id'];
@@ -303,6 +304,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
                     json_encode($isiDataDisimpan, JSON_UNESCAPED_UNICODE),
                 ]);
 
+                catatAudit(
+                    $pdo,
+                    'Surat',
+                    'Revisi Surat',
+                    "Membuat revisi ke-{$revisiKeDipakai} dari surat #{$surat_id} (nomor {$nomorBaru})",
+                    ['status' => $surat['status'], 'perihal' => $surat['perihal'], 'tujuan' => $surat['tujuan']],
+                    ['status' => 'Draft', 'perihal' => $perihalSimpan, 'tujuan' => $tujuanSimpan, 'revisi_ke' => $revisiKeDipakai]
+                );
+
                 $_SESSION['flash'] = [
                     'type' => 'success',
                     'msg' => "Revisi ke-{$revisiKeDipakai} berhasil dibuat sebagai baris baru di daftar Surat Keluar (nomor tetap {$nomorBaru}). Surat asli tidak diubah/dihapus. Status revisi baru diset ulang ke Draft.",
@@ -328,6 +338,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
                 json_encode($isiDataDisimpan, JSON_UNESCAPED_UNICODE),
                 $surat_id,
             ]);
+            catatAudit(
+                $pdo,
+                'Surat',
+                'Edit Surat',
+                "Mengubah surat #{$surat_id} (nomor {$nomorBaru})",
+                [
+                    'nomor' => $surat['nomor'],
+                    'perihal' => $surat['perihal'],
+                    'tujuan' => $surat['tujuan'],
+                    'file_hasil' => $surat['file_hasil'],
+                ],
+                [
+                    'nomor' => $nomorBaru,
+                    'perihal' => $perihalSimpan,
+                    'tujuan' => $tujuanSimpan,
+                    'file_hasil' => $fileHasilBaru,
+                ]
+            );
 
             $stmtSurat->execute([$surat_id]);
             $surat = $stmtSurat->fetch();
