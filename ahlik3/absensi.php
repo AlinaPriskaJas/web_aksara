@@ -1,5 +1,5 @@
 <?php
-// admin/absensi.php
+// ahlik3/absensi.php
 require_once "../config/koneksi.php";
 require_once "../includes/drive_helper.php";
 
@@ -53,7 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($hasil_drive && !empty($hasil_drive['link'])) {
                     $bukti_foto = $hasil_drive['link'];
                 } else {
-                    $error_msg = "Gagal mengunggah bukti foto ke Drive.";
+                    $error_msg = "Gagal mengunggah bukti foto ke Drive: " . arp_drive_last_error();
                 }
             }
         }
@@ -73,14 +73,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'bukti' => $bukti_foto,
                     'catatan' => $catatan_aktivitas
                 ]);
-                catatAudit(
-                    $conn,
-                    'Absensi',
-                    'Check-in',
-                    "Absen masuk jam {$jam_masuk} status {$status_kehadiran} di {$lokasi_masuk}",
-                    null,
-                    ['status_kehadiran' => $status_kehadiran, 'lokasi_masuk' => $lokasi_masuk, 'jam_masuk' => $jam_masuk]
-                );
                 $success_msg = "Absen Masuk Berhasil! Selamat bekerja.";
                 $stmtCheck->execute(['user_id' => $current_user_id, 'today' => $today]);
                 $attendance_today = $stmtCheck->fetch();
@@ -110,14 +102,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'user_id' => $current_user_id,
                     'today' => $today
                 ]);
-                catatAudit(
-                    $conn,
-                    'Absensi',
-                    'Check-out',
-                    "Absen pulang jam {$jam_pulang} di {$lokasi_pulang}",
-                    null,
-                    ['jam_pulang' => $jam_pulang, 'lokasi_pulang' => $lokasi_pulang]
-                );
                 $success_msg = "Absen Pulang Berhasil! Sampai jumpa besok.";
                 $stmtCheck->execute(['user_id' => $current_user_id, 'today' => $today]);
                 $attendance_today = $stmtCheck->fetch();
@@ -428,10 +412,63 @@ try {
     </div>
 </div>
 
+
+<!-- ===== Overlay loading: muncul di TENGAH halaman saat form absen dikirim, bukan cuma di tab atas ===== -->
+<div id="arpUploadOverlay" class="arp-upload-overlay">
+    <div class="arp-upload-overlay-box">
+        <div class="spinner-border" role="status" style="color: var(--primary);"></div>
+        <p class="fw-semibold mb-1 mt-3">Mengunggah data &amp; foto...</p>
+        <small class="text-muted">Mohon tunggu sebentar, jangan tutup atau refresh halaman ini.</small>
+    </div>
+</div>
+<style>
+    .arp-upload-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.55);
+        z-index: 99999;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .arp-upload-overlay.arp-show {
+        display: flex;
+    }
+
+    .arp-upload-overlay-box {
+        background: #fff;
+        border-radius: 14px;
+        padding: 28px 32px;
+        text-align: center;
+        max-width: 300px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+    }
+</style>
+
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         initTablePagination('tabelAbsensiSaya', 10);
         initTablePagination('tabelAbsensi', 10);
+
+        // Tampilkan overlay loading di tengah halaman saat form check-in/check-out
+        // dikirim, supaya user tahu prosesnya masih berjalan (bukan macet) -
+        // terutama saat mengunggah foto yang makan waktu beberapa detik.
+        document.querySelectorAll('#modalAbsenCheckin form, #modalAbsenCheckout form').forEach(function (form) {
+            form.addEventListener('submit', function () {
+                if (!form.checkValidity()) return; // biarkan validasi HTML5 bawaan jalan dulu
+
+                var overlay = document.getElementById('arpUploadOverlay');
+                overlay.classList.add('arp-show');
+
+                var tombol = form.querySelector('button[type="submit"]');
+                if (tombol) {
+                    tombol.disabled = true;
+                    tombol.dataset.teksAsli = tombol.innerHTML;
+                    tombol.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Mengunggah...';
+                }
+            });
+        });
     });
 
     let streamKameraCheckin = null;

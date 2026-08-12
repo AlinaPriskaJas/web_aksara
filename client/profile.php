@@ -60,25 +60,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } elseif ($file['size'] > $max_size) {
                 $error_msg = "Ukuran foto maksimal 2MB.";
             } else {
-                $hasil_drive = arp_upload_ke_drive($file['tmp_name'], $file['name'], $file['type'], $current_user_id, 'Profil');
-    
-                    if ($hasil_drive && !empty($hasil_drive['link'])) {
-                        $db_path = $hasil_drive['link'];
-                        try {
-                            $upd = $conn->prepare("UPDATE Users SET foto_profil = :foto WHERE id = :id");
-                            $upd->execute(['foto' => $db_path, 'id' => $current_user_id]);
-                            $_SESSION['foto_profil'] = $db_path;
-                            $success_msg = "Foto profil berhasil diperbarui!";
-                            $stmt->execute(['id' => $current_user_id]);
-                            $user = $stmt->fetch();
-                        } catch (PDOException $e) {
-                            $error_msg = "Gagal menyimpan foto ke database.";
-                        }
-                    } else {
-                        $error_msg = "Gagal mengunggah foto ke Drive.";
-                    }
+                $upload_dir = "../uploads/profil/";
+                if (!is_dir($upload_dir)) {
+                    mkdir($upload_dir, 0755, true);
                 }
-         }
+                $filename = $current_user_id . "_" . time() . "." . $ext;
+                $target_path = $upload_dir . $filename;
+
+                if (move_uploaded_file($file['tmp_name'], $target_path)) {
+                    if (!empty($user['foto_profil']) && is_file("../" . $user['foto_profil'])) {
+                        @unlink("../" . $user['foto_profil']);
+                    }
+                    $db_path = "uploads/profil/" . $filename;
+                    try {
+                        $upd = $conn->prepare("UPDATE Users SET foto_profil = :foto WHERE id = :id");
+                        $upd->execute(['foto' => $db_path, 'id' => $current_user_id]);
+                        $_SESSION['foto_profil'] = $db_path;
+                        $success_msg = "Foto profil berhasil diperbarui!";
+                        $stmtUser->execute(['id' => $current_user_id]);
+                        $user = $stmtUser->fetch();
+                    } catch (PDOException $e) {
+                        $error_msg = "Gagal menyimpan foto ke database.";
+                    }
+                } else {
+                    $error_msg = "Gagal menyimpan file foto di server.";
+                }
+            }
+        }
     } elseif ($action === 'hapus_foto') {
         if (!empty($user['foto_profil'])) {
             if (is_file("../" . $user['foto_profil'])) {

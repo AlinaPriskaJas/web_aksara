@@ -1336,3 +1336,72 @@
 .riksa-value {
     flex: 1;
 }
+/* ===== Global Page Loader =====
+   Loader HANYA menutupi area konten (di bawah topbar, di kanan sidebar),
+   supaya sidebar & navbar tetap terlihat stabil selama loading — jadi
+   loading terasa "menyatu di dalam halaman itu", bukan menutupi seluruh
+   layar (termasuk sidebar) yang bikin transisi terasa tiba-tiba/kaget. */
+   .page-loader {
+    position: fixed;
+    top: var(--header-height);
+    left: var(--sidebar-width);
+    right: 0;
+    bottom: 0;
+    z-index: 500; /* di bawah sidebar (1040) & topbar (1030), jadi tidak menutupinya */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-body);
+    opacity: 1;
+    visibility: visible;
+    transition: opacity 0.25s ease, visibility 0.25s ease;
+}
+@media (max-width: 768px) {
+    /* Di mobile, sidebar jadi drawer (tidak makan tempat), jadi loader
+       penuh dari kiri layar, tetap di bawah topbar. */
+    .page-loader {
+        left: 0;
+    }
+}
+.page-loader.is-hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+.page-loader-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+.page-loader-logo {
+  width: 60px;
+  height: 60px;
+  object-fit: contain;
+  animation: page-loader-pulse 1.4s ease-in-out infinite;
+}
+.page-loader-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--border-color);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: page-loader-spin 0.8s linear infinite;
+}
+.page-loader-text {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.2px;
+}
+@keyframes page-loader-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes page-loader-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.06); opacity: 0.85; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .page-loader-logo, .page-loader-spinner { animation: none; }
+}

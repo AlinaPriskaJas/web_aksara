@@ -1,5 +1,66 @@
 /* assets/js/script.js */
 
+// ============================================================
+// Global Page Loader
+// Menampilkan overlay loading saat halaman dimuat & saat form
+// (termasuk upload file ke Google Drive) sedang diproses, supaya
+// user tidak melihat "layar putih" kosong tanpa indikator.
+// ============================================================
+(function () {
+    var loader = document.getElementById('page-loader');
+    if (!loader) return;
+
+    function hideLoader() {
+        loader.classList.add('is-hidden');
+    }
+    function showLoader(text) {
+        var textEl = document.getElementById('page-loader-text');
+        if (textEl && text) textEl.textContent = text;
+        loader.classList.remove('is-hidden');
+    }
+
+    // Sembunyikan begitu HTML halaman selesai di-parse (bukan nunggu SEMUA
+    // gambar/aset selesai — itu sebabnya dipakai DOMContentLoaded, bukan
+    // 'load'. Kalau pakai 'load', loader akan nunggu foto/gambar paling
+    // lambat di halaman itu selesai diunduh dulu baru hilang, sehingga
+    // halaman yang banyak gambar (mis. daftar bukti absensi/sertifikat)
+    // malah terasa lebih lama loading, padahal kontennya sudah siap).
+    document.addEventListener('DOMContentLoaded', hideLoader);
+
+    // Failsafe: jangan sampai loader "nyangkut" selamanya kalau ada
+    // aset yang gagal/lambat dimuat.
+    setTimeout(hideLoader, 8000);
+
+    // Saat kembali lewat tombol back/forward browser (bfcache),
+    // pastikan loader tidak ikut tersangkut dalam kondisi tampil.
+    window.addEventListener('pageshow', function () {
+        hideLoader();
+    });
+
+    // Tampilkan kembali loader begitu ada form yang disubmit (mis. form
+    // upload sertifikat, surat, absensi, dsb), supaya jeda menunggu respons
+    // server/Google Drive punya indikator visual, bukan layar kosong.
+    document.addEventListener('submit', function (e) {
+        var form = e.target;
+        if (!(form instanceof HTMLFormElement)) return;
+
+        // Lewati form yang sengaja dikecualikan atau yang submit-nya
+        // dibatalkan oleh validasi JS lain (mis. alert "pilih klien dulu").
+        if (form.hasAttribute('data-no-loader') || form.target === '_blank') return;
+        if (e.defaultPrevented) return;
+
+        var hasFileInput = !!form.querySelector('input[type="file"]');
+        showLoader(hasFileInput ? 'Mengunggah file...' : 'Memproses...');
+
+        // Cegah klik ganda tombol submit selama proses upload berlangsung.
+        var buttons = form.querySelectorAll('button[type="submit"], input[type="submit"]');
+        buttons.forEach(function (btn) {
+            btn.disabled = true;
+            btn.classList.add('is-loading');
+        });
+    });
+})();
+
 document.addEventListener('DOMContentLoaded', function () {
     // 1. Sidebar Drawer Toggle for Mobile / Tablet Viewports
     const hamburgerBtn = document.getElementById('hamburger-btn');

@@ -53,4 +53,13 @@ if (strpos($current_script, '/admin/') !== false) {
     <?php endif; ?>
 </head>
 <body>
+    <!-- Global Page Loader: tampil saat halaman/menu dimuat & saat form (termasuk upload) disubmit -->
+    <div id="page-loader" class="page-loader">
+        <div class="page-loader-box">
+            <img src="<?php echo $base_url; ?>assets/img/logo.png" alt="PT Aksara Riksa Perdana" class="page-loader-logo">
+            <div class="page-loader-spinner"></div>
+            <p class="page-loader-text" id="page-loader-text">Memuat halaman...</p>
+        </div>
+    </div>
+
     <div id="app-layout">

@@ -80,7 +80,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
         }
-    }  elseif ($action === 'hapus_foto') {
+    } elseif ($action === 'hapus_foto') {
         if (!empty($user['foto_profil'])) {
             if (!str_starts_with($user['foto_profil'], 'http') && is_file("../" . $user['foto_profil'])) {
                 @unlink("../" . $user['foto_profil']);
