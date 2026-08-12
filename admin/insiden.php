@@ -2,6 +2,7 @@
 // admin/insiden.php
 session_start();
 require_once "../config/koneksi.php";
+require_once "../includes/drive_helper.php";
 
 // TODO: ganti dengan user_id dari sesi login sebenarnya (proses_login.php belum tersambung penuh).
 $admin_id = $_SESSION['user_id'] ?? 1;
@@ -53,15 +54,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
                 $flash = ['type' => 'danger', 'message' => 'Ukuran file bukti maksimal 5 MB.'];
                 $upload_gagal = true;
             } else {
-                $upload_dir = "../uploads/insiden/";
-                if (!is_dir($upload_dir)) {
-                    mkdir($upload_dir, 0755, true);
-                }
-                $filename = 'bukti_' . time() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '', $_FILES['foto_bukti']['name']);
-                if (move_uploaded_file($_FILES['foto_bukti']['tmp_name'], $upload_dir . $filename)) {
-                    $foto_bukti = 'uploads/insiden/' . $filename;
+                $hasil_drive = arp_upload_ke_drive($_FILES['foto_bukti']['tmp_name'], $_FILES['foto_bukti']['name'], $_FILES['foto_bukti']['type'], 0, 'Insiden');
+                if ($hasil_drive && !empty($hasil_drive['link'])) {
+                    $foto_bukti = $hasil_drive['link'];
                 } else {
-                    $flash = ['type' => 'danger', 'message' => 'Gagal mengunggah bukti foto/dokumen.'];
+                    $flash = ['type' => 'danger', 'message' => 'Gagal mengunggah bukti foto/dokumen ke Drive.'];
                     $upload_gagal = true;
                 }
             }
@@ -399,7 +396,7 @@ include "../includes/topbar.php";
                 <h5 class="mb-1 fw-bold">Rekap Laporan Insiden K3</h5>
                 <p class="fs-7 text-muted mb-0">Pantau seluruh insiden K3 di lapangan untuk keperluan evaluasi manajemen.</p>
             </div>
-            <button type="button" class="btn-primary-custom" onclick="new bootstrap.Modal(document.getElementById('modalTambah')).show()">
+            <button type="button" class="btn-primary-custom" onclick="openModal('modalTambah')">
                 <i class="bi bi-plus-circle-fill me-1"></i> Catat Insiden
             </button>
         </div>
@@ -704,7 +701,6 @@ include "../includes/topbar.php";
             tindakanWrap.style.display = 'none';
         }
 
-        const fotoWrap = document.getElementById('detailFotoWrap');
         const fotoWrap = document.getElementById('detailFotoWrap');
         if (data.foto_bukti) {
             document.getElementById('detailFotoLink').href = data.foto_bukti.startsWith('http') ? data.foto_bukti : '../' + data.foto_bukti;
