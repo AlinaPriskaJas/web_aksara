@@ -19,7 +19,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->execute([$email]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        if ($user && password_verify($password, $user['password'])) {
+        // Kolom email di database bersifat case-insensitive (collation utf8mb4_unicode_ci),
+        // jadi query di atas tetap "ketemu" walau huruf besar/kecilnya beda. Supaya email
+        // yang dipakai login WAJIB sama persis (termasuk huruf besar/kecil) dengan yang
+        // didaftarkan saat registrasi, kita verifikasi ulang manual di sini.
+        $emailCocokPersis = $user && hash_equals($user['email'], $email);
+
+        if ($emailCocokPersis && password_verify($password, $user['password'])) {
+
+            // ========== CATAT WAKTU LOGIN TERAKHIR ==========
+            // Penting untuk keamanan: dipakai IT/admin untuk memantau aktivitas login user
+            // (lihat kolom "Login Terakhir" di halaman IT > User Management).
+            $updateLogin = $conn->prepare("UPDATE Users SET last_login = NOW() WHERE id = :id");
+            $updateLogin->execute(['id' => $user['id']]);
 
             // ========== SIMPAN SESSION ==========
             $_SESSION['login']        = true;
@@ -60,7 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     break;
             }
 
-        } elseif ($user) {
+        } elseif ($emailCocokPersis) {
             $error = "Password salah.";
         } else {
             $error = "Email tidak ditemukan.";
