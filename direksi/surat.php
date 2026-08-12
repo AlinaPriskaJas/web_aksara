@@ -1,7 +1,6 @@
 <?php
-// direksi/surat.php — Modul Persuratan untuk IT (tab Surat & Buat Surat saja)
+// direksi/surat.php — Modul Persuratan untuk Ahli K3 (tab Surat & Buat Surat saja)
 require_once "../config/koneksi.php";
-require_once "../includes/drive_helper.php";
 
 if (session_status() === PHP_SESSION_NONE)
     session_start();
@@ -43,6 +42,7 @@ if (!defined('BASE_PATH')) {
     define('BASE_PATH', dirname(__DIR__));
 }
 require_once "../includes/functions.php";
+require_once "../includes/drive_helper.php";
 
 $page_title = "Manajemen Surat";
 $current_user_id = $_SESSION['user_id'];
@@ -211,6 +211,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
                 : $fileHasilRelatif;
 
             $perihalDariWord = extractPerihalFromDocxText(BASE_PATH . '/' . $fileHasilRelatif);
+
             $perihalSimpan = $perihalDariWord
                 ?? $dataForm['perihal']
                 ?? ($_POST['perihal'] ?? null)
@@ -246,7 +247,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
                 $statusInput,
                 $tujuanSimpan,
                 $current_user_id,
-                $fileHasilRelatif,
+                $fileHasilTersimpan,
                 json_encode($isiDataDisimpan, JSON_UNESCAPED_UNICODE),
             ]);
 
@@ -793,14 +794,18 @@ include "../includes/topbar.php";
                                         <?= e($s['tujuan']) ?>
                                     </td>
                                     <td>
-                                        <?php if ($suratMilikSaya): ?>
-                                            <span class="badge-success">Saya</span>
-                                        <?php elseif (!empty($s['pembuat_nama'])): ?>
-                                            <strong><?= e($s['pembuat_nama']) ?></strong>
-                                            <br><small class="text-secondary"><?= e(labelRole($s['pembuat_role'])) ?></small>
-                                        <?php else: ?>
-                                            <span class="text-secondary">-</span>
-                                        <?php endif; ?>
+                                    <?php if ($suratMilikSaya): ?>
+                                        <a class="btn btn-outline-primary btn-sm py-1" style="font-size:0.75rem;"
+                                            href="edit_surat.php?id=<?= (int) $s['id'] ?>" title="Edit Surat">
+                                            <i class="bi bi-pencil-square"></i>
+                                        </a>
+                                    <?php else: ?>
+                                        <?php $hrefLihat = str_starts_with($s['file_hasil'], 'http') ? $s['file_hasil'] : '../' . $s['file_hasil']; ?>
+                                        <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
+                                            href="<?= e($hrefLihat) ?>" target="_blank" title="Lihat berkas">
+                                            <i class="bi bi-eye"></i>
+                                        </a>
+                                    <?php endif; ?>
                                     </td>
                                     <td><?= !empty($s['tgl_dibuat']) ? date('d-m-Y', strtotime($s['tgl_dibuat'])) : '-' ?>
                                     </td>
@@ -878,15 +883,17 @@ include "../includes/topbar.php";
                                                         <i class="bi bi-pencil-square"></i>
                                                     </a>
                                                 <?php else: ?>
+                                                    <?php $hrefLihat = str_starts_with($s['file_hasil'], 'http') ? $s['file_hasil'] : '../' . $s['file_hasil']; ?>
                                                     <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
-                                                        href="../<?= e($s['file_hasil']) ?>" target="_blank" title="Lihat berkas">
+                                                        href="<?= e($hrefLihat) ?>" target="_blank" title="Lihat berkas">
                                                         <i class="bi bi-eye"></i>
                                                     </a>
                                                 <?php endif; ?>
-                                                <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
-                                                    href="../<?= e($s['file_hasil']) ?>" download title="Unduh">
-                                                    <i class="bi bi-download"></i>
-                                                </a>
+                                                <?php $hrefUnduh1 = str_starts_with($s['file_hasil'], 'http') ? $s['file_hasil'] : '../' . $s['file_hasil']; ?>
+                                                    <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
+                                                        href="<?= e($hrefUnduh1) ?>" download title="Unduh">
+                                                        <i class="bi bi-download"></i>
+                                                    </a>
                                             <?php endif; ?>
 
                                             <?php if ($suratMilikSaya): ?>
@@ -971,19 +978,20 @@ include "../includes/topbar.php";
                                     </td>
                                     <td class="col-aksi" style="text-align:center;">
                                         <div class="table-actions">
-                                            <?php if (!empty($s['file_hasil'])): ?>
-                                                <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
-                                                    href="../<?= e($s['file_hasil']) ?>" target="_blank"
-                                                    title="Lihat / unduh berkas">
-                                                    <i class="bi bi-eye"></i>
-                                                </a>
-                                                <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
-                                                    href="../<?= e($s['file_hasil']) ?>" download title="Unduh">
-                                                    <i class="bi bi-download"></i>
-                                                </a>
-                                            <?php else: ?>
-                                                <span class="text-secondary">-</span>
-                                            <?php endif; ?>
+                                        <?php if (!empty($s['file_hasil'])): ?>
+                                                            <?php $hrefMasuk = str_starts_with($s['file_hasil'], 'http') ? $s['file_hasil'] : '../' . $s['file_hasil']; ?>
+                                                            <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
+                                                                href="<?= e($hrefMasuk) ?>" target="_blank"
+                                                                title="Lihat / unduh berkas">
+                                                                <i class="bi bi-eye"></i>
+                                                            </a>
+                                                            <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
+                                                                href="<?= e($hrefMasuk) ?>" download title="Unduh">
+                                                                <i class="bi bi-download"></i>
+                                                            </a>
+                                                        <?php else: ?>
+                                                            <span class="text-secondary">-</span>
+                                                        <?php endif; ?>
                                         </div>
                                     </td>
                                 </tr>
@@ -1037,16 +1045,16 @@ include "../includes/topbar.php";
                     <?php endif; ?>
 
                     <script id="data-template-per-kode" type="application/json">
-<?php
-$dataUntukJs = [];
-foreach ($daftar_kode_dengan_template as $k) {
-    $tplTerhubung = $template_per_kode[$k['id']] ?? [];
-    $dataUntukJs[(int) $k['id']] = array_map(function ($tpl) {
-        return ['id' => (int) $tpl['template_id'], 'nama' => $tpl['nama_template']];
-    }, $tplTerhubung);
-}
-echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
-?>
+        <?php
+        $dataUntukJs = [];
+        foreach ($daftar_kode_dengan_template as $k) {
+            $tplTerhubung = $template_per_kode[$k['id']] ?? [];
+            $dataUntukJs[(int) $k['id']] = array_map(function ($tpl) {
+                return ['id' => (int) $tpl['template_id'], 'nama' => $tpl['nama_template']];
+            }, $tplTerhubung);
+        }
+        echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
+        ?>
                     </script>
                     <script>
                         (function () {

@@ -17,6 +17,7 @@ if (!defined('BASE_PATH')) {
     define('BASE_PATH', dirname(__DIR__));
 }
 require_once "../includes/functions.php";
+require_once "../includes/drive_helper.php";
 
 $page_title = "Manajemen Surat";
 $current_user_id = $_SESSION['user_id'];
@@ -456,9 +457,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'catat_s
 
         $fileRelatif = null;
         if (!empty($_FILES['lampiran']['name'])) {
-            $fileRelatif = uploadSuratMasukFile($_FILES['lampiran']);
+            $lampiranExt = strtolower(pathinfo($_FILES['lampiran']['name'], PATHINFO_EXTENSION));
+            if (!in_array($lampiranExt, ['docx', 'doc', 'pdf'], true)) {
+                throw new RuntimeException("Format file tidak didukung. Hanya .docx, .doc, dan .pdf.");
+            }
+            if ($_FILES['lampiran']['error'] !== UPLOAD_ERR_OK) {
+                throw new RuntimeException("Terjadi kesalahan saat upload file.");
+            }
+            $hasilDriveMasuk = arp_upload_ke_drive($_FILES['lampiran']['tmp_name'], $_FILES['lampiran']['name'], $_FILES['lampiran']['type'], 0, 'Surat_Masuk');
+            if (!$hasilDriveMasuk || empty($hasilDriveMasuk['link'])) {
+                throw new RuntimeException("Gagal mengunggah lampiran surat masuk ke Drive.");
+            }
+            $fileRelatif = $hasilDriveMasuk['link'];
         }
-
         $stmtKodeManual = $pdo->prepare("SELECT id FROM kode_surat WHERE kode = ?");
         $stmtKodeManual->execute(['MASUK']);
         $kodeManualId = (int) $stmtKodeManual->fetchColumn();
@@ -609,7 +620,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
 
             $fileHasilRelatif = generateSuratDocx(BASE_PATH . '/' . $kode['file_path'], $dataForm, $items, $nomorSurat, $blocksData, $kode['nama'], null, $ringkasanDisertakan);
 
+            $hasilDriveKeluar = arp_upload_ke_drive(
+                BASE_PATH . '/' . $fileHasilRelatif,
+                basename($fileHasilRelatif),
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                0,
+                'Surat_Keluar'
+            );
+            $fileHasilTersimpan = ($hasilDriveKeluar && !empty($hasilDriveKeluar['link']))
+                ? $hasilDriveKeluar['link']
+                : $fileHasilRelatif;
+
             $perihalDariWord = extractPerihalFromDocxText(BASE_PATH . '/' . $fileHasilRelatif);
+
             $perihalSimpan = $perihalDariWord
                 ?? $dataForm['perihal']
                 ?? ($_POST['perihal'] ?? null)
@@ -645,7 +668,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
                 $statusInput,
                 $tujuanSimpan,
                 $current_user_id,
-                $fileHasilRelatif,
+                $fileHasilTersimpan,
                 json_encode($isiDataDisimpan, JSON_UNESCAPED_UNICODE),
             ]);
 
