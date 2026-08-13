@@ -65,6 +65,43 @@ if (isset($_GET['ajax'])) {
         exit;
     }
 
+    if ($_GET['ajax'] === 'get_count') {
+        try {
+            $stmtCount = $conn->prepare("
+            SELECT COUNT(*) AS jml FROM Notifikasi
+            WHERE user_id = :user_id AND sudah_dibaca = 0
+        ");
+            $stmtCount->execute([':user_id' => $topbar_user_id]);
+            $jml = (int) ($stmtCount->fetch()['jml'] ?? 0);
+
+            $stmtList = $conn->prepare("
+            SELECT id, judul, pesan, modul_terkait, ref_id, sudah_dibaca, waktu_kirim
+            FROM Notifikasi
+            WHERE user_id = :user_id
+            ORDER BY waktu_kirim DESC
+            LIMIT 8
+        ");
+            $stmtList->execute([':user_id' => $topbar_user_id]);
+            $rows = $stmtList->fetchAll();
+
+            $list = array_map(function ($n) {
+                return [
+                    'id' => (int) $n['id'],
+                    'judul' => $n['judul'],
+                    'pesan' => $n['pesan'],
+                    'sudah_dibaca' => (bool) $n['sudah_dibaca'],
+                    'waktu' => topbar_waktu_relatif($n['waktu_kirim']),
+                    'url' => topbar_link_notif($n['modul_terkait'] ?? '', $n['ref_id'] ?? null, $_SESSION['role'] ?? '', $GLOBALS['base_url'] ?? './'),
+                ];
+            }, $rows);
+
+            echo json_encode(['success' => true, 'count' => $jml, 'list' => $list]);
+        } catch (PDOException $e) {
+            echo json_encode(['success' => false, 'count' => 0, 'list' => []]);
+        }
+        exit;
+    }
+
     echo json_encode(['success' => false, 'message' => 'Permintaan tidak dikenali.']);
     exit;
 }
@@ -128,6 +165,7 @@ function topbar_link_notif(string $modul, ?int $ref_id, string $role, string $ba
         'admin' => 'admin',
         'direksi' => 'direksi',
         'ahli_k3' => 'ahlik3',
+        'it' => 'it',              // <-- tambahkan ini
         default => 'admin',
     };
 
@@ -212,6 +250,9 @@ function topbar_link_notif(string $modul, ?int $ref_id, string $role, string $ba
                     </div>
                 </div>
             </div>
+
+            <audio id="notifSound" src="<?= htmlspecialchars($topbar_base) ?>assets/sounds/notif.mp3"
+                preload="auto"></audio>
 
             <!-- User Avatar -->
             <a href="profile.php">
@@ -342,23 +383,68 @@ function topbar_link_notif(string $modul, ?int $ref_id, string $role, string $ba
             const notifBtn = document.getElementById('notifBtn');
             const notifDropdown = document.getElementById('notifDropdown');
             const notifBadge = document.getElementById('notifBadge');
-            const notifMarkAll = document.getElementById('notifMarkAll');
+            const notifBody = notifDropdown.querySelector('.notif-dropdown-body');
+            let notifMarkAll = document.getElementById('notifMarkAll');
+            const notifHeader = notifDropdown.querySelector('.notif-dropdown-header');
 
-            if (!notifBtn) return;
+            const notifSound = document.getElementById('notifSound');
+            let lastNotifCount = <?= (int) $topbar_notif_count ?>;
+            let audioUnlocked = false;
 
-            notifBtn.addEventListener('click', function (e) {
-                e.stopPropagation();
-                notifDropdown.classList.toggle('show');
-            });
+            // --- Bagian baru: deteksi notif yang masuk SEBELUM halaman ini dibuka ---
+            // Disimpan per user_id, supaya kalau ganti akun di browser yang sama tetap akurat.
+            const notifStorageKey = 'notif_last_seen_count_user_<?= (int) $topbar_user_id ?>';
+            const storedRaw = localStorage.getItem(notifStorageKey);
+            const storedCount = storedRaw === null ? lastNotifCount : parseInt(storedRaw, 10);
 
-            document.addEventListener('click', function (e) {
-                if (!notifDropdown.contains(e.target) && e.target !== notifBtn) {
-                    notifDropdown.classList.remove('show');
+            // Kalau jumlah notif sekarang > jumlah terakhir yang "diketahui" user ini,
+            // berarti ada notif baru yang masuk sejak terakhir dia buka website (termasuk saat logout).
+            let pendingNotifSound = lastNotifCount > storedCount;
+
+            // Update penanda terakhir yang diketahui, supaya tidak dianggap "baru" lagi di reload berikutnya.
+            localStorage.setItem(notifStorageKey, lastNotifCount);
+
+            function playNotifSound() {
+                notifSound.currentTime = 0;
+                notifSound.play().then(() => {
+                    audioUnlocked = true;
+                    pendingNotifSound = false;
+                }).catch(() => {
+                    // Browser masih memblokir autoplay (belum ada interaksi user).
+                    // Biarkan pendingNotifSound tetap true, akan dicoba lagi saat user klik pertama kali.
+                });
+            }
+
+            // Coba mainkan langsung saat halaman dibuka (berhasil kalau browser mengizinkan)
+            if (pendingNotifSound) {
+                playNotifSound();
+            }
+
+            document.addEventListener('click', function unlockAudio() {
+                if (audioUnlocked) {
+                    document.removeEventListener('click', unlockAudio);
+                    return;
                 }
-            });
+                if (pendingNotifSound) {
+                    // Klik pertama user: sekalian bunyikan notif yang tertunda tadi
+                    playNotifSound();
+                } else {
+                    notifSound.play().then(() => {
+                        notifSound.pause();
+                        notifSound.currentTime = 0;
+                        audioUnlocked = true;
+                    }).catch(() => { });
+                }
+                document.removeEventListener('click', unlockAudio);
+            }, { once: true });
 
-            // Klik satu notifikasi: tandai dibaca via AJAX ke topbar.php sendiri, TIDAK pindah halaman
-            notifDropdown.querySelectorAll('.notif-item').forEach(function (item) {
+            function escapeHtml(str) {
+                const div = document.createElement('div');
+                div.textContent = str ?? '';
+                return div.innerHTML;
+            }
+
+            function bindNotifItemClick(item) {
                 item.addEventListener('click', function () {
                     const id = item.dataset.id;
                     const sudahDibaca = item.dataset.dibaca === '1';
@@ -390,7 +476,82 @@ function topbar_link_notif(string $modul, ?int $ref_id, string $role, string $ba
                         window.location.href = url;
                     }
                 });
+            }
+
+            // Render ulang isi dropdown dari daftar notifikasi terbaru (dipakai saat polling)
+            function renderNotifList(list) {
+                if (!list || list.length === 0) {
+                    notifBody.innerHTML = '<div class="notif-empty">Belum ada notifikasi.</div>';
+                } else {
+                    notifBody.innerHTML = list.map(function (n) {
+                        return `
+                    <div class="notif-item ${!n.sudah_dibaca ? 'notif-item-unread' : ''}"
+                        data-id="${n.id}" data-dibaca="${n.sudah_dibaca ? '1' : '0'}"
+                        data-url="${escapeHtml(n.url)}">
+                        <div class="notif-item-title">${escapeHtml(n.judul)}</div>
+                        <div class="notif-item-pesan">${escapeHtml(n.pesan)}</div>
+                        <div class="notif-item-waktu">${escapeHtml(n.waktu)}</div>
+                    </div>
+                `;
+                    }).join('');
+                }
+
+                notifBody.querySelectorAll('.notif-item').forEach(bindNotifItemClick);
+
+                // Tombol "Tandai semua dibaca" ikut disesuaikan
+                const adaUnread = list.some(n => !n.sudah_dibaca);
+                if (notifMarkAll) {
+                    notifMarkAll.style.display = adaUnread ? '' : 'none';
+                }
+            }
+
+            function cekNotifBaru() {
+                fetch('<?= htmlspecialchars($topbar_base) ?>includes/topbar.php?ajax=get_count')
+                    .then(res => res.json())
+                    .then(json => {
+                        if (!json.success) return;
+
+                        const adaNotifBaru = json.count > lastNotifCount;
+
+                        renderNotifList(json.list);
+
+                        if (notifBadge) {
+                            if (json.count > 0) {
+                                notifBadge.textContent = json.count > 9 ? '9+' : json.count;
+                                notifBadge.style.display = '';
+                            } else {
+                                notifBadge.style.display = 'none';
+                            }
+                        }
+
+                        if (adaNotifBaru) {
+                            notifSound.currentTime = 0;
+                            notifSound.play().catch(() => { });
+                        }
+
+                        lastNotifCount = json.count;
+                        localStorage.setItem(notifStorageKey, json.count); // <-- tambahan ini
+                    })
+                    .catch(() => { });
+            }
+
+            setInterval(cekNotifBaru, 15000);
+
+            if (!notifBtn) return;
+
+            notifBtn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                notifDropdown.classList.toggle('show');
             });
+
+            document.addEventListener('click', function (e) {
+                if (!notifDropdown.contains(e.target) && e.target !== notifBtn) {
+                    notifDropdown.classList.remove('show');
+                }
+            });
+
+            // Bind item yang di-render server-side saat load awal
+            notifDropdown.querySelectorAll('.notif-item').forEach(bindNotifItemClick);
 
             if (notifMarkAll) {
                 notifMarkAll.addEventListener('click', function () {
