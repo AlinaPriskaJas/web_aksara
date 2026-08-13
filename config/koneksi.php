@@ -1,12 +1,23 @@
 <?php
 // config/koneksi.php
 
-// Set timezone PHP ke WIB (Asia/Jakarta) supaya semua fungsi date()/time()
-// di seluruh halaman (absensi, cuti, surat, dsb) konsisten dengan jam lokal
-// Indonesia. Tanpa baris ini, PHP memakai timezone default server (sering
-// UTC), sehingga jam_masuk/jam_pulang absensi bisa selisih beberapa jam
-// dari jam asli saat user check-in/check-out.
 date_default_timezone_set('Asia/Jakarta');
+
+// ================== BASE URL OTOMATIS (ABSOLUT DARI ROOT WEB) ==================
+// Dihitung sekali di sini supaya SEMUA halaman (admin/, it/, direksi/, ahlik3/, dst)
+// dan AJAX (termasuk includes/topbar.php) selalu dapat $base_url yang sama persis,
+// tidak peduli halaman itu dipanggil dari folder mana / kedalaman berapa.
+if (!isset($GLOBALS['base_url'])) {
+    $root_fs   = dirname(__DIR__); // .../web_aksara/config -> naik satu level = root project
+    $doc_root  = str_replace('\\', '/', realpath($_SERVER['DOCUMENT_ROOT']));
+    $root_real = str_replace('\\', '/', realpath($root_fs));
+
+    $base_path = str_replace($doc_root, '', $root_real);
+    $base_path = '/' . trim($base_path, '/') . '/';
+
+    $base_url = $base_path;
+    $GLOBALS['base_url'] = $base_url;
+}
 
 // Database configurations
 $host = "localhost";
@@ -15,18 +26,11 @@ $password = "";
 $database = "web_aksara";
 
 try {
-    // Create PDO connection
     $conn = new PDO("mysql:host=$host;dbname=$database;charset=utf8", $username, $password);
-    // Set the PDO error mode to exception
     $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    // Set default fetch mode to associative array
     $conn->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
-    // Samakan timezone koneksi MySQL dengan WIB, supaya kolom yang pakai
-    // DEFAULT CURRENT_TIMESTAMP (created_at, dll — diisi oleh MySQL sendiri,
-    // bukan oleh PHP) juga konsisten dengan jam lokal Indonesia.
     $conn->exec("SET time_zone = '+07:00'");
 } catch (PDOException $e) {
-    // In production, log error and show a generic message. Here we'll output for debugging
     die("Koneksi database gagal: " . $e->getMessage());
 }
 
