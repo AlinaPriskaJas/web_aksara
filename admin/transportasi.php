@@ -57,6 +57,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt = $conn->prepare("UPDATE Peminjaman_Kendaraan SET status_peminjaman = :status WHERE id = :id");
             $stmt->execute(['status' => $status, 'id' => $loan_id]);
 
+            $getPeminjam = $conn->prepare("SELECT user_id FROM Peminjaman_Kendaraan WHERE id = :id");
+            $getPeminjam->execute(['id' => $loan_id]);
+            $peminjam_id_notif = $getPeminjam->fetchColumn();
+            if ($peminjam_id_notif) {
+                kirimNotifikasi(
+                    $conn,
+                    (int) $peminjam_id_notif,
+                    'Status Peminjaman Kendaraan',
+                    "Pengajuan peminjaman kendaraan Anda sekarang berstatus: {$status}.",
+                    'kendaraan',
+                    (int) $loan_id
+                );
+            }
+
             // If approved or berlangsung, change vehicle status accordingly
             if ($status === 'Disetujui' || $status === 'Berlangsung') {
                 $getVeh = $conn->prepare("SELECT kendaraan_id FROM Peminjaman_Kendaraan WHERE id = :id");
@@ -106,6 +120,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'tujuan_lokasi' => $tujuan_lokasi,
                     'keperluan_dinas' => $keperluan_dinas
                 ]);
+                $loan_id_baru = $conn->lastInsertId();
+                $stmtAdminLoan = $conn->prepare("SELECT id FROM Users WHERE role = 'admin'");
+                $stmtAdminLoan->execute();
+                foreach ($stmtAdminLoan->fetchAll(PDO::FETCH_COLUMN) as $admin_id_notif) {
+                    kirimNotifikasi(
+                        $conn,
+                        (int) $admin_id_notif,
+                        'Pengajuan Peminjaman Kendaraan',
+                        "Pengajuan peminjaman kendaraan untuk {$tujuan_lokasi} menunggu persetujuan.",
+                        'kendaraan',
+                        (int) $loan_id_baru
+                    );
+                }
                 catatAudit(
                     $conn,
                     'Kendaraan',
@@ -162,160 +189,164 @@ $loans = $conn->query("
             </button>
         </div>
 
-    <div class="row g-4">
-        <!-- Daftar Kendaraan -->
-        <div class="col-12 arp-tab-panel" id="tabPanelKendaraan" <?= $active_tab === 'tabPanelKendaraan' ? '' : 'style="display:none;"' ?>>
-            <div class="card-box">
-                <div class="table-toolbar">
-                    <h5 class="table-toolbar-title fw-bold">Daftar Kendaraan Operasional</h5>
-                    <div class="table-toolbar-actions">
-                        <div class="search-box-container">
-                            <i class="bi bi-search"></i>
-                            <input type="text" class="search-box" placeholder="Cari kendaraan..."
-                                data-table-search="tabelKendaraan" onkeyup="handleTableSearch('tabelKendaraan')">
+        <div class="row g-4">
+            <!-- Daftar Kendaraan -->
+            <div class="col-12 arp-tab-panel" id="tabPanelKendaraan" <?= $active_tab === 'tabPanelKendaraan' ? '' : 'style="display:none;"' ?>>
+                <div class="card-box">
+                    <div class="table-toolbar">
+                        <h5 class="table-toolbar-title fw-bold">Daftar Kendaraan Operasional</h5>
+                        <div class="table-toolbar-actions">
+                            <div class="search-box-container">
+                                <i class="bi bi-search"></i>
+                                <input type="text" class="search-box" placeholder="Cari kendaraan..."
+                                    data-table-search="tabelKendaraan" onkeyup="handleTableSearch('tabelKendaraan')">
+                            </div>
+                            <button class="btn-primary-custom" onclick="openModal('modalKendaraan')">
+                                <i class="bi bi-plus-lg"></i>Tambah / Update Kendaraan
+                            </button>
                         </div>
-                        <button class="btn-primary-custom" onclick="openModal('modalKendaraan')">
-                            <i class="bi bi-plus-lg"></i>Tambah / Update Kendaraan
-                        </button>
                     </div>
-                </div>
-                <div class="table-responsive-custom">
-                    <table class="table-custom" id="tabelKendaraan">
-                        <thead>
-                            <tr>
-                                <th>Nama Kendaraan</th>
-                                <th>Plat Nomor</th>
-                                <th>Jenis</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php if (count($vehicles) === 0): ?>
+                    <div class="table-responsive-custom">
+                        <table class="table-custom" id="tabelKendaraan">
+                            <thead>
                                 <tr>
-                                    <td colspan="4" class="text-center py-4 text-muted">Belum ada armada terdaftar.</td>
+                                    <th>Nama Kendaraan</th>
+                                    <th>Plat Nomor</th>
+                                    <th>Jenis</th>
+                                    <th>Status</th>
                                 </tr>
-                            <?php else: ?>
-                                <?php foreach ($vehicles as $v): ?>
+                            </thead>
+                            <tbody>
+                                <?php if (count($vehicles) === 0): ?>
                                     <tr>
-                                        <td><strong><?= htmlspecialchars($v['nama_kendaraan']) ?></strong></td>
-                                        <td><span class="badge bg-secondary"><?= htmlspecialchars($v['plat_nomor']) ?></span>
-                                        </td>
-                                        <td><?= htmlspecialchars($v['jenis'] ?: '-') ?></td>
-                                        <td>
-                                            <?php
-                                            $badgeClass = "badge-success";
-                                            if ($v['status_kendaraan'] === 'Dipakai')
-                                                $badgeClass = "badge-warning";
-                                            if ($v['status_kendaraan'] === 'Maintenance')
-                                                $badgeClass = "badge-danger";
-                                            ?>
-                                            <span
-                                                class="<?= $badgeClass ?>"><?= htmlspecialchars($v['status_kendaraan']) ?></span>
-                                        </td>
+                                        <td colspan="4" class="text-center py-4 text-muted">Belum ada armada terdaftar.</td>
                                     </tr>
-                                <?php endforeach; ?>
-                            <?php endif; ?>
-                        </tbody>
-                    </table>
-                </div>
-                <div class="pagination-custom" id="pagination-tabelKendaraan"></div>
-            </div>
-        </div>
-
-        <!-- Pengajuan & Peminjaman -->
-        <div class="col-12 arp-tab-panel" id="tabPanelPeminjaman" <?= $active_tab === 'tabPanelPeminjaman' ? '' : 'style="display:none;"' ?>>
-            <div class="card-box">
-                <div class="table-toolbar">
-                    <h5 class="table-toolbar-title fw-bold">Daftar Pengajuan Peminjaman Kendaraan</h5>
-                    <div class="table-toolbar-actions">
-                        <div class="search-box-container">
-                            <i class="bi bi-search"></i>
-                            <input type="text" class="search-box" placeholder="Cari pengajuan..."
-                                data-table-search="tabelPeminjaman" onkeyup="handleTableSearch('tabelPeminjaman')">
-                        </div>
-                        <button class="btn-secondary-custom" onclick="openModal('modalPeminjaman')">
-                            <i class="bi bi-plus-lg"></i>Pengajuan Peminjaman
-                        </button>
-                    </div>
-                </div>
-                <div class="table-responsive-custom">
-                    <table class="table-custom" id="tabelPeminjaman">
-                        <thead>
-                            <tr>
-                                <th>Peminjam</th>
-                                <th>Kendaraan</th>
-                                <th>Durasi</th>
-                                <th>Tujuan / Keperluan</th>
-                                <th>Status</th>
-                                <th style="text-align: center;">Tindakan</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php if (count($loans) === 0): ?>
-                                <tr>
-                                    <td colspan="6" class="text-center py-4 text-muted">Belum ada riwayat peminjaman.</td>
-                                </tr>
-                            <?php else: ?>
-                                <?php foreach ($loans as $l): ?>
-                                    <tr>
-                                        <td><strong><?= htmlspecialchars($l['nama_lengkap']) ?></strong></td>
-                                        <td><?= htmlspecialchars($l['nama_kendaraan']) ?>
-                                            (<?= htmlspecialchars($l['plat_nomor']) ?>)</td>
-                                        <td><?= date('d-m-Y', strtotime($l['tgl_mulai'])) ?> s/d
-                                            <?= date('d-m-Y', strtotime($l['tgl_selesai'])) ?></td>
-                                        <td>
-                                            <div class="fw-bold"><?= htmlspecialchars($l['tujuan_lokasi']) ?></div>
-                                            <small class="text-secondary"><?= htmlspecialchars($l['keperluan_dinas']) ?></small>
-                                        </td>
-                                        <td>
-                                            <?php
-                                            $badgeClass = "badge-warning";
-                                            if ($l['status_peminjaman'] === 'Disetujui' || $l['status_peminjaman'] === 'Selesai')
+                                <?php else: ?>
+                                    <?php foreach ($vehicles as $v): ?>
+                                        <tr>
+                                            <td><strong><?= htmlspecialchars($v['nama_kendaraan']) ?></strong></td>
+                                            <td><span
+                                                    class="badge bg-secondary"><?= htmlspecialchars($v['plat_nomor']) ?></span>
+                                            </td>
+                                            <td><?= htmlspecialchars($v['jenis'] ?: '-') ?></td>
+                                            <td>
+                                                <?php
                                                 $badgeClass = "badge-success";
-                                            if ($l['status_peminjaman'] === 'Ditolak')
-                                                $badgeClass = "badge-danger";
-                                            ?>
-                                            <span
-                                                class="<?= $badgeClass ?>"><?= htmlspecialchars($l['status_peminjaman']) ?></span>
-                                        </td>
-                                        <td style="text-align: center;">
-                                            <?php if ($l['status_peminjaman'] === 'Diajukan'): ?>
-                                                <form method="POST" action="transportasi.php" style="display:inline-block;">
-                                                    <input type="hidden" name="action" value="approve_loan">
-                                                    <input type="hidden" name="loan_id" value="<?= $l['id'] ?>">
-                                                    <input type="hidden" name="status" value="Disetujui">
-                                                    <button type="submit" class="btn-primary-custom"
-                                                        style="height:28px; padding:0 8px; font-size:0.75rem; background-color:var(--success);">Setujui</button>
-                                                </form>
-                                                <form method="POST" action="transportasi.php" style="display:inline-block;">
-                                                    <input type="hidden" name="action" value="approve_loan">
-                                                    <input type="hidden" name="loan_id" value="<?= $l['id'] ?>">
-                                                    <input type="hidden" name="status" value="Ditolak">
-                                                    <button type="submit" class="btn-danger-custom"
-                                                        style="height:28px; padding:0 8px; font-size:0.75rem;">Tolak</button>
-                                                </form>
-                                            <?php elseif ($l['status_peminjaman'] === 'Disetujui'): ?>
-                                                <form method="POST" action="transportasi.php" style="display:inline;">
-                                                    <input type="hidden" name="action" value="approve_loan">
-                                                    <input type="hidden" name="loan_id" value="<?= $l['id'] ?>">
-                                                    <input type="hidden" name="status" value="Selesai">
-                                                    <button type="submit" class="btn-primary-custom"
-                                                        style="height:28px; padding:0 8px; font-size:0.75rem;">Selesaikan</button>
-                                                </form>
-                                            <?php else: ?>
-                                                <span class="text-muted">-</span>
-                                            <?php endif; ?>
+                                                if ($v['status_kendaraan'] === 'Dipakai')
+                                                    $badgeClass = "badge-warning";
+                                                if ($v['status_kendaraan'] === 'Maintenance')
+                                                    $badgeClass = "badge-danger";
+                                                ?>
+                                                <span
+                                                    class="<?= $badgeClass ?>"><?= htmlspecialchars($v['status_kendaraan']) ?></span>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="pagination-custom" id="pagination-tabelKendaraan"></div>
+                </div>
+            </div>
+
+            <!-- Pengajuan & Peminjaman -->
+            <div class="col-12 arp-tab-panel" id="tabPanelPeminjaman" <?= $active_tab === 'tabPanelPeminjaman' ? '' : 'style="display:none;"' ?>>
+                <div class="card-box">
+                    <div class="table-toolbar">
+                        <h5 class="table-toolbar-title fw-bold">Daftar Pengajuan Peminjaman Kendaraan</h5>
+                        <div class="table-toolbar-actions">
+                            <div class="search-box-container">
+                                <i class="bi bi-search"></i>
+                                <input type="text" class="search-box" placeholder="Cari pengajuan..."
+                                    data-table-search="tabelPeminjaman" onkeyup="handleTableSearch('tabelPeminjaman')">
+                            </div>
+                            <button class="btn-secondary-custom" onclick="openModal('modalPeminjaman')">
+                                <i class="bi bi-plus-lg"></i>Pengajuan Peminjaman
+                            </button>
+                        </div>
+                    </div>
+                    <div class="table-responsive-custom">
+                        <table class="table-custom" id="tabelPeminjaman">
+                            <thead>
+                                <tr>
+                                    <th>Peminjam</th>
+                                    <th>Kendaraan</th>
+                                    <th>Durasi</th>
+                                    <th>Tujuan / Keperluan</th>
+                                    <th>Status</th>
+                                    <th style="text-align: center;">Tindakan</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php if (count($loans) === 0): ?>
+                                    <tr>
+                                        <td colspan="6" class="text-center py-4 text-muted">Belum ada riwayat peminjaman.
                                         </td>
                                     </tr>
-                                <?php endforeach; ?>
-                            <?php endif; ?>
-                        </tbody>
-                    </table>
+                                <?php else: ?>
+                                    <?php foreach ($loans as $l): ?>
+                                        <tr>
+                                            <td><strong><?= htmlspecialchars($l['nama_lengkap']) ?></strong></td>
+                                            <td><?= htmlspecialchars($l['nama_kendaraan']) ?>
+                                                (<?= htmlspecialchars($l['plat_nomor']) ?>)</td>
+                                            <td><?= date('d-m-Y', strtotime($l['tgl_mulai'])) ?> s/d
+                                                <?= date('d-m-Y', strtotime($l['tgl_selesai'])) ?>
+                                            </td>
+                                            <td>
+                                                <div class="fw-bold"><?= htmlspecialchars($l['tujuan_lokasi']) ?></div>
+                                                <small
+                                                    class="text-secondary"><?= htmlspecialchars($l['keperluan_dinas']) ?></small>
+                                            </td>
+                                            <td>
+                                                <?php
+                                                $badgeClass = "badge-warning";
+                                                if ($l['status_peminjaman'] === 'Disetujui' || $l['status_peminjaman'] === 'Selesai')
+                                                    $badgeClass = "badge-success";
+                                                if ($l['status_peminjaman'] === 'Ditolak')
+                                                    $badgeClass = "badge-danger";
+                                                ?>
+                                                <span
+                                                    class="<?= $badgeClass ?>"><?= htmlspecialchars($l['status_peminjaman']) ?></span>
+                                            </td>
+                                            <td style="text-align: center;">
+                                                <?php if ($l['status_peminjaman'] === 'Diajukan'): ?>
+                                                    <form method="POST" action="transportasi.php" style="display:inline-block;">
+                                                        <input type="hidden" name="action" value="approve_loan">
+                                                        <input type="hidden" name="loan_id" value="<?= $l['id'] ?>">
+                                                        <input type="hidden" name="status" value="Disetujui">
+                                                        <button type="submit" class="btn-primary-custom"
+                                                            style="height:28px; padding:0 8px; font-size:0.75rem; background-color:var(--success);">Setujui</button>
+                                                    </form>
+                                                    <form method="POST" action="transportasi.php" style="display:inline-block;">
+                                                        <input type="hidden" name="action" value="approve_loan">
+                                                        <input type="hidden" name="loan_id" value="<?= $l['id'] ?>">
+                                                        <input type="hidden" name="status" value="Ditolak">
+                                                        <button type="submit" class="btn-danger-custom"
+                                                            style="height:28px; padding:0 8px; font-size:0.75rem;">Tolak</button>
+                                                    </form>
+                                                <?php elseif ($l['status_peminjaman'] === 'Disetujui'): ?>
+                                                    <form method="POST" action="transportasi.php" style="display:inline;">
+                                                        <input type="hidden" name="action" value="approve_loan">
+                                                        <input type="hidden" name="loan_id" value="<?= $l['id'] ?>">
+                                                        <input type="hidden" name="status" value="Selesai">
+                                                        <button type="submit" class="btn-primary-custom"
+                                                            style="height:28px; padding:0 8px; font-size:0.75rem;">Selesaikan</button>
+                                                    </form>
+                                                <?php else: ?>
+                                                    <span class="text-muted">-</span>
+                                                <?php endif; ?>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="pagination-custom" id="pagination-tabelPeminjaman"></div>
                 </div>
-                <div class="pagination-custom" id="pagination-tabelPeminjaman"></div>
             </div>
         </div>
-    </div>
     </div>
 
     <!-- Modal: Tambah / Update Kendaraan -->

@@ -350,6 +350,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'batal
                     $updApp = $conn->prepare("UPDATE Approval SET ref_id = :cuti_id WHERE id = :app_id");
                     $updApp->execute(['cuti_id' => $cuti_id, 'app_id' => $approval_id]);
 
+                    // ================== NOTIFIKASI KE DIREKSI (APPROVER) ==================
+                    $stmtDireksi = $conn->prepare("SELECT id FROM Users WHERE role = 'direksi'");
+                    $stmtDireksi->execute();
+                    foreach ($stmtDireksi->fetchAll(PDO::FETCH_COLUMN) as $direksi_id_notif) {
+                        kirimNotifikasi(
+                            $conn,
+                            (int) $direksi_id_notif,
+                            'Pengajuan Cuti Baru',
+                            "{$current_user_name} mengajukan {$jenis_cuti} ({$tgl_mulai} s/d {$tgl_selesai}).",
+                            'cuti',
+                            (int) $cuti_id
+                        );
+                    }
+
                     $conn->commit();
                     catatAudit(
                         $conn,

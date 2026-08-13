@@ -79,11 +79,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (isset($_POST['id']) && !empty($_POST['id'])) {
                     // Edit / Update
                     $id = $_POST['id'];
-                    // Log reschedule if date or time changed
-                    $checkStmt = $conn->prepare("SELECT tanggal, jam_mulai FROM Jadwal_Pemeriksaan WHERE id = :id");
+
+                    // Ambil data LAMA (tanggal, jam, ahli_k3_id, tim_support_ids) SEBELUM di-update,
+                    // dipakai untuk log reschedule DAN untuk mendeteksi siapa yang dicopot dari penugasan.
+                    $checkStmt = $conn->prepare("SELECT tanggal, jam_mulai, ahli_k3_id, tim_support_ids FROM Jadwal_Pemeriksaan WHERE id = :id");
                     $checkStmt->execute(['id' => $id]);
                     $old = $checkStmt->fetch();
 
+                    // Hitung daftar penerima LAMA (Lead Expert + Tim Support) SEBELUM data di-update
+                    $penerimaLama = [];
+                    if ($old) {
+                        if (!empty($old['ahli_k3_id'])) {
+                            $stmtLeadLama = $conn->prepare("SELECT user_id FROM Sertifikat_Ahli WHERE id = :ahli_id");
+                            $stmtLeadLama->execute(['ahli_id' => $old['ahli_k3_id']]);
+                            $leadLamaId = $stmtLeadLama->fetchColumn();
+                            if ($leadLamaId) {
+                                $penerimaLama[$leadLamaId] = true;
+                            }
+                        }
+                        if (!empty($old['tim_support_ids'])) {
+                            foreach (explode(',', $old['tim_support_ids']) as $tsIdLama) {
+                                if ($tsIdLama !== '') {
+                                    $penerimaLama[$tsIdLama] = true;
+                                }
+                            }
+                        }
+                    }
+
+                    // Log reschedule if date or time changed
                     if ($old && ($old['tanggal'] !== $tanggal || $old['jam_mulai'] !== $jam_mulai)) {
                         $logStmt = $conn->prepare("INSERT INTO Jadwal_Reschedule_Log (jadwal_id, tanggal_lama, jam_lama, tanggal_baru, jam_baru, alasan, diubah_oleh) VALUES (:jadwal_id, :tgl_lama, :jam_lama, :tgl_baru, :jam_baru, :alasan, :user_id)");
                         $logStmt->execute([
@@ -112,6 +135,94 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'kat_ids' => implode(',', $kategori_objek_ids),
                         'id' => $id
                     ]);
+
+                    // ================== NOTIFIKASI: JADWAL DIPERBARUI ==================
+                    // Ambil nama klien langsung dari DB (jangan andalkan $klien_list, belum ter-load di titik ini)
+                    $stmtNamaKlien = $conn->prepare("SELECT nama_perusahaan FROM Data_Klien WHERE id = :klien_id");
+                    $stmtNamaKlien->execute(['klien_id' => $klien_id]);
+                    $namaKlienNotif = $stmtNamaKlien->fetchColumn() ?: 'Klien';
+
+                    $tglNotif = date('d/m/Y', strtotime($tanggal)) . ' ' . substr($jam_mulai, 0, 5);
+                    $pesanNotif = ($old && ($old['tanggal'] !== $tanggal || $old['jam_mulai'] !== $jam_mulai))
+                        ? "Jadwal pemeriksaan {$namaKlienNotif} diubah menjadi {$tglNotif}."
+                        : "Detail jadwal pemeriksaan {$namaKlienNotif} pada {$tglNotif} telah diperbarui.";
+
+                    // Hitung daftar penerima BARU (Lead Expert + Tim Support) setelah data diupdate
+                    $penerimaJadwal = [];
+                    $stmtLeadUser = $conn->prepare("SELECT user_id FROM Sertifikat_Ahli WHERE id = :ahli_id");
+                    $stmtLeadUser->execute(['ahli_id' => $ahli_k3_id]);
+                    $leadUserId = $stmtLeadUser->fetchColumn();
+                    if ($leadUserId) {
+                        $penerimaJadwal[$leadUserId] = true;
+                    }
+                    foreach ($tim_support_ids as $tsId) {
+                        $penerimaJadwal[$tsId] = true;
+                    }
+
+                    // Pisahkan: yang baru masuk penugasan vs yang tetap ada dari sebelumnya
+                    $penugasanBaru = array_diff_key($penerimaJadwal, $penerimaLama);
+                    $tetapDitugaskan = array_intersect_key($penerimaJadwal, $penerimaLama);
+
+                    // Kirim notif "Anda ditugaskan" ke yang baru pertama kali masuk penugasan
+                    foreach (array_keys($penugasanBaru) as $userIdBaru) {
+                        kirimNotifikasi(
+                            $conn,
+                            (int) $userIdBaru,
+                            'Penugasan Jadwal Pemeriksaan',
+                            "Anda ditugaskan pada pemeriksaan {$namaKlienNotif} pada {$tglNotif}" . ($lokasi ? " di {$lokasi}" : "") . ".",
+                            'jadwal',
+                            (int) $id
+                        );
+                    }
+
+                    // Kirim notif "Jadwal Diperbarui" ke yang tetap ada di penugasan (lama & baru)
+                    foreach (array_keys($tetapDitugaskan) as $userIdTetap) {
+                        kirimNotifikasi(
+                            $conn,
+                            (int) $userIdTetap,
+                            'Jadwal Pemeriksaan Diperbarui',
+                            $pesanNotif,
+                            'jadwal',
+                            (int) $id
+                        );
+                    }
+
+                    // ================== NOTIFIKASI: DICOPOT DARI PENUGASAN ==================
+                    // Orang yang ADA di penugasan lama tapi TIDAK ADA lagi di penugasan baru
+                    $dicopotDariTugas = array_diff_key($penerimaLama, $penerimaJadwal);
+                    foreach (array_keys($dicopotDariTugas) as $userIdDicopot) {
+                        kirimNotifikasi(
+                            $conn,
+                            (int) $userIdDicopot,
+                            'Dicopot dari Penugasan Jadwal',
+                            "Anda tidak lagi ditugaskan pada pemeriksaan {$namaKlienNotif} yang sebelumnya dijadwalkan pada {$tglNotif}.",
+                            'jadwal',
+                            (int) $id
+                        );
+                    }
+
+                    // ================== NOTIFIKASI BROADCAST: SEMUA USER LAIN (info umum) ==================
+                    // Semua user (semua role, kecuali client) diberi tahu ada perubahan jadwal,
+                    // KECUALI yang sudah dapat salah satu notif spesifik di atas (agar tidak dobel).
+                    $stmtSemuaUserEdit = $conn->prepare("SELECT id FROM Users WHERE role != 'client'");
+                    $stmtSemuaUserEdit->execute();
+                    foreach ($stmtSemuaUserEdit->fetchAll(PDO::FETCH_COLUMN) as $userIdBroadcast) {
+                        if (
+                            isset($penerimaJadwal[$userIdBroadcast]) ||
+                            isset($dicopotDariTugas[$userIdBroadcast])
+                        ) {
+                            continue;
+                        }
+                        kirimNotifikasi(
+                            $conn,
+                            (int) $userIdBroadcast,
+                            'Jadwal Pemeriksaan Diperbarui',
+                            $pesanNotif,
+                            'jadwal',
+                            (int) $id
+                        );
+                    }
+
                     $success_msg = "Jadwal pemeriksaan berhasil diperbarui!";
                 } else {
                     // Create New
@@ -157,6 +268,60 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // Update Status Pengajuan_Pemeriksaan to 'Dijadwalkan'
                     $updPengajuan = $conn->prepare("UPDATE Pengajuan_Pemeriksaan SET status = 'Dijadwalkan' WHERE id = :pengajuan_id");
                     $updPengajuan->execute(['pengajuan_id' => $pengajuan_id]);
+
+                    // ================== NOTIFIKASI: JADWAL BARU (Lead Expert + Tim Support) ==================
+                    $jadwal_id_baru = $conn->lastInsertId(); // ambil SEBELUM query INSERT/UPDATE lain terjadi lagi
+
+                    // Ambil nama klien langsung dari DB (jangan andalkan $klien_list, belum ter-load di titik ini)
+                    $stmtNamaKlien = $conn->prepare("SELECT nama_perusahaan FROM Data_Klien WHERE id = :klien_id");
+                    $stmtNamaKlien->execute(['klien_id' => $klien_id]);
+                    $namaKlienNotif = $stmtNamaKlien->fetchColumn() ?: 'Klien';
+                    $tglNotif = date('d/m/Y', strtotime($tanggal)) . ' ' . substr($jam_mulai, 0, 5);
+
+                    // Kumpulkan penerima notif PENUGASAN: user_id Lead Expert (via Sertifikat_Ahli) + semua Tim Support
+                    $penerimaJadwal = [];
+
+                    $stmtLeadUser = $conn->prepare("SELECT user_id FROM Sertifikat_Ahli WHERE id = :ahli_id");
+                    $stmtLeadUser->execute(['ahli_id' => $ahli_k3_id]);
+                    $leadUserId = $stmtLeadUser->fetchColumn();
+                    if ($leadUserId) {
+                        $penerimaJadwal[$leadUserId] = true;
+                    }
+
+                    foreach ($tim_support_ids as $tsId) {
+                        $penerimaJadwal[$tsId] = true;
+                    }
+
+                    // Kirim notif PENUGASAN ke Lead Expert + Tim Support
+                    foreach (array_keys($penerimaJadwal) as $userIdNotif) {
+                        kirimNotifikasi(
+                            $conn,
+                            (int) $userIdNotif,
+                            'Penugasan Jadwal Pemeriksaan Baru',
+                            "Anda ditugaskan pada pemeriksaan {$namaKlienNotif} pada {$tglNotif}" . ($lokasi ? " di {$lokasi}" : "") . ".",
+                            'jadwal',
+                            (int) $jadwal_id_baru
+                        );
+                    }
+
+                    // ================== NOTIFIKASI BROADCAST: SEMUA USER (info umum) ==================
+                    // Semua user (semua role, kecuali client) diberi tahu ada jadwal baru,
+                    // KECUALI yang sudah dapat notif penugasan di atas (agar tidak dobel).
+                    $stmtSemuaUser = $conn->prepare("SELECT id FROM Users WHERE role != 'client'");
+                    $stmtSemuaUser->execute();
+                    foreach ($stmtSemuaUser->fetchAll(PDO::FETCH_COLUMN) as $userIdBroadcast) {
+                        if (isset($penerimaJadwal[$userIdBroadcast])) {
+                            continue; // sudah dapat notif penugasan, skip biar tidak dobel
+                        }
+                        kirimNotifikasi(
+                            $conn,
+                            (int) $userIdBroadcast,
+                            'Jadwal Pemeriksaan Baru',
+                            "Ada jadwal pemeriksaan baru untuk {$namaKlienNotif} pada {$tglNotif}" . ($lokasi ? " di {$lokasi}" : "") . ".",
+                            'jadwal',
+                            (int) $jadwal_id_baru
+                        );
+                    }
 
                     $success_msg = "Jadwal pemeriksaan baru berhasil ditambahkan!";
                 }
@@ -452,8 +617,6 @@ $today_str = date('Y-m-d');
     <input type="hidden" name="id" id="hapus-jadwal-id">
 </form>
 
-<script></script>
-
 <script>
     // Data klien dari database dipakai untuk autocomplete (nama, pic, kontak)
     const klienData = <?= json_encode($klien_list) ?>;
@@ -575,8 +738,8 @@ $today_str = date('Y-m-d');
         const items = jadwalData
             .filter(j => getDateRange(j.tanggal, j.tanggal_selesai).includes(dateStr))
             .sort((a, b) => a.jam_mulai.localeCompare(b.jam_mulai));
-        
-            if (items.length === 0) {
+
+        if (items.length === 0) {
             list.innerHTML = '<div class="riksa-empty"><i class="bi bi-calendar-x fs-3 d-block mb-2"></i>Tidak ada jadwal riksa pada tanggal ini.</div>';
             return;
         }

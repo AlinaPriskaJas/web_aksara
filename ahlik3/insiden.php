@@ -79,7 +79,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $max_size = 5 * 1024 * 1024; // 5MB per file
 
                 foreach ($_FILES['foto_bukti']['name'] as $idx => $filename) {
-                    if ($filename === '') continue;
+                    if ($filename === '')
+                        continue;
                     if ($_FILES['foto_bukti']['error'][$idx] !== UPLOAD_ERR_OK) {
                         $error_msg = "Gagal mengunggah file: " . htmlspecialchars($filename);
                         continue;
@@ -175,6 +176,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             'foto' => $foto_bukti_str,
                             'pelapor' => $current_user_id,
                         ]);
+                        $insiden_id_baru = $conn->lastInsertId();
+                        $stmtAdminIns = $conn->prepare("SELECT id FROM Users WHERE role = 'admin' OR role = 'direksi' OR role = 'it'");
+                        $stmtAdminIns->execute();
+                        foreach ($stmtAdminIns->fetchAll(PDO::FETCH_COLUMN) as $admin_id_notif) {
+                            kirimNotifikasi(
+                                $conn,
+                                (int) $admin_id_notif,
+                                'Laporan Insiden Baru (Ahli K3)',
+                                "Insiden \"{$judul_insiden}\" ({$tingkat_keparahan}) dilaporkan di {$lokasi}.",
+                                'insiden',
+                                (int) $insiden_id_baru
+                            );
+                        }
                         catatAudit(
                             $conn,
                             'Insiden',

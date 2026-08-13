@@ -311,6 +311,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'ajukan_
             ':requester_id' => $surat['dibuat_oleh'],
         ]);
 
+        $stmtDireksiSurat = $pdo->prepare("SELECT id FROM Users WHERE role = 'direksi' OR role = 'admin'");
+        $stmtDireksiSurat->execute();
+        foreach ($stmtDireksiSurat->fetchAll(PDO::FETCH_COLUMN) as $direksi_id_notif) {
+            kirimNotifikasi(
+                $pdo,
+                (int) $direksi_id_notif,
+                'Surat Menunggu Persetujuan',
+                "Surat \"{$surat['perihal']}\" menunggu persetujuan Anda.",
+                'surat',
+                (int) $suratId
+            );
+        }
+
         $pdo->commit();
         catatAudit($pdo, 'Surat', 'Ajukan Approval', "Mengajukan surat #{$suratId} untuk persetujuan", ['status' => $surat['status']], ['status' => 'Menunggu Persetujuan']);
         $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Surat berhasil diajukan untuk persetujuan.'];

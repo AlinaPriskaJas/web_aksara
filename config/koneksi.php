@@ -83,4 +83,5 @@ try {
 // Menyediakan fungsi catatAudit() ke semua file yang sudah require_once file ini,
 // sekaligus membuat tabel Audit_Log otomatis kalau belum ada.
 require_once __DIR__ . '/../includes/audit_helper.php';
+require_once __DIR__ . '/../includes/notifikasi_helper.php';
 ?>

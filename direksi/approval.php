@@ -24,6 +24,12 @@ $tabel_map = [
     'Kendaraan' => ['table' => 'Peminjaman_Kendaraan', 'status_col' => 'status_peminjaman'],
 ];
 
+$modul_map = [
+    'Cuti' => 'cuti',
+    'Reimburse' => 'reimburse',
+    'Kendaraan' => 'kendaraan',
+];
+
 // ================== TAB AKTIF ==================
 $tab_aktif = $_GET['tab'] ?? 'umum';
 if (!in_array($tab_aktif, ['umum', 'surat'], true)) {
@@ -112,6 +118,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['proses_approval'])) {
             ]);
 
             $conn->commit();
+
+            // ================== NOTIFIKASI BALIK KE PEMOHON ==================
+            if (isset($modul_map[$row['jenis_pengajuan']])) {
+                $judul_notif = $status_baru === 'Disetujui' ? 'Pengajuan Disetujui' : 'Pengajuan Ditolak';
+                $pesan_notif = "Pengajuan {$row['jenis_pengajuan']} Anda telah {$status_baru}"
+                    . ($catatan !== '' ? " (Catatan: {$catatan})" : ".");
+
+                kirimNotifikasi(
+                    $conn,
+                    (int) $row['requester_id'],
+                    $judul_notif,
+                    $pesan_notif,
+                    $modul_map[$row['jenis_pengajuan']],
+                    (int) $row['ref_id']
+                );
+            }
+
             catatAudit(
                 $conn,
                 'Approval',
@@ -212,6 +235,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['proses_approval_surat
             }
 
             $conn->commit();
+
+            kirimNotifikasi(
+                $conn,
+                (int) $rowSurat['dibuat_oleh'],
+                $status_surat_baru === 'Disetujui' ? 'Surat Disetujui' : 'Surat Ditolak',
+                "Surat \"{$rowSurat['perihal']}\" Anda telah {$status_surat_baru}"
+                . ($catatan !== '' ? " (Catatan: {$catatan})" : "."),
+                'surat',
+                $surat_id
+            );
+            
             catatAudit(
                 $conn,
                 'Approval',
@@ -1032,14 +1066,14 @@ include "../includes/topbar.php";
 </script>
 
 <?php if ($highlight_id): ?>
-<script>
-    document.addEventListener('DOMContentLoaded', function () {
-        const row = document.querySelector('.table-warning');
-        if (row) {
-            row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-    });
-</script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const row = document.querySelector('.table-warning');
+            if (row) {
+                row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        });
+    </script>
 <?php endif; ?>
 
 <?php

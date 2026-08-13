@@ -90,6 +90,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
                     ':foto_bukti' => $foto_bukti,
                     ':dilaporkan_oleh' => $admin_id,
                 ]);
+
+                $insiden_id_baru = $conn->lastInsertId();
+                $stmtDireksiIns = $conn->prepare("SELECT id FROM Users WHERE role = 'direksi' OR role = 'ahli_k3' OR role = 'it'");
+                $stmtDireksiIns->execute();
+                foreach ($stmtDireksiIns->fetchAll(PDO::FETCH_COLUMN) as $direksi_id_notif) {
+                    kirimNotifikasi(
+                        $conn,
+                        (int) $direksi_id_notif,
+                        'Laporan Insiden Baru',
+                        "Insiden \"{$judul_insiden}\" ({$tingkat_keparahan}) dilaporkan di {$lokasi}.",
+                        'insiden',
+                        (int) $insiden_id_baru
+                    );
+                }
+
                 catatAudit(
                     $conn,
                     'Insiden',
@@ -138,6 +153,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
                 ':ditangani_oleh' => $admin_id,
                 ':id' => $id,
             ]);
+
+            $getPelaporIns = $conn->prepare("SELECT dilaporkan_oleh FROM Laporan_Insiden WHERE id = :id");
+            $getPelaporIns->execute([':id' => $id]);
+            $pelapor_id_notif = $getPelaporIns->fetchColumn();
+            if ($pelapor_id_notif) {
+                kirimNotifikasi(
+                    $conn,
+                    (int) $pelapor_id_notif,
+                    'Status Insiden Diperbarui',
+                    "Laporan insiden Anda sekarang berstatus: {$status}.",
+                    'insiden',
+                    (int) $id
+                );
+            }
             catatAudit(
                 $conn,
                 'Insiden',

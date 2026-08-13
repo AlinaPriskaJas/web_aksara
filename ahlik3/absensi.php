@@ -17,6 +17,12 @@ include "../includes/sidebar.php";
 include "../includes/topbar.php";
 
 $current_user_id = $_SESSION['user_id'];
+
+// Ambil nama lengkap user yang sedang login, untuk keperluan notifikasi
+$stmtNamaUser = $conn->prepare("SELECT nama_lengkap FROM Users WHERE id = :id");
+$stmtNamaUser->execute(['id' => $current_user_id]);
+$current_user_name = $stmtNamaUser->fetchColumn() ?: 'User';
+
 $success_msg = "";
 $error_msg = "";
 $today = date('Y-m-d');
@@ -73,6 +79,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'bukti' => $bukti_foto,
                     'catatan' => $catatan_aktivitas
                 ]);
+                $absensi_id_baru = $conn->lastInsertId();
+                $stmtDireksiAbsen = $conn->prepare("SELECT id FROM Users WHERE role = 'direksi'");
+                $stmtDireksiAbsen->execute();
+                foreach ($stmtDireksiAbsen->fetchAll(PDO::FETCH_COLUMN) as $direksi_id_notif) {
+                    kirimNotifikasi(
+                        $conn,
+                        (int) $direksi_id_notif,
+                        'Absensi Masuk Hari Ini',
+                        "{$current_user_name} mencatat kehadiran: {$status_kehadiran} pada {$today}.",
+                        'absensi',
+                        (int) $absensi_id_baru
+                    );
+                }
                 $success_msg = "Absen Masuk Berhasil! Selamat bekerja.";
                 $stmtCheck->execute(['user_id' => $current_user_id, 'today' => $today]);
                 $attendance_today = $stmtCheck->fetch();

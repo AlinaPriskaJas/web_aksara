@@ -55,6 +55,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt = $conn->prepare("UPDATE Peminjaman_Kendaraan SET status_peminjaman = :status WHERE id = :id");
             $stmt->execute(['status' => $status, 'id' => $loan_id]);
 
+            $getPeminjam = $conn->prepare("SELECT user_id FROM Peminjaman_Kendaraan WHERE id = :id");
+            $getPeminjam->execute(['id' => $loan_id]);
+            $peminjam_id_notif = $getPeminjam->fetchColumn();
+            if ($peminjam_id_notif) {
+                kirimNotifikasi(
+                    $conn,
+                    (int) $peminjam_id_notif,
+                    'Status Peminjaman Kendaraan',
+                    "Pengajuan peminjaman kendaraan Anda sekarang berstatus: {$status}.",
+                    'kendaraan',
+                    (int) $loan_id
+                );
+            }
+
             // If approved or berlangsung, change vehicle status accordingly
             if ($status === 'Disetujui' || $status === 'Berlangsung') {
                 $getVeh = $conn->prepare("SELECT kendaraan_id FROM Peminjaman_Kendaraan WHERE id = :id");
@@ -104,6 +118,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'tujuan_lokasi' => $tujuan_lokasi,
                     'keperluan_dinas' => $keperluan_dinas
                 ]);
+                $loan_id_baru = $conn->lastInsertId();
+                $stmtAdminLoan = $conn->prepare("SELECT id FROM Users WHERE role = 'admin'");
+                $stmtAdminLoan->execute();
+                foreach ($stmtAdminLoan->fetchAll(PDO::FETCH_COLUMN) as $admin_id_notif) {
+                    kirimNotifikasi(
+                        $conn,
+                        (int) $admin_id_notif,
+                        'Pengajuan Peminjaman Kendaraan',
+                        "Pengajuan peminjaman kendaraan untuk {$tujuan_lokasi} menunggu persetujuan.",
+                        'kendaraan',
+                        (int) $loan_id_baru
+                    );
+                }
                 catatAudit(
                     $conn,
                     'Kendaraan',
