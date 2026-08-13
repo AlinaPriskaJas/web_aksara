@@ -163,13 +163,17 @@ include "../includes/topbar.php";
         <div class="col-lg-7 col-12">
             <div class="card-box h-100">
                 <h5 class="fw-bold mb-3">Suket K3 Terbit per Bulan &mdash; <?= $tahun ?></h5>
-                <canvas id="chartSuketBulan" height="240"></canvas>
+                <div class="chart-wrap" style="position:relative; height:260px;">
+                    <canvas id="chartSuketBulan"></canvas>
+                </div>
             </div>
         </div>
         <div class="col-lg-5 col-12">
             <div class="card-box h-100">
                 <h5 class="fw-bold mb-3">Hasil Pemeriksaan</h5>
-                <canvas id="chartHasil" height="240"></canvas>
+                <div class="chart-wrap" style="position:relative; height:260px;">
+                    <canvas id="chartHasil"></canvas>
+                </div>
             </div>
         </div>
     </div>
@@ -178,7 +182,9 @@ include "../includes/topbar.php";
         <div class="col-lg-6 col-12">
             <div class="card-box h-100">
                 <h5 class="fw-bold mb-3">Insiden per Tingkat Keparahan</h5>
-                <canvas id="chartInsiden" height="220"></canvas>
+                <div class="chart-wrap" style="position:relative; height:240px;">
+                    <canvas id="chartInsiden"></canvas>
+                </div>
             </div>
         </div>
         <div class="col-lg-6 col-12">
@@ -222,7 +228,12 @@ document.addEventListener('DOMContentLoaded', function () {
                 fill: true
             }]
         },
-        options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+        }
     });
 
     new Chart(document.getElementById('chartHasil'), {
@@ -235,7 +246,12 @@ document.addEventListener('DOMContentLoaded', function () {
                 borderWidth: 0
             }]
         },
-        options: { cutout: '65%' }
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '65%',
+            plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 12 } } }
+        }
     });
 
     new Chart(document.getElementById('chartInsiden'), {
@@ -249,7 +265,12 @@ document.addEventListener('DOMContentLoaded', function () {
                 maxBarThickness: 40
             }]
         },
-        options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+        }
     });
 });
 </script>
