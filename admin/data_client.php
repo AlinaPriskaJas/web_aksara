@@ -62,6 +62,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
     $nama_perusahaan = trim($_POST['nama_perusahaan'] ?? '');
     $alamat          = trim($_POST['alamat'] ?? '');
     $pic_nama        = trim($_POST['pic_nama'] ?? '');
+    $jabatan_pic     = trim($_POST['jabatan_pic'] ?? '');
     $pic_whatsapp    = trim($_POST['pic_whatsapp'] ?? '');
     $pic_email       = trim($_POST['pic_email'] ?? '');
 
@@ -86,14 +87,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
             }
 
             $stmt = $conn->prepare("
-                INSERT INTO Data_Klien (kode_klien, nama_perusahaan, alamat, status, pic_nama, pic_whatsapp, pic_email, user_id)
-                VALUES (:kode_klien, :nama_perusahaan, :alamat, 'Aktif', :pic_nama, :pic_whatsapp, :pic_email, :user_id)
+                INSERT INTO Data_Klien (kode_klien, nama_perusahaan, alamat, status, pic_nama, jabatan_pic, pic_whatsapp, pic_email, user_id)
+                VALUES (:kode_klien, :nama_perusahaan, :alamat, 'Aktif', :pic_nama, :jabatan_pic, :pic_whatsapp, :pic_email, :user_id)
             ");
             $stmt->execute([
                 ':kode_klien'      => $kode_klien,
                 ':nama_perusahaan' => $nama_perusahaan,
                 ':alamat'          => $alamat,
                 ':pic_nama'        => $pic_nama,
+                ':jabatan_pic'     => $jabatan_pic,
                 ':pic_whatsapp'    => $pic_whatsapp,
                 ':pic_email'       => $pic_email,
                 ':user_id'         => $user_id,
@@ -831,6 +833,10 @@ include "../includes/topbar.php";
                         <div class="mb-3">
                             <label class="form-label fw-semibold fs-7 mb-2">Nama PIC</label>
                             <input type="text" name="pic_nama" class="form-control-custom">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold fs-7 mb-2">Jabatan PIC</label>
+                            <input type="text" name="jabatan_pic" class="form-control-custom">
                         </div>
                         <div class="mb-3">
                             <label class="form-label fw-semibold fs-7 mb-2">WhatsApp PIC</label>
