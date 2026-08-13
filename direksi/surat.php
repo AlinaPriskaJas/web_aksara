@@ -1,5 +1,5 @@
 <?php
-// direksi/surat.php — Modul Persuratan untuk IT (tab Surat & Buat Surat saja)
+// direksi/surat.php — Modul Persuratan untuk Ahli K3 (tab Surat & Buat Surat saja)
 require_once "../config/koneksi.php";
 
 if (session_status() === PHP_SESSION_NONE)
@@ -199,6 +199,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
 
             $fileHasilRelatif = generateSuratDocx(BASE_PATH . '/' . $kode['file_path'], $dataForm, $items, $nomorSurat, $blocksData, $kode['nama'], null, $ringkasanDisertakan);
 
+            // Baca perihal SEBELUM upload, karena file lokal akan dihapus setelahnya.
+            $perihalDariWord = extractPerihalFromDocxText(BASE_PATH . '/' . $fileHasilRelatif);
+
             $hasilDriveKeluar = arp_upload_ke_drive(
                 BASE_PATH . '/' . $fileHasilRelatif,
                 basename($fileHasilRelatif),
@@ -206,11 +209,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
                 0,
                 'Surat_Keluar'
             );
-            $fileHasilTersimpan = ($hasilDriveKeluar && !empty($hasilDriveKeluar['link']))
-                ? $hasilDriveKeluar['link']
-                : $fileHasilRelatif;
 
-            $perihalDariWord = extractPerihalFromDocxText(BASE_PATH . '/' . $fileHasilRelatif);
+            if (!$hasilDriveKeluar || empty($hasilDriveKeluar['link'])) {
+                // TIDAK fallback ke storage lokal -- surat wajib ada di Drive
+                // supaya bisa dilihat semua orang, bukan cuma dari server ini.
+                if (is_file(BASE_PATH . '/' . $fileHasilRelatif)) {
+                    @unlink(BASE_PATH . '/' . $fileHasilRelatif);
+                }
+                throw new RuntimeException("Gagal mengunggah surat ke Google Drive: " . arp_drive_last_error());
+            }
+
+            $fileHasilTersimpan = $hasilDriveKeluar['link'];
+
+            // Sudah aman di Drive -- hapus salinan lokal supaya tidak menumpuk.
+            if (is_file(BASE_PATH . '/' . $fileHasilRelatif)) {
+                @unlink(BASE_PATH . '/' . $fileHasilRelatif);
+            }
 
             $perihalSimpan = $perihalDariWord
                 ?? $dataForm['perihal']
@@ -236,8 +250,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
 
 
             $insert = $pdo->prepare("INSERT INTO surat
-                (nomor_agenda, nomor, kode_id, template_id, perihal, status, arah, tujuan, dibuat_oleh, tgl_dibuat, tanggal_diterima, file_hasil, isi_data)
-                VALUES (?, ?, ?, ?, ?, ?, 'Keluar', ?, ?, CURDATE(), NULL, ?, ?)");
+                (nomor_agenda, nomor, kode_id, template_id, perihal, status, arah, tujuan, dibuat_oleh, tgl_dibuat, tanggal_diterima, file_hasil, drive_file_id, drive_link, isi_data)
+                VALUES (?, ?, ?, ?, ?, ?, 'Keluar', ?, ?, CURDATE(), NULL, ?, ?, ?, ?)");
             $insert->execute([
                 $nomorAgenda,
                 $nomorSurat,
@@ -247,6 +261,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
                 $statusInput,
                 $tujuanSimpan,
                 $current_user_id,
+                $fileHasilTersimpan,
+                $hasilDriveKeluar['file_id'] ?? null,
                 $fileHasilTersimpan,
                 json_encode($isiDataDisimpan, JSON_UNESCAPED_UNICODE),
             ]);
@@ -491,8 +507,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'hapus_s
 
         catatAudit($pdo, 'Surat', 'Hapus', "Menghapus surat #{$suratId} (" . ($s['nomor'] ?? '') . ")", $s, null);
 
-        if (!empty($s['file_hasil']) && is_file(BASE_PATH . '/' . $s['file_hasil'])) {
-            @unlink(BASE_PATH . '/' . $s['file_hasil']);
+        // Cuma coba hapus fisik kalau memang path lokal (data lama).
+        // is_file() ke URL http bisa memicu request jaringan, jadi dihindari.
+        if (!empty($s['file_hasil']) && stripos($s['file_hasil'], 'http') !== 0) {
+            $pathLokalHapus = BASE_PATH . '/' . $s['file_hasil'];
+            if (is_file($pathLokalHapus)) {
+                @unlink($pathLokalHapus);
+            }
         }
 
         $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Surat berhasil dihapus.'];
@@ -909,12 +930,12 @@ include "../includes/topbar.php";
                                                     </a>
                                                 <?php else: ?>
                                                     <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
-                                                        href="../<?= e($s['file_hasil']) ?>" target="_blank" title="Lihat berkas">
+                                                        href="<?= e(hrefBerkas($s['file_hasil'])) ?>" target="_blank" title="Lihat berkas">
                                                         <i class="bi bi-eye"></i>
                                                     </a>
                                                 <?php endif; ?>
                                                 <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
-                                                    href="../<?= e($s['file_hasil']) ?>" download title="Unduh">
+                                                    href="<?= e(hrefBerkas($s['file_hasil'])) ?>" download title="Unduh">
                                                     <i class="bi bi-download"></i>
                                                 </a>
                                             <?php endif; ?>

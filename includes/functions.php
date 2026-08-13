@@ -1790,6 +1790,23 @@ function e(?string $value): string
     return htmlspecialchars($value ?? '', ENT_QUOTES, 'UTF-8');
 }
 
+// ==========================================
+// HELPER: bikin href aman untuk berkas surat. Semua surat sekarang
+// disimpan di Google Drive (bukan storage lokal), jadi file_hasil isinya
+// URL (https://...). Data lama yang masih path lokal tetap didukung
+// sebagai fallback supaya link lama tidak patah.
+// ==========================================
+function hrefBerkas(?string $path): string
+{
+    $path = trim((string) $path);
+    if ($path === '') {
+        return '#';
+    }
+    return (stripos($path, 'http://') === 0 || stripos($path, 'https://') === 0)
+        ? $path
+        : '../' . $path;
+}
+
 
 // ==========================================
 // IMPORT DATA KLIEN: PETA HEADER FILE -> KOLOM Data_Klien

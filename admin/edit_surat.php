@@ -20,6 +20,7 @@ if (!defined('BASE_PATH')) {
 }
 require_once "../includes/functions.php";
 require_once "../includes/audit_helper.php";
+require_once "../includes/drive_helper.php";
 
 $page_title = "Edit Surat";
 $current_user_id = $_SESSION['user_id'];
@@ -243,7 +244,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
                 'sisa_pelunasan' => isset($_POST['sertakan_sisa_pelunasan']),   // ⬅ BARU
             ];
 
-            $fileHasilBaru = generateSuratDocx(
+            $fileHasilBaruLokal = generateSuratDocx(
                 BASE_PATH . '/' . $kode['file_path'],
                 $dataForm,
                 $items,
@@ -255,7 +256,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
                 $revisiKeDipakai
             );
 
-            $perihalDariWord = extractPerihalFromDocxText(BASE_PATH . '/' . $fileHasilBaru);
+            $perihalDariWord = extractPerihalFromDocxText(BASE_PATH . '/' . $fileHasilBaruLokal);
+
+            // Upload ke Google Drive -- surat hasil edit/revisi WAJIB tersimpan
+            // di Drive, tidak boleh fallback ke storage lokal.
+            $hasilDriveEdit = arp_upload_ke_drive(
+                BASE_PATH . '/' . $fileHasilBaruLokal,
+                basename($fileHasilBaruLokal),
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                0,
+                'Surat_Keluar'
+            );
+
+            if (!$hasilDriveEdit || empty($hasilDriveEdit['link'])) {
+                if (is_file(BASE_PATH . '/' . $fileHasilBaruLokal)) {
+                    @unlink(BASE_PATH . '/' . $fileHasilBaruLokal);
+                }
+                throw new RuntimeException("Gagal mengunggah surat ke Google Drive: " . arp_drive_last_error());
+            }
+
+            $fileHasilBaru = $hasilDriveEdit['link'];
+            $driveFileIdBaru = $hasilDriveEdit['file_id'] ?? null;
+
+            if (is_file(BASE_PATH . '/' . $fileHasilBaruLokal)) {
+                @unlink(BASE_PATH . '/' . $fileHasilBaruLokal);
+            }
             $perihalSimpan = $perihalManual !== ''
                 ? $perihalManual
                 : ($perihalDariWord
@@ -287,8 +312,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
                 $nomorAgendaRevisi = generateNomorAgenda($pdo, 'Keluar');
 
                 $insertRevisi = $pdo->prepare("INSERT INTO surat
-                    (induk_surat_id, direvisi_dari_id, nomor_agenda, nomor, kode_id, template_id, perihal, status, arah, tujuan, dibuat_oleh, tgl_dibuat, tanggal_diterima, file_hasil, revisi_ke, isi_data)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, 'Draft', 'Keluar', ?, ?, CURDATE(), NULL, ?, ?, ?)");
+                    (induk_surat_id, direvisi_dari_id, nomor_agenda, nomor, kode_id, template_id, perihal, status, arah, tujuan, dibuat_oleh, tgl_dibuat, tanggal_diterima, file_hasil, drive_file_id, drive_link, revisi_ke, isi_data)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 'Draft', 'Keluar', ?, ?, CURDATE(), NULL, ?, ?, ?, ?, ?)");
                 $insertRevisi->execute([
                     $idRootFamily,
                     $surat_id,
@@ -299,6 +324,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
                     $perihalSimpan,
                     $tujuanSimpan,
                     $current_user_id,
+                    $fileHasilBaru,
+                    $driveFileIdBaru,
                     $fileHasilBaru,
                     $revisiKeDipakai,
                     json_encode($isiDataDisimpan, JSON_UNESCAPED_UNICODE),
@@ -323,17 +350,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
 
             // EDIT BIASA (BUKAN revisi): update baris yang sama seperti sebelumnya.
             $fileLama = $surat['file_hasil'];
-            if ($fileLama && $fileLama !== $fileHasilBaru && is_file(BASE_PATH . '/' . $fileLama)) {
-                @unlink(BASE_PATH . '/' . $fileLama);
+            if ($fileLama && $fileLama !== $fileHasilBaru && stripos($fileLama, 'http') !== 0) {
+                $pathFileLama = BASE_PATH . '/' . $fileLama;
+                if (is_file($pathFileLama)) {
+                    @unlink($pathFileLama);
+                }
             }
 
-            $upd = $pdo->prepare("UPDATE surat SET nomor = ?, kode_id = ?, template_id = ?, perihal = ?, tujuan = ?, file_hasil = ?, isi_data = ? WHERE id = ?");
+            $upd = $pdo->prepare("UPDATE surat SET nomor = ?, kode_id = ?, template_id = ?, perihal = ?, tujuan = ?, file_hasil = ?, drive_file_id = ?, drive_link = ?, isi_data = ? WHERE id = ?");
             $upd->execute([
                 $nomorBaru,
                 $kodeIdPost,
                 $templateIdPost,
                 $perihalSimpan,
                 $tujuanSimpan,
+                $fileHasilBaru,
+                $driveFileIdBaru,
                 $fileHasilBaru,
                 json_encode($isiDataDisimpan, JSON_UNESCAPED_UNICODE),
                 $surat_id,
