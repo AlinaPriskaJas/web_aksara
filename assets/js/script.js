@@ -418,6 +418,60 @@ window.addEventListener("scroll", function () {
     }
 });
 
+/* ============================================================
+   Dropzone Upload File (generic)
+   Dipakai untuk semua elemen ".upload-dropzone" yang punya pola:
+   - div dropzone (klik / drag&drop area)
+   - <input type="file" class="d-none"> tersembunyi di dalamnya
+   - div daftar file yang sudah dipilih
+   Sebelumnya fungsi ini hanya ada secara lokal di admin/digital.php,
+   sehingga dropzone di halaman lain (mis. client/pengajuan.php)
+   tidak merespons klik sama sekali. Sekarang dipusatkan di sini
+   supaya bisa dipakai ulang oleh semua halaman yang butuh.
+   ============================================================ */
+function setupDropzone(dropzoneId, inputId, fileListId) {
+    const dropzone = document.getElementById(dropzoneId);
+    const fileInput = document.getElementById(inputId);
+    const fileList = document.getElementById(fileListId);
+    if (!dropzone || !fileInput) return;
+
+    dropzone.addEventListener('click', function () { fileInput.click(); });
+
+    ['dragenter', 'dragover'].forEach(function (evt) {
+        dropzone.addEventListener(evt, function (e) {
+            e.preventDefault(); e.stopPropagation();
+            dropzone.classList.add('dragover');
+        });
+    });
+    ['dragleave', 'drop'].forEach(function (evt) {
+        dropzone.addEventListener(evt, function (e) {
+            e.preventDefault(); e.stopPropagation();
+            dropzone.classList.remove('dragover');
+        });
+    });
+    dropzone.addEventListener('drop', function (e) {
+        if (e.dataTransfer.files.length) {
+            fileInput.files = e.dataTransfer.files;
+            renderList();
+        }
+    });
+    fileInput.addEventListener('change', renderList);
+
+    function renderList() {
+        if (!fileList) return;
+        fileList.innerHTML = '';
+        Array.from(fileInput.files).forEach(function (file) {
+            const item = document.createElement('div');
+            item.className = 'file-item';
+            item.innerHTML = '<span><i class="bi bi-paperclip me-2"></i>' + file.name + '</span>' +
+                '<span class="text-muted">' + (file.size / 1024).toFixed(0) + ' KB</span>';
+            fileList.appendChild(item);
+        });
+    }
+}
+
+// client/pengajuan.php -> Upload Dokumen Pendukung (Opsional)
+setupDropzone('uploadDropzone', 'dokumenPendukung', 'uploadFileList');
 
 /*=========================================
 =            SLIDER PREVIEW HERO
