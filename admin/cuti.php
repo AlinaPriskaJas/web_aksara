@@ -223,14 +223,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'batal
                     $file = $_FILES['lampiran'];
                     $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
                     if (in_array($ext, ['pdf', 'jpg', 'jpeg', 'png'])) {
-                        $dir = "../uploads/cuti/";
-                        if (!is_dir($dir))
-                            mkdir($dir, 0777, true);
-                        $fname = "cuti_" . $current_user_id . "_" . time() . "_" . uniqid() . "." . $ext;
-                        if (move_uploaded_file($file['tmp_name'], $dir . $fname)) {
-                            $lampiran = "uploads/cuti/" . $fname;
+                        $hasil_drive = arp_upload_ke_drive($file['tmp_name'], $file['name'], $file['type'], $current_user_id, 'Cuti');
+                        if ($hasil_drive && !empty($hasil_drive['link'])) {
+                            $lampiran = $hasil_drive['link'];
                         } else {
-                            $error_msg = "Gagal mengunggah dokumen pendukung.";
+                            $error_msg = "Gagal mengunggah dokumen pendukung ke Drive: " . arp_drive_last_error();
                         }
                     } else {
                         $error_msg = "Format dokumen tidak didukung. Gunakan PDF, JPG, atau PNG.";
@@ -312,14 +309,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'batal
                 $file = $_FILES['lampiran'];
                 $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
                 if (in_array($ext, ['pdf', 'jpg', 'jpeg', 'png'])) {
-                    $dir = "../uploads/cuti/";
-                    if (!is_dir($dir))
-                        mkdir($dir, 0777, true);
-                    $fname = "cuti_" . $current_user_id . "_" . time() . "_" . uniqid() . "." . $ext;
-                    if (move_uploaded_file($file['tmp_name'], $dir . $fname)) {
-                        $lampiran = "uploads/cuti/" . $fname;
+                    $hasil_drive = arp_upload_ke_drive($file['tmp_name'], $file['name'], $file['type'], $current_user_id, 'Cuti');
+                    if ($hasil_drive && !empty($hasil_drive['link'])) {
+                        $lampiran = $hasil_drive['link'];
                     } else {
-                        $error_msg = "Gagal mengunggah dokumen pendukung.";
+                        $error_msg = "Gagal mengunggah dokumen pendukung ke Drive: " . arp_drive_last_error();
                     }
                 } else {
                     $error_msg = "Format dokumen tidak didukung. Gunakan PDF, JPG, atau PNG.";
@@ -550,7 +544,8 @@ $dipakaiSakit = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year)
                                             <td class="col-keterangan"><?= htmlspecialchars($l['alasan'] ?: '-') ?></td>
                                             <td>
                                                 <?php if (!empty($l['lampiran'])): ?>
-                                                    <a href="../<?= htmlspecialchars($l['lampiran']) ?>" target="_blank"
+                                                    <?php $hrefLampiran = str_starts_with($l['lampiran'], 'http') ? $l['lampiran'] : '../' . $l['lampiran']; ?>
+                                                    <a href="<?= htmlspecialchars($hrefLampiran) ?>" target="_blank"
                                                         class="btn btn-outline-secondary btn-sm py-1"
                                                         style="font-size:0.75rem; border-radius: 8px;">
                                                         <i class="bi bi-file-earmark-arrow-down"></i> Lihat
@@ -650,7 +645,8 @@ $dipakaiSakit = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year)
                                             <td class="col-keterangan"><?= htmlspecialchars($l['alasan'] ?: '-') ?></td>
                                             <td>
                                                 <?php if (!empty($l['lampiran'])): ?>
-                                                    <a href="../<?= htmlspecialchars($l['lampiran']) ?>" target="_blank"
+                                                    <?php $hrefLampiran = str_starts_with($l['lampiran'], 'http') ? $l['lampiran'] : '../' . $l['lampiran']; ?>
+                                                    <a href="<?= htmlspecialchars($hrefLampiran) ?>" target="_blank"
                                                         class="btn btn-outline-secondary btn-sm py-1"
                                                         style="font-size:0.75rem; border-radius: 8px;">
                                                         <i class="bi bi-file-earmark-arrow-down"></i> Lihat
@@ -748,7 +744,8 @@ $dipakaiSakit = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year)
                                             <td class="col-keterangan"><?= htmlspecialchars($l['alasan'] ?: '-') ?></td>
                                             <td>
                                                 <?php if (!empty($l['lampiran'])): ?>
-                                                    <a href="../<?= htmlspecialchars($l['lampiran']) ?>" target="_blank"
+                                                    <?php $hrefLampiran = str_starts_with($l['lampiran'], 'http') ? $l['lampiran'] : '../' . $l['lampiran']; ?>
+                                                    <a href="<?= htmlspecialchars($hrefLampiran) ?>" target="_blank"
                                                         class="btn btn-outline-secondary btn-sm py-1"
                                                         style="font-size:0.75rem; border-radius: 8px;">
                                                         <i class="bi bi-file-earmark-arrow-down"></i> Lihat

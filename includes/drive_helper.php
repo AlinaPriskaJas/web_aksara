@@ -270,7 +270,39 @@ function arp_upload_ke_drive(string $path_file_lokal, string $nama_file, string 
         ? 'Koneksi ke Google Drive gagal/timeout (' . $hasil['curl_error'] . '). Coba lagi beberapa saat, atau periksa koneksi internet.'
         : 'Google Drive menolak upload (HTTP ' . $hasil['http_code'] . '). Kemungkinan kuota Apps Script penuh atau token salah.';
 
+    // --- SEMENTARA UNTUK DEBUGGING (hapus setelah masalah 404 ketemu akar penyebabnya) ---
+    // Tampilkan potongan isi respons mentah langsung di pesan error, supaya tidak perlu
+    // cari-cari file error_log yang lokasinya beda-beda di tiap environment (mis. Laragon).
+    if (!empty($hasil['raw'])) {
+        $pesan_akhir .= ' | RAW RESPONSE: ' . substr($hasil['raw'], 0, 300);
+    }
+    // --- AKHIR BLOK DEBUGGING SEMENTARA ---
+
     arp_drive_set_last_error($pesan_akhir);
 
     return null;
+}
+
+function arp_hapus_file_drive(string $fileId): bool
+{
+    $config_path = __DIR__ . '/../config/drive_config.php';
+    if (!file_exists($config_path)) return false;
+    $config = require $config_path;
+    if (empty($config['webapp_url']) || empty($config['secret_token'])) return false;
+
+    $ch = curl_init($config['webapp_url']);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query([
+        'token'  => $config['secret_token'],
+        'action' => 'delete',
+        'file_id' => $fileId,
+    ]));
+    $response = curl_exec($ch);
+    curl_close($ch);
+
+    $data = json_decode((string) $response, true);
+    return !empty($data['success']);
 }
