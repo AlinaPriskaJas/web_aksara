@@ -13,5 +13,5 @@
 
 return [
     'webapp_url'   => 'https://script.google.com/macros/s/AKfycbxAmu36V7Wo-HMuzOWwzX4lLnWso8qdqwB-rDgc3PcWRXDxB1k_5xRB3VPKaAcbNZjg/exec',
-    'secret_token' => 'Xk9mP2vQ8nR5wL1tY7bH4jC6sF3gA0dE',
+    'secret_token' => 'Xk9mP2vQ8nR5wL1tY7bH4jC6sayaF3gA0dE',
 ];
