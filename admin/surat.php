@@ -1673,6 +1673,11 @@ include "../includes/topbar.php";
                                                     <i class="bi bi-pencil-square"></i>
                                                 </a>
                                                 <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
+                                                    href="<?= e(hrefBerkas($s['file_hasil'])) ?>" target="_blank"
+                                                    title="Lihat berkas">
+                                                    <i class="bi bi-eye"></i>
+                                                </a>
+                                                <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
                                                     href="<?= e(hrefBerkas($s['file_hasil'])) ?>" download title="Unduh">
                                                     <i class="bi bi-download"></i>
                                                 </a>
@@ -1837,6 +1842,7 @@ include "../includes/topbar.php";
                                                     title="Lihat / unduh berkas">
                                                     <i class="bi bi-eye"></i>
                                                 </a>
+
                                                 <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
                                                     href="<?= e(hrefBerkas($s['file_hasil'])) ?>" download title="Unduh">
                                                     <i class="bi bi-download"></i>

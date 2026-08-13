@@ -923,15 +923,14 @@ include "../includes/topbar.php";
                                     <td class="col-aksi" style="text-align:center;">
                                         <div class="table-actions">
                                             <?php if (!empty($s['file_hasil'])): ?>
+                                                <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
+                                                    href="<?= e(hrefBerkas($s['file_hasil'])) ?>" target="_blank" title="Lihat berkas">
+                                                    <i class="bi bi-eye"></i>
+                                                </a>
                                                 <?php if ($suratMilikSaya): ?>
-                                                    <a class="btn btn-outline-primary btn-sm py-1" style="font-size:0.75rem;"
-                                                        href="edit_surat.php?id=<?= (int) $s['id'] ?>" title="Edit Surat">
+                                                    <a class="btn btn-outline-primary btn-sm py-1" style="font-size:0.75rem;" href="edit_surat.php?id=<?= (int) $s['id'] ?>"
+                                                        title="Edit Surat">
                                                         <i class="bi bi-pencil-square"></i>
-                                                    </a>
-                                                <?php else: ?>
-                                                    <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
-                                                        href="<?= e(hrefBerkas($s['file_hasil'])) ?>" target="_blank" title="Lihat berkas">
-                                                        <i class="bi bi-eye"></i>
                                                     </a>
                                                 <?php endif; ?>
                                                 <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
@@ -1022,20 +1021,19 @@ include "../includes/topbar.php";
                                     </td>
                                     <td class="col-aksi" style="text-align:center;">
                                         <div class="table-actions">
-                                        <?php if (!empty($s['file_hasil'])): ?>
-                                                            <?php $hrefMasuk = str_starts_with($s['file_hasil'], 'http') ? $s['file_hasil'] : '../' . $s['file_hasil']; ?>
-                                                            <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
-                                                                href="<?= e($hrefMasuk) ?>" target="_blank"
-                                                                title="Lihat / unduh berkas">
-                                                                <i class="bi bi-eye"></i>
-                                                            </a>
-                                                            <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
-                                                                href="<?= e($hrefMasuk) ?>" download title="Unduh">
-                                                                <i class="bi bi-download"></i>
-                                                            </a>
-                                                        <?php else: ?>
-                                                            <span class="text-secondary">-</span>
-                                                        <?php endif; ?>
+                                            <?php if (!empty($s['file_hasil'])): ?>
+                                                <?php $hrefMasuk = str_starts_with($s['file_hasil'], 'http') ? $s['file_hasil'] : '../' . $s['file_hasil']; ?>
+                                                <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
+                                                    href="<?= e($hrefMasuk) ?>" target="_blank" title="Lihat / unduh berkas">
+                                                    <i class="bi bi-eye"></i>
+                                                </a>
+                                                <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
+                                                    href="<?= e($hrefMasuk) ?>" download title="Unduh">
+                                                    <i class="bi bi-download"></i>
+                                                </a>
+                                            <?php else: ?>
+                                                <span class="text-secondary">-</span>
+                                            <?php endif; ?>
                                         </div>
                                     </td>
                                 </tr>
