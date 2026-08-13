@@ -350,11 +350,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
 
             // EDIT BIASA (BUKAN revisi): update baris yang sama seperti sebelumnya.
             $fileLama = $surat['file_hasil'];
+            $driveFileIdLama = $surat['drive_file_id'] ?? null;
+
             if ($fileLama && $fileLama !== $fileHasilBaru && stripos($fileLama, 'http') !== 0) {
                 $pathFileLama = BASE_PATH . '/' . $fileLama;
                 if (is_file($pathFileLama)) {
                     @unlink($pathFileLama);
                 }
+            } elseif ($driveFileIdLama && $driveFileIdLama !== $driveFileIdBaru) {
+                // File lama ada di Google Drive -> hapus supaya tidak menumpuk
+                arp_hapus_file_drive($driveFileIdLama);
             }
 
             $upd = $pdo->prepare("UPDATE surat SET nomor = ?, kode_id = ?, template_id = ?, perihal = ?, tujuan = ?, file_hasil = ?, drive_file_id = ?, drive_link = ?, isi_data = ? WHERE id = ?");
