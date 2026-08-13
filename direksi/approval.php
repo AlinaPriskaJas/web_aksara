@@ -3,8 +3,14 @@
 session_start();
 require_once "../config/koneksi.php";
 
-// TODO: ganti dengan user_id dari sesi login sebenarnya setelah proses_login.php terhubung penuh.
-$direksi_id = $_SESSION['user_id'] ?? 1;
+// Guard: halaman ini khusus role direksi. Kalau belum login / bukan direksi,
+// lempar balik ke login — pola ini sama seperti yang dipakai it/cuti.php.
+if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'direksi') {
+    header("Location: ../login.php");
+    exit;
+}
+
+$direksi_id = $_SESSION['user_id'];
 
 $page_title = "Approval Center";
 $flash = null;
@@ -619,7 +625,6 @@ include "../includes/topbar.php";
                                         <td>
                                             <strong><?= htmlspecialchars($a['nama_pemohon'] ?? '-') ?></strong>
                                             <br><small class="text-secondary"><?= htmlspecialchars(ucfirst($a['role_pemohon'] ?? '-')) ?></small>
-                                            </div>
                                         </td>
                                         <td class="fs-7"><?= ambil_detail_ref($conn, $a['jenis_pengajuan'], (int) $a['ref_id']) ?>
                                         </td>

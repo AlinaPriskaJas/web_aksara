@@ -44,8 +44,6 @@
         var form = e.target;
         if (!(form instanceof HTMLFormElement)) return;
 
-        // Lewati form yang sengaja dikecualikan atau yang submit-nya
-        // dibatalkan oleh validasi JS lain (mis. alert "pilih klien dulu").
         if (form.hasAttribute('data-no-loader') || form.target === '_blank') return;
         if (e.defaultPrevented) return;
 
@@ -53,11 +51,21 @@
         showLoader(hasFileInput ? 'Mengunggah file...' : 'Memproses...');
 
         // Cegah klik ganda tombol submit selama proses upload berlangsung.
+        // PENTING: disable-nya ditunda 1 tick (setTimeout 0) supaya browser
+        // sudah selesai menyusun & mengirim data form (termasuk nama/value
+        // tombol submit yang diklik, mis. name="proses_approval") SEBELUM
+        // tombolnya jadi disabled. Kalau di-disable langsung secara sync di
+        // sini, browser akan menganggap tombol itu tidak "submit-able" lagi
+        // dan MENGECUALIKAN name/value-nya dari data yang dikirim ke server
+        // — akibatnya $_POST['proses_approval'] tidak pernah terkirim sama
+        // sekali walau method-nya tetap POST.
         var buttons = form.querySelectorAll('button[type="submit"], input[type="submit"]');
-        buttons.forEach(function (btn) {
-            btn.disabled = true;
-            btn.classList.add('is-loading');
-        });
+        setTimeout(function () {
+            buttons.forEach(function (btn) {
+                btn.disabled = true;
+                btn.classList.add('is-loading');
+            });
+        }, 0);
     });
 })();
 
@@ -65,7 +73,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // 1. Sidebar Drawer Toggle for Mobile / Tablet Viewports
     const hamburgerBtn = document.getElementById('hamburger-btn');
     const sidebar = document.getElementById('sidebar');
-    
+
     // Create and append overlay backdrop dynamically if not exists
     let overlay = document.getElementById('sidebar-overlay');
     if (!overlay) {
@@ -109,19 +117,19 @@ document.addEventListener('DOMContentLoaded', function () {
         if (activeLink) {
             // Clone active link to extract text without altering original elements
             const clonedLink = activeLink.cloneNode(true);
-            
+
             // Remove any icons or inner icon tags
             const icons = clonedLink.querySelectorAll('i, svg, span.badge');
             icons.forEach(icon => icon.remove());
-            
+
             // Extract the clean page title
             const activePageTitle = clonedLink.textContent.trim();
-            
+
             // Update the topbar title
             const topbarTitle = document.getElementById('topbar-title');
             if (topbarTitle) {
                 topbarTitle.textContent = activePageTitle;
-                
+
                 // Update document head title too for good practice
                 document.title = activePageTitle + " - PT Aksara Riksa Perdana";
             }
@@ -147,7 +155,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
 // Smooth Scroll
 document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-    anchor.addEventListener('click', function(e) {
+    anchor.addEventListener('click', function (e) {
         const href = this.getAttribute('href');
         if (href && href.length > 1) {
             try {
@@ -399,12 +407,12 @@ function switchTab(targetId, btnEl) {
 window.switchTab = switchTab;
 
 // Navbar Shadow Saat Scroll
-window.addEventListener("scroll", function(){
+window.addEventListener("scroll", function () {
     const navbar = document.querySelector(".navbar");
     if (navbar) {
-        if(window.scrollY > 20){
+        if (window.scrollY > 20) {
             navbar.style.boxShadow = "0 5px 20px rgba(0,0,0,.12)";
-        }else{
+        } else {
             navbar.style.boxShadow = "0 3px 10px rgba(0,0,0,.08)";
         }
     }
@@ -423,7 +431,7 @@ window.addEventListener("scroll", function(){
 
     let current = 0;
 
-    function showSlide(index){
+    function showSlide(index) {
 
         slides[current].classList.remove("active");
 
@@ -438,16 +446,16 @@ window.addEventListener("scroll", function(){
 
     }
 
-    setInterval(function(){
+    setInterval(function () {
 
         let next = current + 1;
 
-        if(next >= slides.length){
+        if (next >= slides.length) {
             next = 0;
         }
 
         showSlide(next);
 
-    },5000);
+    }, 5000);
 
 })();
