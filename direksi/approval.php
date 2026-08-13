@@ -264,6 +264,10 @@ if (!in_array($status_filter, $valid_statuses, true)) {
     $status_filter = 'Menunggu';
 }
 
+// Notifikasi topbar bisa kirim ?highlight=<ref_id>&modul=cuti supaya baris terkait disorot
+$highlight_id = isset($_GET['highlight']) ? (int) $_GET['highlight'] : null;
+$highlight_modul = $_GET['modul'] ?? null; // opsional, jaga2 kalau ref_id sama tapi jenis beda (cuti vs reimburse)
+
 $daftar_approval = [];
 if ($tab_aktif === 'umum') {
     try {
@@ -609,26 +613,33 @@ include "../includes/topbar.php";
                                     <td colspan="9" class="text-center text-muted py-4">Tidak ada data untuk status ini.</td>
                                 </tr>
                             <?php else: ?>
-                                <?php foreach ($daftar_approval as $i => $a): ?>
-                                    <tr>
+                                <?php foreach ($daftar_approval as $i => $a):
+                                    $is_highlight = $highlight_id
+                                        && (int) $a['ref_id'] === $highlight_id
+                                        && (!$highlight_modul || strcasecmp($a['jenis_pengajuan'], $highlight_modul) === 0);
+                                    ?>
+                                    <tr id="approval-row-<?= (int) $a['id'] ?>" class="<?= $is_highlight ? 'table-warning' : '' ?>">
                                         <td><?= $i + 1 ?></td>
                                         <td><?= htmlspecialchars(date('d M Y', strtotime($a['created_at']))) ?></td>
                                         <td>
                                             <?php if ($a['jenis_pengajuan'] === 'Cuti'):
                                                 $label_cuti = label_jenis_pengajuan($conn, $a['jenis_pengajuan'], (int) $a['ref_id']);
-                                            ?>
-                                                <span class="<?= badge_class_jenis_cuti($label_cuti) ?> fs-7"><?= htmlspecialchars($label_cuti) ?></span>
+                                                ?>
+                                                <span
+                                                    class="<?= badge_class_jenis_cuti($label_cuti) ?> fs-7"><?= htmlspecialchars($label_cuti) ?></span>
                                             <?php else: ?>
                                                 <?= htmlspecialchars($a['jenis_pengajuan']) ?>
                                             <?php endif; ?>
                                         </td>
                                         <td>
                                             <strong><?= htmlspecialchars($a['nama_pemohon'] ?? '-') ?></strong>
-                                            <br><small class="text-secondary"><?= htmlspecialchars(ucfirst($a['role_pemohon'] ?? '-')) ?></small>
+                                            <br><small
+                                                class="text-secondary"><?= htmlspecialchars(ucfirst($a['role_pemohon'] ?? '-')) ?></small>
                                         </td>
                                         <td class="fs-7"><?= ambil_detail_ref($conn, $a['jenis_pengajuan'], (int) $a['ref_id']) ?>
                                         </td>
-                                        <td class="fs-7 col-keterangan"><?= htmlspecialchars(ambil_keterangan_ref($conn, $a['jenis_pengajuan'], (int) $a['ref_id'])) ?>
+                                        <td class="fs-7 col-keterangan">
+                                            <?= htmlspecialchars(ambil_keterangan_ref($conn, $a['jenis_pengajuan'], (int) $a['ref_id'])) ?>
                                         </td>
                                         <td><span
                                                 class="<?= badge_class_status($a['status']) ?>"><?= htmlspecialchars($a['status']) ?></span>
@@ -656,7 +667,7 @@ include "../includes/topbar.php";
                                             <?php $fileRefUmum = ambil_file_ref($conn, $a['jenis_pengajuan'], (int) $a['ref_id']); ?>
                                             <?php if ($fileRefUmum):
                                                 $hrefFileUmum = str_starts_with($fileRefUmum, 'http') ? $fileRefUmum : '../' . $fileRefUmum;
-                                            ?>
+                                                ?>
                                                 <button type="button" class="btn-icon-bukti"
                                                     onclick="openFileModal('<?= htmlspecialchars($hrefFileUmum, ENT_QUOTES) ?>', '<?= htmlspecialchars(addslashes($a['jenis_pengajuan']), ENT_QUOTES) ?>')"
                                                     title="Lihat File">
@@ -795,7 +806,7 @@ include "../includes/topbar.php";
                                     <td class="align-middle" style="text-align: center;">
                                         <?php if (!empty($s['file_hasil'])):
                                             $hrefFileSurat = str_starts_with($s['file_hasil'], 'http') ? $s['file_hasil'] : '../' . $s['file_hasil'];
-                                        ?>
+                                            ?>
                                             <button type="button" class="btn-icon-bukti"
                                                 onclick="openFileModal('<?= htmlspecialchars($hrefFileSurat, ENT_QUOTES) ?>', '<?= htmlspecialchars(addslashes($s['nomor'] ?? $s['perihal'] ?? 'Surat'), ENT_QUOTES) ?>')"
                                                 title="Lihat File">
@@ -1019,6 +1030,17 @@ include "../includes/topbar.php";
         modal.show();
     }
 </script>
+
+<?php if ($highlight_id): ?>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const row = document.querySelector('.table-warning');
+        if (row) {
+            row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    });
+</script>
+<?php endif; ?>
 
 <?php
 include "../includes/footer.php";
