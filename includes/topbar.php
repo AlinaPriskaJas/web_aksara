@@ -185,7 +185,7 @@ function topbar_link_notif(string $modul, ?int $ref_id, string $role, string $ba
                 <button class="notification-btn" id="notifBtn" aria-label="Notifications">
                     <i class="bi bi-bell"></i>
                     <span class="notification-dot" id="notifBadge"
-                        style="<?= $topbar_notif_count > 0 ? '' : 'display:none;' ?>"></span>
+                        style="<?= $topbar_notif_count > 0 ? '' : 'display:none;' ?>"><?= $topbar_notif_count > 9 ? '9+' : $topbar_notif_count ?></span>
                 </button>
 
                 <div class="notif-dropdown" id="notifDropdown">
@@ -227,14 +227,22 @@ function topbar_link_notif(string $modul, ?int $ref_id, string $role, string $ba
 
         .notification-dot {
             position: absolute;
-            top: 6px;
-            right: 6px;
-            width: 9px;
-            height: 9px;
-            border-radius: 50%;
+            top: -2px;
+            right: -6px;
+            min-width: 16px;
+            height: 16px;
+            padding: 0 4px;
+            border-radius: 999px;
             background: #ef4444;
             border: 2px solid #fff;
             box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.25);
+            color: #fff;
+            font-size: 0.62rem;
+            font-weight: 700;
+            line-height: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .notif-dropdown {
@@ -359,6 +367,22 @@ function topbar_link_notif(string $modul, ?int $ref_id, string $role, string $ba
                     if (!sudahDibaca) {
                         fetch('<?= htmlspecialchars($topbar_base) ?>includes/topbar.php?ajax=mark_read&id=' + encodeURIComponent(id))
                             .then(res => res.json())
+                            .then(json => {
+                                if (json.success) {
+                                    item.classList.remove('notif-item-unread');
+                                    item.dataset.dibaca = '1';
+
+                                    if (notifBadge) {
+                                        let current = parseInt(notifBadge.textContent) || 0;
+                                        current = Math.max(0, current - 1);
+                                        if (current > 0) {
+                                            notifBadge.textContent = current > 9 ? '9+' : current;
+                                        } else {
+                                            notifBadge.style.display = 'none';
+                                        }
+                                    }
+                                }
+                            })
                             .finally(() => {
                                 if (url) window.location.href = url;
                             });
