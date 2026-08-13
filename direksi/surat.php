@@ -507,9 +507,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'hapus_s
 
         catatAudit($pdo, 'Surat', 'Hapus', "Menghapus surat #{$suratId} (" . ($s['nomor'] ?? '') . ")", $s, null);
 
-        // Cuma coba hapus fisik kalau memang path lokal (data lama).
-        // is_file() ke URL http bisa memicu request jaringan, jadi dihindari.
-        if (!empty($s['file_hasil']) && stripos($s['file_hasil'], 'http') !== 0) {
+        if (!empty($s['drive_file_id'])) {
+            arp_hapus_file_drive($s['drive_file_id']);
+        } elseif (!empty($s['file_hasil']) && stripos($s['file_hasil'], 'http') !== 0) {
             $pathLokalHapus = BASE_PATH . '/' . $s['file_hasil'];
             if (is_file($pathLokalHapus)) {
                 @unlink($pathLokalHapus);
