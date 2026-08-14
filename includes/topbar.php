@@ -214,6 +214,16 @@ function topbar_link_notif(PDO $conn, string $modul, ?int $ref_id, string $role,
         return $base . $role_dir . '/cuti.php?tab=' . $tab . ($ref_id ? '&highlight=' . $ref_id : '');
     }
 
+    // Jadwal Pemeriksaan: halaman jadwal.php hanya dimiliki role admin & ahli_k3.
+    // Role lain (direksi, it, dst) yang kebagian notif broadcast jadwal
+    // tidak punya halaman ini, jadi diarahkan ke dashboard saja supaya tidak 404.
+    if ($modul === 'jadwal') {
+        if (in_array($role, ['admin', 'ahli_k3'], true)) {
+            return $base . $role_dir . '/jadwal.php' . ($ref_id ? '?highlight=' . $ref_id : '');
+        }
+        return $base . $role_dir . '/dashboard.php';
+    }
+
     return match ($modul) {
         'reimburse' => $base . $role_dir . '/reimburse.php',
         'kendaraan' => $base . $role_dir . '/transportasi.php',
