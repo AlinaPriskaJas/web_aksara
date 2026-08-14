@@ -938,8 +938,10 @@ include "../includes/topbar.php";
                                                         <i class="bi bi-pencil-square"></i>
                                                     </a>
                                                 <?php endif; ?>
+                                                <?php $fileIdUnduh = $s['drive_file_id'] ?? driveFileIdDariUrl($s['file_hasil'] ?? null); ?>
                                                 <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
-                                                    href="<?= e(hrefBerkas($s['file_hasil'])) ?>" download title="Unduh">
+                                                    href="<?= e($fileIdUnduh ? urlUnduhLangsungDrive($fileIdUnduh) : hrefBerkas($s['file_hasil'])) ?>"
+                                                    title="Unduh Word (.docx)">
                                                     <i class="bi bi-download"></i>
                                                 </a>
                                             <?php endif; ?>

@@ -1807,6 +1807,24 @@ function hrefBerkas(?string $path): string
         : '../' . $path;
 }
 
+// ==========================================
+// URL unduh LANGSUNG (force-download) dari Google Drive, bukan link preview.
+// ==========================================
+function urlUnduhLangsungDrive(?string $driveFileId): ?string
+{
+    $driveFileId = trim((string) $driveFileId);
+    return $driveFileId !== '' ? ('https://drive.google.com/uc?export=download&id=' . urlencode($driveFileId)) : null;
+}
+
+// Fallback: ambil file_id dari URL Drive kalau drive_file_id kosong (mis. data lama / surat masuk manual).
+function driveFileIdDariUrl(?string $url): ?string
+{
+    $url = trim((string) $url);
+    if ($url === '') return null;
+    if (preg_match('#/d/([a-zA-Z0-9_-]{10,})#', $url, $m)) return $m[1];
+    if (preg_match('#[?&]id=([a-zA-Z0-9_-]{10,})#', $url, $m)) return $m[1];
+    return null;
+}
 
 // ==========================================
 // IMPORT DATA KLIEN: PETA HEADER FILE -> KOLOM Data_Klien
