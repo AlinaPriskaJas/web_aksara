@@ -947,7 +947,8 @@ include "../includes/topbar.php";
                 <button type="button" class="btn-primary-custom" id="modalLihatFilePrint" style="display:none;">
                     <i class="bi bi-printer"></i> Cetak
                 </button>
-                <a href="#" id="modalLihatFileDownload" target="_blank" class="btn-secondary-custom">
+                <a href="#" id="modalLihatFileDownload" target="_blank" rel="noopener noreferrer" class="btn-secondary-custom"
+                    onclick="return bukaTabBaruDenganFokus(this.getAttribute('data-url'))">
                     <i class="bi bi-box-arrow-up-right"></i> Buka di Tab Baru
                 </a>
                 <button type="button" class="btn-secondary-custom" data-bs-dismiss="modal">Tutup</button>
@@ -957,6 +958,40 @@ include "../includes/topbar.php";
 </div>
 
 <script>
+    // Google Drive punya endpoint khusus untuk di-embed di iframe (.../preview) yang
+    // TIDAK melakukan frame-busting. Link ".../view" biasa (hasil upload) akan mendeteksi
+    // dirinya sedang di-frame dan otomatis window.open() dirinya sendiri ke tab baru --
+    // itulah yang membuat tab baru muncul di background saat file Drive dibuka di modal.
+    function ambilFileIdDrive(url) {
+        if (!url) return null;
+        let m = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+        if (m) return m[1];
+        m = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+        if (m) return m[1];
+        return null;
+    }
+
+    function urlEmbedAmanUntukIframe(url) {
+        const fileId = ambilFileIdDrive(url);
+        if (fileId) {
+            return 'https://drive.google.com/file/d/' + fileId + '/preview';
+        }
+        return url;
+    }
+
+    // Link Google Drive tidak selalu diakhiri ".pdf" di URL-nya, jadi deteksi ekstensi
+    // juga dicoba dari nama file asli (label) kalau dari URL tidak ketemu.
+    function tentukanEkstensiFile(fileUrl, label) {
+        const extValid = ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
+        const dariUrl = fileUrl.split('?')[0].split('.').pop().toLowerCase();
+        if (extValid.includes(dariUrl)) return dariUrl;
+        if (label) {
+            const dariLabel = label.split('.').pop().toLowerCase();
+            if (extValid.includes(dariLabel)) return dariLabel;
+        }
+        return dariUrl;
+    }
+
     function openFileModal(fileUrl, label) {
         const body = document.getElementById('modalLihatFileBody');
         const title = document.getElementById('modalLihatFileTitle');
@@ -965,10 +1000,11 @@ include "../includes/topbar.php";
 
         title.textContent = 'Lampiran' + (label ? ' - ' + label : '');
         downloadBtn.href = fileUrl;
+        downloadBtn.setAttribute('data-url', fileUrl);
         printBtn.onclick = null;
         printBtn.style.display = 'none';
 
-        const ext = fileUrl.split('?')[0].split('.').pop().toLowerCase();
+        const ext = tentukanEkstensiFile(fileUrl, label);
         const gambarExt = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
 
         if (gambarExt.includes(ext)) {
@@ -976,9 +1012,10 @@ include "../includes/topbar.php";
             printBtn.style.display = 'inline-flex';
             printBtn.onclick = function () { cetakGambarLampiran(fileUrl); };
         } else if (ext === 'pdf') {
-            body.innerHTML = `<iframe id="modalLihatFileFrame" src="${fileUrl}" style="width:100%; height:70vh; border:0;"></iframe>`;
+            const embedUrl = urlEmbedAmanUntukIframe(fileUrl);
+            body.innerHTML = `<iframe id="modalLihatFileFrame" src="${embedUrl}" style="width:100%; height:70vh; border:0;"></iframe>`;
             printBtn.style.display = 'inline-flex';
-            printBtn.onclick = function () { cetakPdfLampiran(); };
+            printBtn.onclick = function () { cetakPdfLampiran(fileUrl); };
         } else {
             body.innerHTML = `
                 <div class="text-center py-4">
@@ -991,21 +1028,33 @@ include "../includes/topbar.php";
         modal.show();
     }
 
-    function cetakPdfLampiran() {
+    function cetakPdfLampiran(fileUrlAsli) {
         const frame = document.getElementById('modalLihatFileFrame');
-        if (frame && frame.contentWindow) {
-            try {
+        // Iframe Drive (.../preview) berbeda origin -> contentWindow tidak bisa diakses
+        // untuk print langsung. Fallback: buka link aslinya di tab baru (dengan fokus).
+        try {
+            if (frame && frame.contentWindow && frame.src.indexOf('drive.google.com') === -1) {
                 frame.contentWindow.focus();
                 frame.contentWindow.print();
-            } catch (e) {
-                // Fallback kalau viewer PDF bawaan browser memblokir akses contentWindow
-                window.open(frame.src, '_blank');
+                return;
             }
+        } catch (e) {
+            // lanjut ke fallback di bawah
         }
+        bukaTabBaruDenganFokus(fileUrlAsli || (frame ? frame.src : ''));
+    }
+
+    function bukaTabBaruDenganFokus(url) {
+        if (!url || url === '#') return false;
+        const winBaru = window.open(url, '_blank', 'noopener,noreferrer');
+        if (winBaru) {
+            winBaru.focus();
+        }
+        return false;
     }
 
     function cetakGambarLampiran(fileUrl) {
-        const jendelaCetak = window.open('', '_blank', 'width=800,height=600');
+        const jendelaCetak = window.open('', '_blank', 'width=800,height=600,noopener,noreferrer');
         if (!jendelaCetak) return;
         jendelaCetak.document.write(`
             <html>
@@ -1016,6 +1065,7 @@ include "../includes/topbar.php";
             </html>
         `);
         jendelaCetak.document.close();
+        jendelaCetak.focus();
     }
 </script>
 

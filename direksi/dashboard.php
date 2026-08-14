@@ -138,7 +138,7 @@ include "../includes/topbar.php";
         <div class="col-xl-3 col-md-6 col-12">
             <div class="stat-card">
                 <div class="stat-card-info">
-                    <span class="stat-card-title">Total Klien</span>
+                    <span class="stat-card-title">Total Client</span>
                     <span class="stat-card-value"><?= number_format($total_klien, 0, ',', '.') ?></span>
                 </div>
                 <div class="stat-card-icon success">

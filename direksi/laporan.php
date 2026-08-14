@@ -133,7 +133,7 @@ include "../includes/topbar.php";
         <div class="col-xl-3 col-md-6 col-12">
             <div class="stat-card">
                 <div class="stat-card-info">
-                    <span class="stat-card-title">Klien Aktif</span>
+                    <span class="stat-card-title">Client Aktif</span>
                     <span class="stat-card-value"><?= number_format($total_klien_aktif, 0, ',', '.') ?></span>
                 </div>
                 <div class="stat-card-icon"><i class="bi bi-people-fill"></i></div>
@@ -162,7 +162,7 @@ include "../includes/topbar.php";
     <div class="row g-4 mb-4">
         <div class="col-lg-7 col-12">
             <div class="card-box h-100">
-                <h5 class="fw-bold mb-3">Suket K3 Terbit per Bulan &mdash; <?= $tahun ?></h5>
+                <h5 class="fw-bold mb-3">Suket K3 Terbit per Bulan di Tahun <?= $tahun ?></h5>
                 <div class="chart-wrap" style="position:relative; height:260px;">
                     <canvas id="chartSuketBulan"></canvas>
                 </div>
@@ -189,7 +189,7 @@ include "../includes/topbar.php";
         </div>
         <div class="col-lg-6 col-12">
             <div class="card-box h-100">
-                <h5 class="fw-bold mb-3">5 Klien dengan Aktivitas Tertinggi</h5>
+                <h5 class="fw-bold mb-3">5 Client dengan Aktivitas Tertinggi</h5>
                 <?php if (empty($top_klien)): ?>
                     <p class="text-secondary fs-7 mb-0">Belum ada data pemeriksaan pada tahun ini.</p>
                 <?php else: ?>

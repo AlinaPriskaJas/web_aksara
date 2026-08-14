@@ -105,7 +105,7 @@ include "../includes/topbar.php";
         <div class="col-xl-3 col-md-6 col-12">
             <div class="stat-card">
                 <div class="stat-card-info">
-                    <span class="stat-card-title">Kontrak Klien</span>
+                    <span class="stat-card-title">Kontrak Client</span>
                     <span class="stat-card-value"><?= $total_kontrak ?></span>
                 </div>
                 <div class="stat-card-icon"><i class="bi bi-file-earmark-ruled"></i></div>
@@ -136,7 +136,7 @@ include "../includes/topbar.php";
                         <th>No</th>
                         <th>Nama Dokumen</th>
                         <th>Kategori</th>
-                        <th>Klien</th>
+                        <th>Client</th>
                         <th>Visibilitas</th>
                         <th>Diunggah Oleh</th>
                         <th>Tanggal</th>

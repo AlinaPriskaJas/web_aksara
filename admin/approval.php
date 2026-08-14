@@ -278,6 +278,110 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_pengajuan'])) {
     exit;
 }
 
+// ================== PROSES GANTI SATU FILE PADA PENGAJUAN ==================
+// Admin bisa mengganti SATU file/dokumen pendukung yang dikirim client, tanpa
+// menyentuh file lain ataupun data pengajuan (unit, jenis, tanggal, dsb).
+// Hanya baris Dokumen_Digital dengan id = :dokumen_id yang diperbarui.
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ganti_file_pengajuan'])) {
+    require_once "../includes/drive_helper.php";
+
+    $dokumen_id   = (int) ($_POST['dokumen_id'] ?? 0);
+    $pengajuan_id = (int) ($_POST['pengajuan_id'] ?? 0);
+
+    if ($dokumen_id <= 0) {
+        $flash = ['type' => 'danger', 'message' => 'File yang ingin diganti tidak valid.'];
+    } elseif (empty($_FILES['file_baru']) || $_FILES['file_baru']['error'] === UPLOAD_ERR_NO_FILE) {
+        $flash = ['type' => 'danger', 'message' => 'Pilih file baru terlebih dahulu.'];
+    } elseif ($_FILES['file_baru']['error'] !== UPLOAD_ERR_OK) {
+        $flash = ['type' => 'danger', 'message' => 'Gagal mengunggah file (kode error: ' . $_FILES['file_baru']['error'] . ').'];
+    } else {
+        try {
+            // Pastikan dokumen ini memang milik pengajuan pemeriksaan (bukan modul lain),
+            // supaya endpoint ini tidak bisa dipakai mengganti file di modul lain.
+            $cekDok = $conn->prepare("
+                SELECT id, ref_id, klien_id, drive_file_id
+                FROM Dokumen_Digital
+                WHERE id = :id AND modul_sumber = 'Pengajuan_Pemeriksaan'
+            ");
+            $cekDok->execute([':id' => $dokumen_id]);
+            $dokLama = $cekDok->fetch();
+
+            if (!$dokLama) {
+                throw new RuntimeException("Dokumen tidak ditemukan.");
+            }
+            if ($pengajuan_id > 0 && (int) $dokLama['ref_id'] !== $pengajuan_id) {
+                throw new RuntimeException("Dokumen tidak sesuai dengan pengajuan ini.");
+            }
+
+            $allowed_ext = ['pdf', 'jpg', 'jpeg', 'png'];
+            $max_size    = 10 * 1024 * 1024;
+
+            $nama_asli = $_FILES['file_baru']['name'];
+            $ext = strtolower(pathinfo($nama_asli, PATHINFO_EXTENSION));
+            if (!in_array($ext, $allowed_ext, true)) {
+                throw new RuntimeException("Tipe file tidak didukung. Gunakan PDF, JPG, atau PNG.");
+            }
+            if ($_FILES['file_baru']['size'] > $max_size) {
+                throw new RuntimeException("Ukuran file melebihi 10MB.");
+            }
+
+            $tmp_path = $_FILES['file_baru']['tmp_name'];
+            $mime     = $_FILES['file_baru']['type'] ?: 'application/octet-stream';
+
+            $hasil_drive = arp_upload_ke_drive($tmp_path, $nama_asli, $mime, (int) $dokLama['ref_id'], 'Pengajuan_Pemeriksaan');
+
+            if (!$hasil_drive || empty($hasil_drive['link'])) {
+                throw new RuntimeException("Gagal mengunggah file baru ke Drive: " . arp_drive_last_error());
+            }
+
+            // Hanya baris file ini yang diperbarui -- file lain pada pengajuan yang sama tidak disentuh.
+            $updDok = $conn->prepare("
+                UPDATE Dokumen_Digital
+                SET nama_dokumen = :nama_dokumen,
+                    file_path    = :file_path,
+                    drive_file_id = :drive_file_id,
+                    drive_link    = :drive_link
+                WHERE id = :id
+            ");
+            $updDok->execute([
+                ':nama_dokumen'  => $nama_asli,
+                ':file_path'     => $hasil_drive['link'],
+                ':drive_file_id' => $hasil_drive['file_id'],
+                ':drive_link'    => $hasil_drive['link'],
+                ':id'            => $dokumen_id,
+            ]);
+
+            // File lama di Drive dihapus belakangan (best-effort), tidak menggagalkan proses kalau gagal.
+            if (!empty($dokLama['drive_file_id'])) {
+                try {
+                    arp_hapus_file_drive($dokLama['drive_file_id']);
+                } catch (Throwable $e) {
+                    // abaikan; file lama menjadi sampah di Drive tapi data di DB sudah benar
+                }
+            }
+
+            catatAudit(
+                $conn,
+                'Approval',
+                'Ganti File',
+                "Mengganti file pendukung pengajuan pemeriksaan #{$dokLama['ref_id']} (dokumen #{$dokumen_id})",
+                null,
+                ['nama_dokumen' => $nama_asli],
+                $admin_id
+            );
+
+            $flash = ['type' => 'success', 'message' => 'File berhasil diganti.'];
+        } catch (Exception $e) {
+            $flash = ['type' => 'danger', 'message' => 'Gagal mengganti file: ' . $e->getMessage()];
+        }
+    }
+
+    $_SESSION['approval_flash'] = $flash;
+    $redirect_status = $_GET['status'] ?? '';
+    header("Location: approval.php" . ($redirect_status !== '' ? '?status=' . urlencode($redirect_status) : ''));
+    exit;
+}
+
 // ================== PROSES SETUJUI / TOLAK SURAT ==================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['proses_approval_surat'])) {
     $surat_id = (int) ($_POST['surat_id'] ?? 0);
@@ -475,6 +579,37 @@ if (!empty($daftar_pengajuan)) {
     }
 }
 
+// ================== AMBIL SEMUA FILE/DOKUMEN PENDUKUNG PER PENGAJUAN ==================
+// File yang diunggah client saat mengajukan (client/pengajuan.php) disimpan di
+// Dokumen_Digital dengan modul_sumber = 'Pengajuan_Pemeriksaan' dan ref_id = id pengajuan.
+// Diambil di sini supaya Admin bisa melihat & (kalau perlu) mengganti file per pengajuan
+// lewat tabel file di halaman approval, tanpa mengubah data pengajuan lainnya.
+$dokumen_per_pengajuan = [];
+if (!empty($daftar_pengajuan)) {
+    try {
+        $idsDok = array_column($daftar_pengajuan, 'id');
+        $placeholdersDok = implode(',', array_fill(0, count($idsDok), '?'));
+        $stmtDok = $conn->prepare("
+            SELECT id, ref_id, nama_dokumen, file_path, drive_file_id, created_at
+            FROM Dokumen_Digital
+            WHERE modul_sumber = 'Pengajuan_Pemeriksaan' AND ref_id IN ($placeholdersDok)
+            ORDER BY ref_id ASC, created_at ASC, id ASC
+        ");
+        $stmtDok->execute($idsDok);
+        foreach ($stmtDok->fetchAll() as $d) {
+            $dokumen_per_pengajuan[$d['ref_id']][] = [
+                'id'            => (int) $d['id'],
+                'nama_dokumen'  => $d['nama_dokumen'],
+                'file_path'     => $d['file_path'],
+                'drive_file_id' => $d['drive_file_id'],
+                'created_at'    => $d['created_at'],
+            ];
+        }
+    } catch (PDOException $e) {
+        $dokumen_per_pengajuan = [];
+    }
+}
+
 function ambil_unit_pengajuan(array $p, array $unit_per_pengajuan): array
 {
     if (!empty($unit_per_pengajuan[$p['id']])) {
@@ -641,7 +776,47 @@ include "../includes/topbar.php";
 .table-custom colgroup col.col-jenis    { width: 140px; }
 /* Kolom Tgl. Diinginkan dilebarkan supaya muat tanggal + tombol ubah tanggal berdampingan */
 .table-custom colgroup col.col-tgldiinginkan { width: 170px; }
+.table-custom colgroup col.col-file     { width: 110px; }
 .table-custom colgroup col.col-status   { width: 110px; }
+
+/* Tombol ikon file (memicu modal pilih file mana yang mau dilihat/diganti) */
+.file-trigger-icon-btn {
+    position: relative;
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+    color: #475569;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+.file-trigger-icon-btn:hover {
+    background: #eef2ff;
+    border-color: #c7d2fe;
+    color: #4338ca;
+}
+.file-trigger-icon-btn i {
+    font-size: 1.25rem;
+}
+.file-trigger-badge {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: var(--primary, #4f46e5);
+    color: #fff;
+    font-size: 0.66rem;
+    font-weight: 700;
+    line-height: 18px;
+    text-align: center;
+}
 .table-custom colgroup col.col-aksi     { width: 210px; }
 
 .table-custom th,
@@ -874,6 +1049,7 @@ include "../includes/topbar.php";
                     <col class="col-unit">
                     <col class="col-jenis">
                     <col class="col-tgldiinginkan">
+                    <col class="col-file">
                     <col class="col-status">
                     <col class="col-aksi">
                 </colgroup>
@@ -886,6 +1062,7 @@ include "../includes/topbar.php";
                         <th>Bidang &amp; Unit yang Diperiksa</th>
                         <th>Jenis Pemeriksaan</th>
                         <th>Tgl. Diinginkan</th>
+                        <th style="text-align: center;">File</th>
                         <th>Status</th>
                         <th style="text-align: center;">Aksi</th>
                     </tr>
@@ -893,7 +1070,7 @@ include "../includes/topbar.php";
                 <tbody>
                     <?php if (empty($daftar_pengajuan)): ?>
                         <tr>
-                            <td colspan="9" class="text-center text-muted py-4">Tidak ada data pengajuan untuk status ini.</td>
+                            <td colspan="10" class="text-center text-muted py-4">Tidak ada data pengajuan untuk status ini.</td>
                         </tr>
                     <?php else: ?>
                         <?php foreach ($daftar_pengajuan as $i => $p): ?>
@@ -965,6 +1142,36 @@ include "../includes/topbar.php";
                                 </td>
                                 <td class="align-middle">
                                     <span class="tgl-text"><?= $p['tanggal_diinginkan'] ? htmlspecialchars(date('d M Y', strtotime($p['tanggal_diinginkan']))) : '-' ?></span>
+                                </td>
+                                <td class="align-middle" style="text-align: center;">
+                                    <?php
+                                        $dokumen_list = $dokumen_per_pengajuan[$p['id']] ?? [];
+                                        $file_payload = json_encode([
+                                            'pengajuan_id'    => (int) $p['id'],
+                                            'nama_perusahaan' => $p['nama_perusahaan'] ?? '-',
+                                            'files'           => array_map(function ($d) {
+                                                $url = $d['file_path'] ?? '';
+                                                if ($url !== '' && !str_starts_with($url, 'http')) {
+                                                    $url = '../' . ltrim($url, '/');
+                                                }
+                                                return [
+                                                    'id'      => $d['id'],
+                                                    'nama'    => $d['nama_dokumen'],
+                                                    'url'     => $url,
+                                                    'tanggal' => $d['created_at'] ? date('d M Y H:i', strtotime($d['created_at'])) : '-',
+                                                ];
+                                            }, $dokumen_list),
+                                        ], JSON_UNESCAPED_UNICODE);
+                                    ?>
+                                    <button type="button" class="file-trigger-icon-btn"
+                                        title="Lihat file yang dikirim client (<?= count($dokumen_list) ?> file)"
+                                        data-files='<?= htmlspecialchars($file_payload, ENT_QUOTES, 'UTF-8') ?>'
+                                        onclick="openFilePengajuanModal(this)">
+                                        <i class="bi bi-paperclip"></i>
+                                        <?php if (count($dokumen_list) > 0): ?>
+                                            <span class="file-trigger-badge"><?= count($dokumen_list) ?></span>
+                                        <?php endif; ?>
+                                    </button>
                                 </td>
                                 <td class="align-middle"><span class="<?= badge_class_status($p['status']) ?>"><?= htmlspecialchars($p['status']) ?></span></td>
                                 <td class="align-middle" style="text-align: center;">
@@ -1283,7 +1490,8 @@ include "../includes/topbar.php";
                 <button type="button" class="btn-primary-custom" id="modalLihatFilePrint" style="display:none;">
                     <i class="bi bi-printer"></i> Cetak
                 </button>
-                <a href="#" id="modalLihatFileDownload" target="_blank" class="btn-secondary-custom">
+                <a href="#" id="modalLihatFileDownload" target="_blank" rel="noopener noreferrer" class="btn-secondary-custom"
+                    onclick="return bukaTabBaruDenganFokus(this.getAttribute('data-url'))">
                     <i class="bi bi-box-arrow-up-right"></i> Buka di Tab Baru
                 </a>
                 <button type="button" class="btn-secondary-custom" data-bs-dismiss="modal">Tutup</button>
@@ -1293,6 +1501,40 @@ include "../includes/topbar.php";
 </div>
 
 <script>
+// Google Drive punya endpoint khusus untuk di-embed di iframe (.../preview) yang
+// TIDAK melakukan frame-busting. Link ".../view" biasa (hasil upload) akan mendeteksi
+// dirinya sedang di-frame dan otomatis window.open() dirinya sendiri ke tab baru --
+// itulah yang membuat tab baru muncul di background saat file Drive dibuka di modal.
+function ambilFileIdDrive(url) {
+    if (!url) return null;
+    let m = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+    if (m) return m[1];
+    m = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+    if (m) return m[1];
+    return null;
+}
+
+function urlEmbedAmanUntukIframe(url) {
+    const fileId = ambilFileIdDrive(url);
+    if (fileId) {
+        return 'https://drive.google.com/file/d/' + fileId + '/preview';
+    }
+    return url;
+}
+
+// Link Google Drive tidak selalu diakhiri ".pdf" di URL-nya, jadi deteksi ekstensi
+// juga dicoba dari nama file asli (label) kalau dari URL tidak ketemu.
+function tentukanEkstensiFile(fileUrl, label) {
+    const extValid = ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
+    const dariUrl = fileUrl.split('?')[0].split('.').pop().toLowerCase();
+    if (extValid.includes(dariUrl)) return dariUrl;
+    if (label) {
+        const dariLabel = label.split('.').pop().toLowerCase();
+        if (extValid.includes(dariLabel)) return dariLabel;
+    }
+    return dariUrl;
+}
+
 function openFileModal(fileUrl, label) {
     const body = document.getElementById('modalLihatFileBody');
     const title = document.getElementById('modalLihatFileTitle');
@@ -1301,10 +1543,11 @@ function openFileModal(fileUrl, label) {
 
     title.textContent = 'Lampiran' + (label ? ' - ' + label : '');
     downloadBtn.href = fileUrl;
+    downloadBtn.setAttribute('data-url', fileUrl);
     printBtn.onclick = null;
     printBtn.style.display = 'none';
 
-    const ext = fileUrl.split('?')[0].split('.').pop().toLowerCase();
+    const ext = tentukanEkstensiFile(fileUrl, label);
     const gambarExt = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
 
     if (gambarExt.includes(ext)) {
@@ -1312,9 +1555,10 @@ function openFileModal(fileUrl, label) {
         printBtn.style.display = 'inline-flex';
         printBtn.onclick = function () { cetakGambarLampiran(fileUrl); };
     } else if (ext === 'pdf') {
-        body.innerHTML = `<iframe id="modalLihatFileFrame" src="${fileUrl}" style="width:100%; height:70vh; border:0;"></iframe>`;
+        const embedUrl = urlEmbedAmanUntukIframe(fileUrl);
+        body.innerHTML = `<iframe id="modalLihatFileFrame" src="${embedUrl}" style="width:100%; height:70vh; border:0;"></iframe>`;
         printBtn.style.display = 'inline-flex';
-        printBtn.onclick = function () { cetakPdfLampiran(); };
+        printBtn.onclick = function () { cetakPdfLampiran(fileUrl); };
     } else {
         body.innerHTML = `
             <div class="text-center py-4">
@@ -1327,20 +1571,33 @@ function openFileModal(fileUrl, label) {
     modal.show();
 }
 
-function cetakPdfLampiran() {
+function cetakPdfLampiran(fileUrlAsli) {
     const frame = document.getElementById('modalLihatFileFrame');
-    if (frame && frame.contentWindow) {
-        try {
+    // Iframe Drive (.../preview) berbeda origin -> contentWindow tidak bisa diakses
+    // untuk print langsung. Fallback: buka link aslinya di tab baru (dengan fokus).
+    try {
+        if (frame && frame.contentWindow && frame.src.indexOf('drive.google.com') === -1) {
             frame.contentWindow.focus();
             frame.contentWindow.print();
-        } catch (e) {
-            window.open(frame.src, '_blank');
+            return;
         }
+    } catch (e) {
+        // lanjut ke fallback di bawah
     }
+    bukaTabBaruDenganFokus(fileUrlAsli || (frame ? frame.src : ''));
+}
+
+function bukaTabBaruDenganFokus(url) {
+    if (!url || url === '#') return false;
+    const winBaru = window.open(url, '_blank', 'noopener,noreferrer');
+    if (winBaru) {
+        winBaru.focus();
+    }
+    return false;
 }
 
 function cetakGambarLampiran(fileUrl) {
-    const jendelaCetak = window.open('', '_blank', 'width=800,height=600');
+    const jendelaCetak = window.open('', '_blank', 'width=800,height=600,noopener,noreferrer');
     if (!jendelaCetak) return;
     jendelaCetak.document.write(`
         <html>
@@ -1351,6 +1608,188 @@ function cetakGambarLampiran(fileUrl) {
         </html>
     `);
     jendelaCetak.document.close();
+    jendelaCetak.focus();
+}
+</script>
+
+<!-- ============================== MODAL: FILE PENGAJUAN (dikirim client) ============================== -->
+<div class="modal fade modal-custom" id="modalFilePengajuan" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">File Pendukung - <span id="modalFilePengajuanJudul">-</span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-secondary fs-7 mb-3">
+                    Klik ikon file untuk melihat. Untuk mengganti berkas yang salah/kurang jelas, klik ikon <i class="bi bi-arrow-repeat"></i>
+                    pada file yang ingin diperbarui — hanya file tersebut yang akan diubah, file lain pada pengajuan ini tidak ikut terpengaruh.
+                </p>
+                <div id="modalFilePengajuanGrid" class="file-logo-grid">
+                    <!-- diisi via JS -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary-custom" data-bs-dismiss="modal">Tutup</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.file-logo-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+.file-logo-item {
+    position: relative;
+    width: 120px;
+    text-align: center;
+}
+.file-logo-icon-wrap {
+    position: relative;
+    width: 88px;
+    height: 88px;
+    margin: 0 auto 6px;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    background: #f8fafc;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+.file-logo-icon-wrap:hover {
+    background: #eef2ff;
+    border-color: #c7d2fe;
+}
+.file-logo-icon-wrap i.bi-file-earmark-pdf   { color: #dc2626; }
+.file-logo-icon-wrap i.bi-file-earmark-image { color: #2563eb; }
+.file-logo-icon-wrap i.bi-file-earmark       { color: #64748b; }
+.file-logo-icon-wrap i {
+    font-size: 2.6rem;
+}
+.file-logo-ganti-btn {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: #475569;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+}
+.file-logo-ganti-btn:hover {
+    background: var(--primary, #4f46e5);
+    color: #fff;
+    border-color: var(--primary, #4f46e5);
+}
+.file-logo-name {
+    font-size: 0.76rem;
+    color: #334155;
+    word-break: break-word;
+    line-height: 1.3;
+    max-height: 2.6em;
+    overflow: hidden;
+}
+.file-logo-tanggal {
+    font-size: 0.68rem;
+    color: #94a3b8;
+    margin-top: 2px;
+}
+</style>
+
+<script>
+function escapeHtmlText(str) {
+    const div = document.createElement('div');
+    div.textContent = str || '';
+    return div.innerHTML;
+}
+
+function iconClassUntukFile(nama) {
+    const ext = (nama || '').split('.').pop().toLowerCase();
+    if (ext === 'pdf') return 'bi-file-earmark-pdf';
+    if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(ext)) return 'bi-file-earmark-image';
+    return 'bi-file-earmark';
+}
+
+function openFilePengajuanModal(btn) {
+    const data = JSON.parse(btn.getAttribute('data-files'));
+    document.getElementById('modalFilePengajuanJudul').textContent = data.nama_perusahaan || '-';
+
+    const grid = document.getElementById('modalFilePengajuanGrid');
+    grid.innerHTML = '';
+
+    if (!data.files || data.files.length === 0) {
+        grid.innerHTML = '<div class="text-center text-muted py-3 w-100">Client belum mengirim file pendukung untuk pengajuan ini.</div>';
+    } else {
+        data.files.forEach(function (f) {
+            const item = document.createElement('div');
+            item.className = 'file-logo-item';
+            item.innerHTML =
+                '<div class="file-logo-icon-wrap" title="Lihat file" ' +
+                    'onclick="openFileModal(\'' + String(f.url).replace(/'/g, "\\'") + '\', \'' + String(f.nama).replace(/'/g, "\\'") + '\')">' +
+                    '<i class="bi ' + iconClassUntukFile(f.nama) + '"></i>' +
+                    '<label class="file-logo-ganti-btn" title="Ganti file ini" onclick="event.stopPropagation();">' +
+                        '<i class="bi bi-arrow-repeat"></i>' +
+                        '<input type="file" accept=".pdf,.jpg,.jpeg,.png" style="display:none;" ' +
+                            'onchange="gantiFilePengajuan(' + f.id + ', ' + data.pengajuan_id + ', this)">' +
+                    '</label>' +
+                '</div>' +
+                '<div class="file-logo-name" title="' + escapeHtmlText(f.nama) + '">' + escapeHtmlText(f.nama) + '</div>' +
+                '<div class="file-logo-tanggal">' + escapeHtmlText(f.tanggal) + '</div>';
+            grid.appendChild(item);
+        });
+    }
+
+    const modal = new bootstrap.Modal(document.getElementById('modalFilePengajuan'));
+    modal.show();
+}
+
+
+// Mengirim HANYA file yang dipilih untuk diganti (dokumenId) -- tidak mengirim ulang
+// atau mengubah file lain maupun data pengajuan lainnya.
+function gantiFilePengajuan(dokumenId, pengajuanId, inputEl) {
+    if (!inputEl.files || !inputEl.files[0]) return;
+
+    const namaFileBaru = inputEl.files[0].name;
+    if (!confirm('Ganti file ini dengan "' + namaFileBaru + '"? File lama akan digantikan.')) {
+        inputEl.value = '';
+        return;
+    }
+
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = 'approval.php' + window.location.search;
+    form.enctype = 'multipart/form-data';
+    form.style.display = 'none';
+
+    function addHidden(name, value) {
+        const el = document.createElement('input');
+        el.type = 'hidden';
+        el.name = name;
+        el.value = value;
+        form.appendChild(el);
+    }
+    addHidden('ganti_file_pengajuan', '1');
+    addHidden('dokumen_id', dokumenId);
+    addHidden('pengajuan_id', pengajuanId);
+
+    // Pindahkan input file yang sudah berisi file terpilih ke dalam form baru ini,
+    // supaya hanya 1 file (yang mau diganti) yang ikut terkirim.
+    form.appendChild(inputEl);
+
+    document.body.appendChild(form);
+    form.submit();
 }
 </script>
 
