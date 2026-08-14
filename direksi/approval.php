@@ -805,8 +805,12 @@ include "../includes/topbar.php";
                                 <td colspan="9" class="text-center text-muted py-4">Tidak ada data surat untuk status ini.</td>
                             </tr>
                         <?php else: ?>
-                            <?php foreach ($daftar_surat as $i => $s): ?>
-                                <tr>
+                            <?php foreach ($daftar_surat as $i => $s):
+                                $is_highlight_surat = $highlight_id
+                                    && (int) $s['id'] === $highlight_id
+                                    && (!$highlight_modul || strcasecmp($highlight_modul, 'surat') === 0);
+                                ?>
+                                <tr id="surat-row-<?= (int) $s['id'] ?>" class="<?= $is_highlight_surat ? 'table-warning' : '' ?>">
                                     <td class="align-middle"><?= $i + 1 ?></td>
                                     <td class="align-middle">
                                         <?= htmlspecialchars(date('d M Y', strtotime($s['tgl_dibuat'] ?? $s['created_at']))) ?>

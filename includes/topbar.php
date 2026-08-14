@@ -184,7 +184,16 @@ function topbar_link_notif(PDO $conn, string $modul, ?int $ref_id, string $role,
 
     // Direksi tidak punya halaman cuti.php sendiri — dia approve lewat approval.php
     if ($role === 'direksi' && in_array($modul, ['cuti', 'reimburse', 'kendaraan', 'surat'])) {
-        return $base . 'direksi/approval.php' . ($ref_id ? '?highlight=' . $ref_id . '&modul=' . urlencode($modul) : '');
+        // Surat Keluar diproses di tab "Approval Surat", sisanya di tab "Pengajuan Umum".
+        $tabTujuan = $modul === 'surat' ? 'surat' : 'umum';
+
+        $queryTujuan = ['tab' => $tabTujuan];
+        if ($ref_id) {
+            $queryTujuan['highlight'] = $ref_id;
+            $queryTujuan['modul'] = $modul;
+        }
+
+        return $base . 'direksi/approval.php?' . http_build_query($queryTujuan);
     }
 
     // Cuti: arahkan ke tab yang sesuai dengan jenis cutinya + sorot barisnya
