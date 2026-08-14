@@ -992,6 +992,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'ajukan_
             ':requester_id' => $surat['dibuat_oleh'],
         ]);
 
+        // Ambil nama pembuat surat supaya notifikasi ke direksi jelas siapa pengajunya
+        $stmtNamaPembuatSurat = $pdo->prepare("SELECT nama_lengkap FROM Users WHERE id = ?");
+        $stmtNamaPembuatSurat->execute([$surat['dibuat_oleh']]);
+        $namaPembuatSurat = $stmtNamaPembuatSurat->fetchColumn() ?: 'Tidak diketahui';
+
         $stmtDireksiSurat = $pdo->prepare("SELECT id FROM Users WHERE role = 'direksi' OR role = 'admin'");
         $stmtDireksiSurat->execute();
         foreach ($stmtDireksiSurat->fetchAll(PDO::FETCH_COLUMN) as $direksi_id_notif) {
@@ -999,7 +1004,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'ajukan_
                 $pdo,
                 (int) $direksi_id_notif,
                 'Surat Menunggu Persetujuan',
-                "Surat \"{$surat['perihal']}\" menunggu persetujuan Anda.",
+                "Surat \"{$surat['perihal']}\" dari {$namaPembuatSurat} menunggu persetujuan Anda.",
                 'surat',
                 (int) $suratId
             );
