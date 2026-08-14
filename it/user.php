@@ -68,6 +68,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $email = trim($_POST['email']);
         $role = $_POST['role'];
 
+        // Ambil data lama untuk audit
+        $stmtLama = $conn->prepare("SELECT * FROM Users WHERE id = :id");
+        $stmtLama->execute(['id' => $user_id]);
+        $userLama = $stmtLama->fetch();
+
         if (empty($nama_lengkap) || empty($email) || !in_array($role, $valid_roles)) {
             $error_msg = "Semua field wajib diisi dengan benar!";
         } else {
@@ -119,6 +124,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error_msg = "Anda tidak dapat menghapus akun Anda sendiri.";
         } else {
             try {
+                // Ambil data lama sebelum dihapus
+                $stmtLama = $conn->prepare("SELECT * FROM Users WHERE id = :id");
+                $stmtLama->execute(['id' => $user_id]);
+                $userLama = $stmtLama->fetch();
+
                 $stmt = $conn->prepare("DELETE FROM Users WHERE id = :id");
                 $stmt->execute(['id' => $user_id]);
                 catatAudit(
