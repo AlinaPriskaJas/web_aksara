@@ -121,8 +121,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['proses_approval'])) {
 
             // ================== NOTIFIKASI BALIK KE PEMOHON ==================
             if (isset($modul_map[$row['jenis_pengajuan']])) {
-                $judul_notif = $status_baru === 'Disetujui' ? 'Pengajuan Disetujui' : 'Pengajuan Ditolak';
-                $pesan_notif = "Pengajuan {$row['jenis_pengajuan']} Anda telah {$status_baru}"
+                $label_pengajuan = label_jenis_pengajuan($conn, $row['jenis_pengajuan'], (int) $row['ref_id']);
+
+                $judul_notif = $status_baru === 'Disetujui'
+                    ? "{$label_pengajuan} Disetujui"
+                    : "{$label_pengajuan} Ditolak";
+
+                $pesan_notif = "Pengajuan {$label_pengajuan} Anda telah {$status_baru}"
                     . ($catatan !== '' ? " (Catatan: {$catatan})" : ".");
 
                 kirimNotifikasi(
@@ -245,7 +250,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['proses_approval_surat
                 'surat',
                 $surat_id
             );
-            
+
             catatAudit(
                 $conn,
                 'Approval',
