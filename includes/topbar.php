@@ -84,14 +84,14 @@ if (isset($_GET['ajax'])) {
             $stmtList->execute([':user_id' => $topbar_user_id]);
             $rows = $stmtList->fetchAll();
 
-            $list = array_map(function ($n) {
+            $list = array_map(function ($n) use ($conn) {
                 return [
                     'id' => (int) $n['id'],
                     'judul' => $n['judul'],
                     'pesan' => $n['pesan'],
                     'sudah_dibaca' => (bool) $n['sudah_dibaca'],
                     'waktu' => topbar_waktu_relatif($n['waktu_kirim']),
-                    'url' => topbar_link_notif($n['modul_terkait'] ?? '', $n['ref_id'] ?? null, $_SESSION['role'] ?? '', $GLOBALS['base_url'] ?? './'),
+                    'url' => topbar_link_notif($conn, $n['modul_terkait'] ?? '', $n['ref_id'] ?? null, $_SESSION['role'] ?? '', $GLOBALS['base_url'] ?? './'),
                 ];
             }, $rows);
 
@@ -159,13 +159,26 @@ function topbar_waktu_relatif(string $waktu): string
 }
 
 // Helper: tentukan URL tujuan saat notifikasi diklik, berdasarkan modul & role penerima
-function topbar_link_notif(string $modul, ?int $ref_id, string $role, string $base): string
+// Helper: mapping jenis_cuti (nilai di tabel Cuti) -> slug tab di cuti.php
+function topbar_tab_from_jenis_cuti(?string $jenis_cuti): string
+{
+    $map = [
+        'Cuti Tahunan' => 'tahunan',
+        'Cuti Khusus' => 'khusus',
+        'Izin Sakit' => 'sakit',
+        'Cuti Sakit' => 'sakit', // jaga-jaga kalau label baru dipakai di tempat lain
+    ];
+    return $map[$jenis_cuti] ?? 'tahunan';
+}
+
+// Helper: tentukan URL tujuan saat notifikasi diklik, berdasarkan modul & role penerima
+function topbar_link_notif(PDO $conn, string $modul, ?int $ref_id, string $role, string $base): string
 {
     $role_dir = match ($role) {
         'admin' => 'admin',
         'direksi' => 'direksi',
         'ahli_k3' => 'ahlik3',
-        'it' => 'it',              // <-- tambahkan ini
+        'it' => 'it',
         default => 'admin',
     };
 
@@ -174,8 +187,25 @@ function topbar_link_notif(string $modul, ?int $ref_id, string $role, string $ba
         return $base . 'direksi/approval.php' . ($ref_id ? '?highlight=' . $ref_id . '&modul=' . urlencode($modul) : '');
     }
 
+    // Cuti: arahkan ke tab yang sesuai dengan jenis cutinya + sorot barisnya
+    if ($modul === 'cuti') {
+        $tab = 'tahunan';
+        if ($ref_id) {
+            try {
+                $s = $conn->prepare("SELECT jenis_cuti FROM Cuti WHERE id = :id LIMIT 1");
+                $s->execute([':id' => $ref_id]);
+                $jenis = $s->fetchColumn();
+                if ($jenis) {
+                    $tab = topbar_tab_from_jenis_cuti($jenis);
+                }
+            } catch (PDOException $e) {
+                // biarkan default 'tahunan' kalau query gagal
+            }
+        }
+        return $base . $role_dir . '/cuti.php?tab=' . $tab . ($ref_id ? '&highlight=' . $ref_id : '');
+    }
+
     return match ($modul) {
-        'cuti' => $base . $role_dir . '/cuti.php',
         'reimburse' => $base . $role_dir . '/reimburse.php',
         'kendaraan' => $base . $role_dir . '/transportasi.php',
         'surat' => $base . $role_dir . '/surat.php',
@@ -240,7 +270,7 @@ function topbar_link_notif(string $modul, ?int $ref_id, string $role, string $ba
                             <?php foreach ($topbar_notif_list as $n): ?>
                                 <div class="notif-item <?= !$n['sudah_dibaca'] ? 'notif-item-unread' : '' ?>"
                                     data-id="<?= (int) $n['id'] ?>" data-dibaca="<?= $n['sudah_dibaca'] ? '1' : '0' ?>"
-                                    data-url="<?= htmlspecialchars(topbar_link_notif($n['modul_terkait'] ?? '', $n['ref_id'] ?? null, $_SESSION['role'] ?? '', $topbar_base)) ?>">
+                                    data-url="<?= htmlspecialchars(topbar_link_notif($conn, $n['modul_terkait'] ?? '', $n['ref_id'] ?? null, $_SESSION['role'] ?? '', $topbar_base)) ?>">
                                     <div class="notif-item-title"><?= htmlspecialchars($n['judul']) ?></div>
                                     <div class="notif-item-pesan"><?= htmlspecialchars($n['pesan']) ?></div>
                                     <div class="notif-item-waktu"><?= topbar_waktu_relatif($n['waktu_kirim']) ?></div>

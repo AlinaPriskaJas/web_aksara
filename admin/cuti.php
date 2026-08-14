@@ -109,6 +109,8 @@ $active_tab = $_GET['tab'] ?? 'tahunan';
 if (!in_array($active_tab, $valid_tabs))
     $active_tab = 'tahunan';
 
+$highlight_id = isset($_GET['highlight']) ? (int) $_GET['highlight'] : null;
+
 $jenisMap = [
     'tahunan' => 'Cuti Tahunan',
     'khusus' => 'Cuti Khusus',
@@ -531,7 +533,8 @@ $dipakaiSakit = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year)
                                     </tr>
                                 <?php else: ?>
                                     <?php foreach ($leavesTahunan as $i => $l): ?>
-                                        <tr>
+                                        <tr id="cuti-row-<?= (int) $l['id'] ?>"
+                                            class="<?= $highlight_id === (int) $l['id'] ? 'table-warning' : '' ?>">
                                             <td><?= $i + 1 ?></td>
                                             <td><?= htmlspecialchars($current_user_name) ?></td>
                                             <td><strong><?= htmlspecialchars($l['jenis_cuti']) ?></strong></td>
@@ -632,7 +635,8 @@ $dipakaiSakit = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year)
                                     </tr>
                                 <?php else: ?>
                                     <?php foreach ($leavesKhusus as $i => $l): ?>
-                                        <tr>
+                                        <tr id="cuti-row-<?= (int) $l['id'] ?>"
+                                            class="<?= $highlight_id === (int) $l['id'] ? 'table-warning' : '' ?>">
                                             <td><?= $i + 1 ?></td>
                                             <td><?= htmlspecialchars($current_user_name) ?></td>
                                             <td><strong><?= htmlspecialchars($l['jenis_cuti']) ?></strong></td>
@@ -732,7 +736,8 @@ $dipakaiSakit = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year)
                                     </tr>
                                 <?php else: ?>
                                     <?php foreach ($leavesSakit as $i => $l): ?>
-                                        <tr>
+                                        <tr id="cuti-row-<?= (int) $l['id'] ?>"
+                                            class="<?= $highlight_id === (int) $l['id'] ? 'table-warning' : '' ?>">
                                             <td><?= $i + 1 ?></td>
                                             <td><?= htmlspecialchars($current_user_name) ?></td>
                                             <td><strong><?= htmlspecialchars($l['jenis_cuti']) ?></strong></td>
@@ -1173,5 +1178,14 @@ $dipakaiSakit = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year)
         openModal('modalEdit' + prefix);
     }
 </script>
+
+<?php if ($highlight_id): ?>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const row = document.getElementById('cuti-row-<?= $highlight_id ?>');
+            if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
+    </script>
+<?php endif; ?>
 
 <?php include "../includes/footer.php"; ?>
