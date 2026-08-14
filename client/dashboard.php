@@ -109,14 +109,18 @@ if ($klien_id) {
     }
 }
 
-// ================== DOKUMEN DIGITAL TERBARU ==================
+// ================== DOKUMEN DIGITAL TERBARU (dari Suket_K3) ==================
 $dokumen_terbaru = [];
 if ($klien_id) {
     $dokumen_terbaru = safe_query($conn, "
-        SELECT nama_dokumen, file_path, created_at
-        FROM Dokumen_Digital
-        WHERE klien_id = :klien_id
-        ORDER BY created_at DESC
+        SELECT sk.nomor_laporan AS nama_dokumen,
+               sk.file_sertifikat_pdf AS file_path,
+               COALESCE(sk.tanggal_pemeriksaan, sk.created_at) AS created_at
+        FROM Suket_K3 sk
+        WHERE sk.klien_id = :klien_id
+          AND sk.file_sertifikat_pdf IS NOT NULL
+          AND sk.file_sertifikat_pdf <> ''
+        ORDER BY sk.created_at DESC
         LIMIT 3
     ", [':klien_id' => $klien_id]);
 }

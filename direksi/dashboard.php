@@ -184,31 +184,40 @@ include "../includes/topbar.php";
         </div>
     </div>
 
-    <!-- Ringkasan Operasional + Aktivitas Terbaru -->
+    <!-- Ringkasan Operasional + Grafik KPI (kiri) & Aktivitas Terbaru (kanan) -->
     <div class="row g-4 mb-4">
         <div class="col-lg-8 col-12">
-            <div class="card-box h-100">
-                <h5 class="fw-bold mb-4">Ringkasan Operasional</h5>
-                <div class="row g-3 text-center">
-                    <div class="col-6 col-md-3 border-end">
-                        <i class="bi bi-clipboard2-pulse fs-3 text-success mb-2 d-block"></i>
-                        <div class="fw-bold fs-5"><?= number_format($total_pemeriksaan, 0, ',', '.') ?></div>
-                        <span class="text-secondary fs-7">Pemeriksaan</span>
+            <div class="d-flex flex-column gap-4 h-100">
+                <div class="card-box">
+                    <h5 class="fw-bold mb-4">Ringkasan Operasional</h5>
+                    <div class="row g-3 text-center">
+                        <div class="col-6 col-md-3 border-end">
+                            <i class="bi bi-clipboard2-pulse fs-3 text-success mb-2 d-block"></i>
+                            <div class="fw-bold fs-5"><?= number_format($total_pemeriksaan, 0, ',', '.') ?></div>
+                            <span class="text-secondary fs-7">Pemeriksaan</span>
+                        </div>
+                        <div class="col-6 col-md-3 border-end">
+                            <i class="bi bi-file-earmark-text fs-3 text-primary mb-2 d-block"></i>
+                            <div class="fw-bold fs-5"><?= number_format($laporan_dibuat, 0, ',', '.') ?></div>
+                            <span class="text-secondary fs-7">Laporan Dibuat</span>
+                        </div>
+                        <div class="col-6 col-md-3 border-end">
+                            <i class="bi bi-journal-check fs-3 text-warning mb-2 d-block"></i>
+                            <div class="fw-bold fs-5"><?= number_format($total_rekomendasi, 0, ',', '.') ?></div>
+                            <span class="text-secondary fs-7">Rekomendasi</span>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <i class="bi bi-person-badge fs-3 text-danger mb-2 d-block"></i>
+                            <div class="fw-bold fs-5"><?= number_format($temuan_audit, 0, ',', '.') ?></div>
+                            <span class="text-secondary fs-7">Temuan Audit</span>
+                        </div>
                     </div>
-                    <div class="col-6 col-md-3 border-end">
-                        <i class="bi bi-file-earmark-text fs-3 text-primary mb-2 d-block"></i>
-                        <div class="fw-bold fs-5"><?= number_format($laporan_dibuat, 0, ',', '.') ?></div>
-                        <span class="text-secondary fs-7">Laporan Dibuat</span>
-                    </div>
-                    <div class="col-6 col-md-3 border-end">
-                        <i class="bi bi-journal-check fs-3 text-warning mb-2 d-block"></i>
-                        <div class="fw-bold fs-5"><?= number_format($total_rekomendasi, 0, ',', '.') ?></div>
-                        <span class="text-secondary fs-7">Rekomendasi</span>
-                    </div>
-                    <div class="col-6 col-md-3">
-                        <i class="bi bi-person-badge fs-3 text-danger mb-2 d-block"></i>
-                        <div class="fw-bold fs-5"><?= number_format($temuan_audit, 0, ',', '.') ?></div>
-                        <span class="text-secondary fs-7">Temuan Audit</span>
+                </div>
+
+                <div class="card-box flex-grow-1">
+                    <h5 class="fw-bold mb-3">Grafik KPI Utama</h5>
+                    <div style="position:relative; height:220px;">
+                        <canvas id="chartKpiUtama"></canvas>
                     </div>
                 </div>
             </div>
@@ -242,20 +251,13 @@ include "../includes/topbar.php";
         </div>
     </div>
 
-    <!-- Grafik KPI + Status Approval + Pengajuan Cuti -->
+    <!-- Status Approval + Pengajuan Cuti -->
     <div class="row g-4">
-        <div class="col-lg-5 col-12">
-            <div class="card-box h-100">
-                <h5 class="fw-bold mb-3">Grafik KPI Utama</h5>
-                <canvas id="chartKpiUtama" height="220"></canvas>
-            </div>
-        </div>
-
-        <div class="col-lg-4 col-12">
+        <div class="col-lg-6 col-12">
             <div class="card-box h-100">
                 <h5 class="fw-bold mb-3">Status Approval</h5>
                 <div class="d-flex align-items-center gap-4">
-                    <div style="width:150px; height:150px;">
+                    <div style="position:relative; width:130px; height:130px; flex-shrink:0;">
                         <canvas id="chartStatusApproval"></canvas>
                     </div>
                     <ul class="list-unstyled mb-0 fs-7">
@@ -280,7 +282,7 @@ include "../includes/topbar.php";
             </div>
         </div>
 
-        <div class="col-lg-3 col-12">
+        <div class="col-lg-6 col-12">
             <div class="card-box h-100">
                 <h5 class="fw-bold mb-3">Pengajuan Cuti</h5>
                 <div class="d-flex justify-content-between align-items-center mb-2">
@@ -321,6 +323,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 }]
             },
             options: {
+                responsive: true,
+                maintainAspectRatio: false,
                 plugins: { legend: { display: false } },
                 scales: {
                     y: { beginAtZero: true, ticks: { precision: 0 } }
@@ -347,6 +351,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 }]
             },
             options: {
+                responsive: true,
+                maintainAspectRatio: false,
                 cutout: '70%',
                 plugins: { legend: { display: false } }
             }
