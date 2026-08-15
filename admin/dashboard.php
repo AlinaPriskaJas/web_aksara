@@ -191,6 +191,60 @@ include "../includes/topbar.php";
 
 <main class="main-content">
 
+    <style>
+        .ringkasan-chip {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: #f8f9fb;
+            border-radius: 12px;
+            padding: 14px 16px;
+            height: 100%;
+            transition: transform .15s ease, box-shadow .15s ease;
+        }
+        .ringkasan-chip:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 14px rgba(0,0,0,.06);
+        }
+        .ringkasan-icon {
+            width: 42px;
+            height: 42px;
+            min-width: 42px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+        }
+        .ringkasan-operasional .ringkasan-label {
+            font-size: .72rem;
+            line-height: 1.2;
+            display: block;
+            word-break: break-word;
+        }
+        @media (max-width: 576px) {
+            .ringkasan-chip { padding: 10px 12px; gap: 8px; }
+            .ringkasan-icon { width: 36px; height: 36px; min-width: 36px; font-size: 1rem; }
+            .ringkasan-operasional .fw-bold.fs-5 { font-size: .95rem !important; }
+            .ringkasan-operasional .ringkasan-label { font-size: .64rem; }
+        }
+
+        /* Empty state helper: centers a message + icon inside the remaining
+           height of a card so cards never look like they have dead white space */
+        .dash-empty {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 18px 8px;
+            min-height: 90px;
+        }
+        .dash-empty .bi {
+            opacity: .35;
+        }
+    </style>
+
     <!-- Greeting -->
     <div class="mb-4">
         <h4 class="fw-bold mb-1"><?= htmlspecialchars($sapaan) ?>, <?= htmlspecialchars($user_name) ?></h4>
@@ -256,67 +310,63 @@ include "../includes/topbar.php";
         </div>
     </div>
 
-    <!-- Ringkasan Operasional + Aktivitas Terbaru -->
+    <!-- Kolom Kiri (Ringkasan Operasional + Pengajuan Pemeriksaan) + Kolom Kanan (Aktivitas, Sertifikat, Stok) -->
     <div class="row g-4 mb-4">
-        <div class="col-lg-8 col-12">
-            <div class="card-box h-100">
+        <!-- KOLOM KIRI -->
+        <div class="col-lg-8 col-12 d-flex flex-column gap-4">
+
+            <div class="card-box">
                 <h5 class="fw-bold mb-4">Ringkasan Operasional</h5>
-                <div class="row g-3 text-center">
-                    <div class="col-6 col-md-3 border-end">
-                        <i class="bi bi-people fs-3 text-success mb-2 d-block"></i>
-                        <div class="fw-bold fs-5"><?= number_format($total_klien_aktif, 0, ',', '.') ?></div>
-                        <span class="text-secondary fs-7">Klien Aktif</span>
+
+                <div class="row row-cols-2 row-cols-md-4 g-3 ringkasan-operasional">
+                    <div class="col">
+                        <div class="ringkasan-chip">
+                            <div class="ringkasan-icon bg-success-subtle text-success">
+                                <i class="bi bi-people-fill"></i>
+                            </div>
+                            <div>
+                                <div class="fw-bold fs-5"><?= number_format($total_klien_aktif, 0, ',', '.') ?></div>
+                                <span class="text-secondary ringkasan-label">Klien Aktif</span>
+                            </div>
+                        </div>
                     </div>
-                    <div class="col-6 col-md-3 border-end">
-                        <i class="bi bi-file-earmark-medical fs-3 text-primary mb-2 d-block"></i>
-                        <div class="fw-bold fs-5"><?= number_format($suket_bulan_ini, 0, ',', '.') ?></div>
-                        <span class="text-secondary fs-7">Suket Bulan Ini</span>
+                    <div class="col">
+                        <div class="ringkasan-chip">
+                            <div class="ringkasan-icon bg-primary-subtle text-primary">
+                                <i class="bi bi-file-earmark-medical-fill"></i>
+                            </div>
+                            <div>
+                                <div class="fw-bold fs-5"><?= number_format($suket_bulan_ini, 0, ',', '.') ?></div>
+                                <span class="text-secondary ringkasan-label">Suket Bulan Ini</span>
+                            </div>
+                        </div>
                     </div>
-                    <div class="col-6 col-md-3 border-end">
-                        <i class="bi bi-exclamation-triangle fs-3 text-warning mb-2 d-block"></i>
-                        <div class="fw-bold fs-5"><?= number_format($insiden_bulan_ini, 0, ',', '.') ?></div>
-                        <span class="text-secondary fs-7">Insiden Bulan Ini</span>
+                    <div class="col">
+                        <div class="ringkasan-chip">
+                            <div class="ringkasan-icon bg-warning-subtle text-warning">
+                                <i class="bi bi-exclamation-triangle-fill"></i>
+                            </div>
+                            <div>
+                                <div class="fw-bold fs-5"><?= number_format($insiden_bulan_ini, 0, ',', '.') ?></div>
+                                <span class="text-secondary ringkasan-label">Insiden Bulan Ini</span>
+                            </div>
+                        </div>
                     </div>
-                    <div class="col-6 col-md-3">
-                        <i class="bi bi-truck fs-3 text-danger mb-2 d-block"></i>
-                        <div class="fw-bold fs-5"><?= number_format($kendaraan_dipakai, 0, ',', '.') ?></div>
-                        <span class="text-secondary fs-7">Kendaraan Dipakai</span>
+                    <div class="col">
+                        <div class="ringkasan-chip">
+                            <div class="ringkasan-icon bg-danger-subtle text-danger">
+                                <i class="bi bi-truck"></i>
+                            </div>
+                            <div>
+                                <div class="fw-bold fs-5"><?= number_format($kendaraan_dipakai, 0, ',', '.') ?></div>
+                                <span class="text-secondary ringkasan-label">Kendaraan Dipakai</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <div class="col-lg-4 col-12">
-            <div class="card-box h-100">
-                <h5 class="fw-bold mb-3">Aktivitas Terbaru</h5>
-                <?php if (empty($aktivitas_terbaru)): ?>
-                    <p class="text-secondary fs-7 mb-0">Belum ada aktivitas tercatat.</p>
-                <?php else: ?>
-                    <ul class="list-unstyled mb-0">
-                        <?php foreach ($aktivitas_terbaru as $log): ?>
-                            <li class="d-flex gap-2 mb-3">
-                                <i class="bi bi-dot fs-4 text-success"></i>
-                                <div>
-                                    <div class="fs-7 fw-semibold mb-0">
-                                        <?= htmlspecialchars($log['aksi']) ?> — <?= htmlspecialchars($log['modul']) ?>
-                                    </div>
-                                    <div class="fs-7 text-muted">
-                                        <?= htmlspecialchars($log['nama_lengkap'] ?? 'Sistem') ?> ·
-                                        <?= date('d M Y H:i', strtotime($log['waktu_kejadian'])) ?>
-                                    </div>
-                                </div>
-                            </li>
-                        <?php endforeach; ?>
-                    </ul>
-                <?php endif; ?>
-            </div>
-        </div>
-    </div>
-
-    <!-- Pengajuan Pemeriksaan Terbaru + Panel Peringatan -->
-    <div class="row g-4 mb-4">
-        <div class="col-lg-8 col-12">
-            <div class="card-box h-100">
+            <div class="card-box">
                 <div class="d-flex align-items-center justify-content-between mb-4">
                     <h5 class="mb-0 fw-bold">Pengajuan Pemeriksaan Terbaru</h5>
                     <a href="approval.php?tab=pemeriksaan" class="fs-7 fw-semibold text-decoration-none">Lihat semua &rarr;</a>
@@ -337,7 +387,12 @@ include "../includes/topbar.php";
                         <tbody>
                             <?php if (empty($pengajuan_terbaru)): ?>
                                 <tr>
-                                    <td colspan="6" class="text-center py-3 text-muted">Belum ada pengajuan pemeriksaan.</td>
+                                    <td colspan="6" class="border-0">
+                                        <div class="dash-empty">
+                                            <i class="bi bi-clipboard-x fs-1 text-secondary mb-2 d-block"></i>
+                                            <p class="text-secondary fs-7 mb-0">Belum ada pengajuan pemeriksaan.</p>
+                                        </div>
+                                    </td>
                                 </tr>
                             <?php else: ?>
                                 <?php foreach ($pengajuan_terbaru as $p): ?>
@@ -364,16 +419,49 @@ include "../includes/topbar.php";
                     </table>
                 </div>
             </div>
+
         </div>
 
-        <div class="col-lg-4 col-12">
-            <div class="card-box mb-4">
+        <!-- KOLOM KANAN -->
+        <div class="col-lg-4 col-12 d-flex flex-column gap-4">
+
+            <div class="card-box">
+                <h5 class="fw-bold mb-3">Aktivitas Terbaru</h5>
+                <?php if (empty($aktivitas_terbaru)): ?>
+                    <div class="dash-empty">
+                        <i class="bi bi-clock-history fs-1 text-secondary mb-2 d-block"></i>
+                        <p class="text-secondary fs-7 mb-0">Belum ada aktivitas tercatat.</p>
+                    </div>
+                <?php else: ?>
+                    <ul class="list-unstyled mb-0" style="max-height: 220px; overflow-y: auto;">
+                        <?php foreach ($aktivitas_terbaru as $log): ?>
+                            <li class="d-flex gap-2 mb-3">
+                                <i class="bi bi-dot fs-4 text-success"></i>
+                                <div>
+                                    <div class="fs-7 fw-semibold mb-0">
+                                        <?= htmlspecialchars($log['aksi']) ?> — <?= htmlspecialchars($log['modul']) ?>
+                                    </div>
+                                    <div class="fs-7 text-muted">
+                                        <?= htmlspecialchars($log['nama_lengkap'] ?? 'Sistem') ?> ·
+                                        <?= date('d M Y H:i', strtotime($log['waktu_kejadian'])) ?>
+                                    </div>
+                                </div>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
+                <?php endif; ?>
+            </div>
+
+            <div class="card-box">
                 <div class="d-flex align-items-center justify-content-between mb-3">
                     <h5 class="mb-0 fw-bold">Sertifikat Perlu Perhatian</h5>
                     <a href="sertifikat_ahli.php" class="fs-7 fw-semibold text-decoration-none">Detail &rarr;</a>
                 </div>
                 <?php if (empty($sertifikat_list)): ?>
-                    <p class="text-secondary fs-7 mb-0">Semua sertifikat ahli dalam kondisi aktif.</p>
+                    <div class="dash-empty">
+                        <i class="bi bi-award fs-1 text-success mb-2 d-block"></i>
+                        <p class="text-secondary fs-7 mb-0">Semua sertifikat ahli dalam kondisi aktif.</p>
+                    </div>
                 <?php else: ?>
                     <ul class="list-unstyled mb-0">
                         <?php foreach ($sertifikat_list as $s): ?>
@@ -395,7 +483,10 @@ include "../includes/topbar.php";
                     <a href="stock.php" class="fs-7 fw-semibold text-decoration-none">Detail &rarr;</a>
                 </div>
                 <?php if (empty($stok_menipis)): ?>
-                    <p class="text-secondary fs-7 mb-0">Semua stok barang masih aman.</p>
+                    <div class="dash-empty">
+                        <i class="bi bi-box-seam fs-1 text-success mb-2 d-block"></i>
+                        <p class="text-secondary fs-7 mb-0">Semua stok barang masih aman.</p>
+                    </div>
                 <?php else: ?>
                     <ul class="list-unstyled mb-0">
                         <?php foreach ($stok_menipis as $b): ?>
@@ -410,6 +501,7 @@ include "../includes/topbar.php";
                     </ul>
                 <?php endif; ?>
             </div>
+
         </div>
     </div>
 
@@ -418,40 +510,50 @@ include "../includes/topbar.php";
         <div class="col-lg-5 col-12">
             <div class="card-box h-100">
                 <h5 class="fw-bold mb-3">Tren Pengajuan Pemeriksaan (<?= $tahun_ini ?>)</h5>
-                <canvas id="chartPengajuan" height="220"></canvas>
+                <div style="height: 260px;">
+                    <canvas id="chartPengajuan"></canvas>
+                </div>
             </div>
         </div>
 
         <div class="col-lg-4 col-12">
-            <div class="card-box h-100">
+            <div class="card-box h-100 d-flex flex-column">
                 <h5 class="fw-bold mb-3">Antrian Approval per Jenis</h5>
                 <?php if (empty($approval_jenis)): ?>
-                    <p class="text-secondary fs-7 mb-0">Tidak ada approval yang menunggu.</p>
+                    <div class="dash-empty flex-grow-1">
+                        <i class="bi bi-check2-circle fs-1 text-success mb-2 d-block"></i>
+                        <p class="text-secondary fs-7 mb-0">Tidak ada approval yang menunggu.</p>
+                    </div>
                 <?php else: ?>
-                    <?php foreach ($approval_jenis as $aj): ?>
-                        <?php $persen = round(((int) $aj['jumlah'] / $approval_jenis_total) * 100); ?>
-                        <div class="mb-3">
-                            <div class="d-flex justify-content-between mb-1">
-                                <span class="fs-7 fw-semibold"><?= htmlspecialchars($aj['jenis_pengajuan']) ?></span>
-                                <span class="fs-7 fw-bold"><?= (int) $aj['jumlah'] ?></span>
+                    <div class="flex-grow-1">
+                        <?php foreach ($approval_jenis as $aj): ?>
+                            <?php $persen = round(((int) $aj['jumlah'] / $approval_jenis_total) * 100); ?>
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between mb-1">
+                                    <span class="fs-7 fw-semibold"><?= htmlspecialchars($aj['jenis_pengajuan']) ?></span>
+                                    <span class="fs-7 fw-bold"><?= (int) $aj['jumlah'] ?></span>
+                                </div>
+                                <div class="progress" style="height: 6px; border-radius: 4px;">
+                                    <div class="progress-bar bg-warning" role="progressbar" style="width: <?= $persen ?>%"></div>
+                                </div>
                             </div>
-                            <div class="progress" style="height: 6px; border-radius: 4px;">
-                                <div class="progress-bar bg-warning" role="progressbar" style="width: <?= $persen ?>%"></div>
-                            </div>
-                        </div>
-                    <?php endforeach; ?>
+                        <?php endforeach; ?>
+                    </div>
                 <?php endif; ?>
                 <a href="approval.php" class="fs-7 fw-semibold text-decoration-none d-inline-block mt-2">Buka Approval Center &rarr;</a>
             </div>
         </div>
 
         <div class="col-lg-3 col-12">
-            <div class="card-box h-100">
+            <div class="card-box h-100 d-flex flex-column">
                 <h5 class="fw-bold mb-3">Jadwal 7 Hari Ke Depan</h5>
                 <?php if (empty($jadwal_list)): ?>
-                    <p class="text-secondary fs-7 mb-0">Belum ada jadwal pemeriksaan minggu ini.</p>
+                    <div class="dash-empty flex-grow-1">
+                        <i class="bi bi-calendar2-week fs-1 text-secondary mb-2 d-block"></i>
+                        <p class="text-secondary fs-7 mb-0">Belum ada jadwal pemeriksaan minggu ini.</p>
+                    </div>
                 <?php else: ?>
-                    <ul class="list-unstyled mb-0">
+                    <ul class="list-unstyled mb-0 flex-grow-1">
                         <?php foreach ($jadwal_list as $j): ?>
                             <li class="mb-3">
                                 <div class="fs-7 fw-bold mb-0"><?= date('d M', strtotime($j['tanggal'])) ?> · <?= substr($j['jam_mulai'], 0, 5) ?></div>
@@ -517,6 +619,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 }]
             },
             options: {
+                maintainAspectRatio: false,
                 plugins: { legend: { display: false } },
                 scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
             }
@@ -527,4 +630,4 @@ document.addEventListener('DOMContentLoaded', function () {
 
 <?php
 include "../includes/footer.php";
-?>
+?>git
