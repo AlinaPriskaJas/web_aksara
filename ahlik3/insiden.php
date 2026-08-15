@@ -189,6 +189,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 (int) $insiden_id_baru
                             );
                         }
+
+                        // ================== EMAIL KE ADMIN / DIREKSI / IT ==================
+                        $emailPenerimaInsidenK3 = array_unique(array_merge(
+                            getEmailByRole($conn, 'admin'),
+                            getEmailByRole($conn, 'direksi'),
+                            getEmailByRole($conn, 'it')
+                        ));
+                        if (!empty($emailPenerimaInsidenK3)) {
+                            $bodyEmailInsidenK3 = templateEmailNotifikasi(
+                                'Laporan Insiden Baru dari Ahli K3',
+                                "Insiden K3 baru dilaporkan oleh {$current_user_name}.",
+                                [
+                                    'Judul' => $judul_insiden,
+                                    'Kategori' => $kategori_insiden,
+                                    'Tingkat Keparahan' => $tingkat_keparahan,
+                                    'Lokasi' => $lokasi,
+                                ],
+                            );
+                            kirimEmail($emailPenerimaInsidenK3, 'Laporan Insiden Baru: ' . $judul_insiden, $bodyEmailInsidenK3);
+                        }
+
                         catatAudit(
                             $conn,
                             'Insiden',

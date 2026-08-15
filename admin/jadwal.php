@@ -173,6 +173,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             'jadwal',
                             (int) $id
                         );
+                        $emailUserBaru = getEmailByUserId($conn, (int) $userIdBaru);
+                        if ($emailUserBaru) {
+                            $bodyPenugasan = templateEmailNotifikasi(
+                                'Penugasan Jadwal Pemeriksaan',
+                                "Anda ditugaskan pada pemeriksaan berikut.",
+                                [
+                                    'Klien' => $namaKlienNotif,
+                                    'Tanggal & Jam' => $tglNotif,
+                                    'Lokasi' => $lokasi ?: '-',
+                                ],
+                            );
+                            kirimEmail($emailUserBaru, 'Penugasan Jadwal Pemeriksaan Baru', $bodyPenugasan);
+                        }
                     }
 
                     // Kirim notif "Jadwal Diperbarui" ke yang tetap ada di penugasan (lama & baru)
@@ -185,6 +198,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             'jadwal',
                             (int) $id
                         );
+                        $emailUserTetap = getEmailByUserId($conn, (int) $userIdTetap);
+                        if ($emailUserTetap) {
+                            $bodyTetap = templateEmailNotifikasi('Jadwal Pemeriksaan Diperbarui', $pesanNotif, [], $base_url . 'admin/jadwal.php');
+                            kirimEmail($emailUserTetap, 'Jadwal Pemeriksaan Diperbarui', $bodyTetap);
+                        }
                     }
 
                     // ================== NOTIFIKASI: DICOPOT DARI PENUGASAN ==================
@@ -199,6 +217,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             'jadwal',
                             (int) $id
                         );
+                        $emailDicopot = getEmailByUserId($conn, (int) $userIdDicopot);
+                        if ($emailDicopot) {
+                            $bodyDicopot = templateEmailNotifikasi(
+                                'Dicopot dari Penugasan Jadwal',
+                                "Anda tidak lagi ditugaskan pada pemeriksaan {$namaKlienNotif} yang sebelumnya dijadwalkan pada {$tglNotif}.",
+                                [],
+                                $base_url . 'admin/jadwal.php'
+                            );
+                            kirimEmail($emailDicopot, 'Dicopot dari Penugasan Jadwal', $bodyDicopot);
+                        }
                     }
 
                     // ================== NOTIFIKASI BROADCAST: SEMUA USER LAIN (info umum) ==================
@@ -206,6 +234,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // KECUALI yang sudah dapat salah satu notif spesifik di atas (agar tidak dobel).
                     $stmtSemuaUserEdit = $conn->prepare("SELECT id FROM Users WHERE role != 'client'");
                     $stmtSemuaUserEdit->execute();
+                    $emailBroadcastEdit = [];
                     foreach ($stmtSemuaUserEdit->fetchAll(PDO::FETCH_COLUMN) as $userIdBroadcast) {
                         if (
                             isset($penerimaJadwal[$userIdBroadcast]) ||
@@ -221,6 +250,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             'jadwal',
                             (int) $id
                         );
+                        $emailBc = getEmailByUserId($conn, (int) $userIdBroadcast);
+                        if ($emailBc) {
+                            $emailBroadcastEdit[] = $emailBc;
+                        }
+                    }
+
+                    // ================== EMAIL BROADCAST: SEMUA USER (info umum, non-tugas) ==================
+                    if (!empty($emailBroadcastEdit)) {
+                        $bodyBroadcastEdit = templateEmailNotifikasi(
+                            'Jadwal Pemeriksaan Diperbarui',
+                            $pesanNotif,
+                            [
+                                'Klien' => $namaKlienNotif,
+                                'Tanggal & Jam' => $tglNotif,
+                                'Lokasi' => $lokasi ?: '-',
+                            ],
+                        );
+                        kirimEmail($emailBroadcastEdit, 'Jadwal Pemeriksaan Diperbarui: ' . $namaKlienNotif, $bodyBroadcastEdit);
                     }
 
                     $success_msg = "Jadwal pemeriksaan berhasil diperbarui!";
@@ -309,18 +356,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // KECUALI yang sudah dapat notif penugasan di atas (agar tidak dobel).
                     $stmtSemuaUser = $conn->prepare("SELECT id FROM Users WHERE role != 'client'");
                     $stmtSemuaUser->execute();
+                    $emailBroadcastBaru = [];
                     foreach ($stmtSemuaUser->fetchAll(PDO::FETCH_COLUMN) as $userIdBroadcast) {
                         if (isset($penerimaJadwal[$userIdBroadcast])) {
                             continue; // sudah dapat notif penugasan, skip biar tidak dobel
                         }
+                        $pesanBroadcastBaru = "Ada jadwal pemeriksaan baru untuk {$namaKlienNotif} pada {$tglNotif}" . ($lokasi ? " di {$lokasi}" : "") . ".";
                         kirimNotifikasi(
                             $conn,
                             (int) $userIdBroadcast,
                             'Jadwal Pemeriksaan Baru',
-                            "Ada jadwal pemeriksaan baru untuk {$namaKlienNotif} pada {$tglNotif}" . ($lokasi ? " di {$lokasi}" : "") . ".",
+                            $pesanBroadcastBaru,
                             'jadwal',
                             (int) $jadwal_id_baru
                         );
+                        $emailBc = getEmailByUserId($conn, (int) $userIdBroadcast);
+                        if ($emailBc) {
+                            $emailBroadcastBaru[] = $emailBc;
+                        }
+                    }
+
+                    // ================== EMAIL BROADCAST: SEMUA USER (info umum, non-tugas) ==================
+                    if (!empty($emailBroadcastBaru)) {
+                        $bodyBroadcastBaru = templateEmailNotifikasi(
+                            'Jadwal Pemeriksaan Baru',
+                            "Ada jadwal pemeriksaan baru untuk {$namaKlienNotif}.",
+                            [
+                                'Klien' => $namaKlienNotif,
+                                'Tanggal & Jam' => $tglNotif,
+                                'Lokasi' => $lokasi ?: '-',
+                            ],
+                        );
+                        kirimEmail($emailBroadcastBaru, 'Jadwal Pemeriksaan Baru: ' . $namaKlienNotif, $bodyBroadcastBaru);
                     }
 
                     $success_msg = "Jadwal pemeriksaan baru berhasil ditambahkan!";

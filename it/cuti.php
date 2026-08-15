@@ -360,6 +360,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'batal
                         );
                     }
 
+                    // ================== EMAIL KE DIREKSI (APPROVER) ==================
+                    $emailDireksi = getEmailByRole($conn, 'direksi');
+                    if (!empty($emailDireksi)) {
+                        $bodyEmail = templateEmailNotifikasi(
+                            'Pengajuan Cuti Baru',
+                            "{$current_user_name} mengajukan cuti dan menunggu persetujuan Anda.",
+                            [
+                                'Jenis Cuti' => $jenis_cuti,
+                                'Tanggal Mulai' => $tgl_mulai,
+                                'Tanggal Selesai' => $tgl_selesai,
+                                'Durasi' => $duration . ' hari',
+                                'Alasan' => $alasan ?: '-',
+                            ],
+                        );
+
+                        kirimEmail(
+                            $emailDireksi,
+                            'Pengajuan Cuti Baru dari ' . $current_user_name,
+                            $bodyEmail
+                        );
+                    }
+
                     $conn->commit();
                     catatAudit(
                         $conn,

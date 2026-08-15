@@ -69,6 +69,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'kendaraan',
                     (int) $loan_id
                 );
+                $emailPeminjam = getEmailByUserId($conn, (int) $peminjam_id_notif);
+                if ($emailPeminjam) {
+                    $bodyPeminjaman = templateEmailNotifikasi(
+                        'Status Peminjaman Kendaraan',
+                        "Pengajuan peminjaman kendaraan Anda telah diperbarui.",
+                        ['Status' => $status],
+                        $base_url . 'admin/transportasi.php'
+                    );
+                    kirimEmail($emailPeminjam, 'Status Peminjaman Kendaraan: ' . $status, $bodyPeminjaman);
+                }
             }
 
             // If approved or berlangsung, change vehicle status accordingly
@@ -132,6 +142,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'kendaraan',
                         (int) $loan_id_baru
                     );
+                }
+                $emailAdminLoan = getEmailByRole($conn, 'admin');
+                if (!empty($emailAdminLoan)) {
+                    $bodyLoanBaru = templateEmailNotifikasi(
+                        'Pengajuan Peminjaman Kendaraan',
+                        "Ada pengajuan peminjaman kendaraan baru yang menunggu persetujuan.",
+                        ['Tujuan Lokasi' => $tujuan_lokasi, 'Tanggal' => $tgl_mulai . ' s/d ' . $tgl_selesai],
+                        $base_url . 'admin/transportasi.php'
+                    );
+                    kirimEmail($emailAdminLoan, 'Pengajuan Peminjaman Kendaraan Baru', $bodyLoanBaru);
                 }
                 catatAudit(
                     $conn,

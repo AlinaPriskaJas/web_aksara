@@ -852,6 +852,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'disposi
             // Kalau tabel Notifikasi tidak tersedia/gagal, tidak menggagalkan disposisi.
         }
 
+        // ================== EMAIL KE TUJUAN DISPOSISI ==================
+        $emailTujuanDisposisi = getEmailByUserId($pdo, $tujuanDisposisiId);
+        if ($emailTujuanDisposisi) {
+            $bodyDisposisi = templateEmailNotifikasi(
+                'Disposisi Surat Masuk',
+                'Surat masuk ' . $surat['nomor'] . ' perihal "' . $surat['perihal'] . '" didisposisikan kepada Anda.',
+                ['Instruksi' => $instruksi ?: '-'],
+                $base_url . 'admin/surat.php?tab=surat_masuk'
+            );
+            kirimEmail($emailTujuanDisposisi, 'Disposisi Surat Masuk: ' . $surat['nomor'], $bodyDisposisi);
+        }
+
         $pdo->commit();
         catatAudit(
             $pdo,
@@ -1010,6 +1022,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'ajukan_
             );
         }
 
+        // ================== EMAIL KE DIREKSI / ADMIN (APPROVER) ==================
+        $emailApprovalSurat = array_unique(array_merge(
+            getEmailByRole($pdo, 'direksi'),
+            getEmailByRole($pdo, 'admin')
+        ));
+        if (!empty($emailApprovalSurat)) {
+            $bodyApprovalSurat = templateEmailNotifikasi(
+                'Surat Menunggu Persetujuan',
+                "Surat \"{$surat['perihal']}\" dari {$namaPembuatSurat} menunggu persetujuan Anda.",
+                ['Nomor Surat' => $surat['nomor'] ?? '-', 'Perihal' => $surat['perihal']],
+            );
+            kirimEmail($emailApprovalSurat, 'Surat Menunggu Persetujuan dari ' . $namaPembuatSurat, $bodyApprovalSurat);
+        }
+
         $pdo->commit();
         catatAudit($pdo, 'Surat', 'Ajukan Approval', "Mengajukan surat #{$suratId} untuk persetujuan", ['status' => $surat['status']], ['status' => 'Menunggu Persetujuan']);
         $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Surat berhasil diajukan untuk persetujuan.'];
@@ -1083,6 +1109,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'proses_
             'surat',
             (int) $suratId
         );
+
+        $emailPembuatSurat = getEmailByUserId($pdo, (int) $surat['dibuat_oleh']);
+        if ($emailPembuatSurat) {
+            $stmtRolePembuatSurat = $pdo->prepare("SELECT role FROM Users WHERE id = ?");
+            $stmtRolePembuatSurat->execute([(int) $surat['dibuat_oleh']]);
+            $rolePembuatSurat = $stmtRolePembuatSurat->fetchColumn() ?: 'admin';
+
+            $bodyStatusSurat = templateEmailNotifikasi(
+                'Surat ' . $statusBaru,
+                "Surat \"{$surat['perihal']}\" telah {$statusBaru}.",
+                ['Catatan' => $catatan ?: '-'],
+                $base_url . $rolePembuatSurat . '/surat.php'
+            );
+            kirimEmail($emailPembuatSurat, 'Surat ' . $statusBaru . ': ' . $surat['perihal'], $bodyStatusSurat);
+        }
 
         $pdo->commit();
         catatAudit(
@@ -1170,6 +1211,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'kirim_s
                         'Surat ' . $surat['nomor'] . ' perihal "' . $surat['perihal'] . '" telah dikirim untuk Anda.',
                         $suratId,
                     ]);
+
+            // ================== EMAIL KE CLIENT ==================
+            $emailClientTerkirim = getEmailByUserId($pdo, (int) $klienTerkirim['user_id']);
+            if ($emailClientTerkirim) {
+                $bodyKirimSurat = templateEmailNotifikasi(
+                    'Surat Baru Diterima',
+                    'Surat ' . $surat['nomor'] . ' perihal "' . $surat['perihal'] . '" telah dikirim untuk Anda.',
+                    [],
+                    $base_url . 'client/surat.php'
+                );
+                kirimEmail($emailClientTerkirim, 'Surat Baru: ' . $surat['nomor'], $bodyKirimSurat);
+            }
 
             // Salin berkas surat ke Dokumen Digital agar bisa dilihat/diunduh client
             if (!empty($surat['file_hasil'])) {

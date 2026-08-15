@@ -93,6 +93,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         (int) $absensi_id_baru
                     );
                 }
+                $emailDireksiAbsen = getEmailByRole($conn, 'direksi');
+                if (!empty($emailDireksiAbsen)) {
+                    $bodyAbsen = templateEmailNotifikasi(
+                        'Absensi Masuk Hari Ini',
+                        "{$current_user_name} mencatat kehadiran.",
+                        ['Status Kehadiran' => $status_kehadiran, 'Tanggal' => $today],
+                        $base_url . 'admin/absensi.php'
+                    );
+                    kirimEmail($emailDireksiAbsen, 'Absensi Masuk: ' . $current_user_name, $bodyAbsen);
+                }
                 $success_msg = "Absen Masuk Berhasil! Selamat bekerja.";
                 $stmtCheck->execute(['user_id' => $current_user_id, 'today' => $today]);
                 $attendance_today = $stmtCheck->fetch();

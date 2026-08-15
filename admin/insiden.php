@@ -105,6 +105,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
                     );
                 }
 
+                // ================== EMAIL KE DIREKSI / AHLI K3 / IT ==================
+                $emailPenerimaInsiden = array_unique(array_merge(
+                    getEmailByRole($conn, 'direksi'),
+                    getEmailByRole($conn, 'ahli_k3'),
+                    getEmailByRole($conn, 'it')
+                ));
+                if (!empty($emailPenerimaInsiden)) {
+                    $bodyEmailInsiden = templateEmailNotifikasi(
+                        'Laporan Insiden Baru',
+                        "Insiden K3 baru dilaporkan dan perlu ditindaklanjuti.",
+                        [
+                            'Judul' => $judul_insiden,
+                            'Kategori' => $kategori_insiden,
+                            'Tingkat Keparahan' => $tingkat_keparahan,
+                            'Lokasi' => $lokasi,
+                            'Tanggal Kejadian' => $tanggal_kejadian,
+                        ],
+                    );
+                    kirimEmail($emailPenerimaInsiden, 'Laporan Insiden Baru: ' . $judul_insiden, $bodyEmailInsiden);
+                }
+
                 catatAudit(
                     $conn,
                     'Insiden',
@@ -166,6 +187,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
                     'insiden',
                     (int) $id
                 );
+                $emailPelapor = getEmailByUserId($conn, (int) $pelapor_id_notif);
+                if ($emailPelapor) {
+                    $bodyEmailStatus = templateEmailNotifikasi(
+                        'Status Laporan Insiden Diperbarui',
+                        "Laporan insiden Anda telah diperbarui statusnya.",
+                        [
+                            'Status Baru' => $status,
+                            'Catatan Tindak Lanjut' => $catatan_tindak_lanjut ?: '-',
+                        ],
+                        $base_url . 'ahli_k3/insiden.php'
+                    );
+                    kirimEmail($emailPelapor, 'Status Insiden Diperbarui: ' . $status, $bodyEmailStatus);
+                }
             }
             catatAudit(
                 $conn,

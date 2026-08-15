@@ -345,6 +345,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'ajukan_
             );
         }
 
+        // ================== EMAIL KE DIREKSI / ADMIN (APPROVER) ==================
+        $emailApprovalSurat = array_unique(array_merge(
+            getEmailByRole($pdo, 'direksi'),
+            getEmailByRole($pdo, 'admin')
+        ));
+        if (!empty($emailApprovalSurat)) {
+            $bodyApprovalSurat = templateEmailNotifikasi(
+                'Surat Menunggu Persetujuan',
+                "Surat \"{$surat['perihal']}\" dari {$namaPembuatSurat} menunggu persetujuan Anda.",
+                ['Nomor Surat' => $surat['nomor'] ?? '-', 'Perihal' => $surat['perihal']],
+            );
+            kirimEmail($emailApprovalSurat, 'Surat Menunggu Persetujuan dari ' . $namaPembuatSurat, $bodyApprovalSurat);
+        }
+
         $pdo->commit();
         catatAudit($pdo, 'Surat', 'Ajukan Approval', "Mengajukan surat #{$suratId} untuk persetujuan", ['status' => $surat['status']], ['status' => 'Menunggu Persetujuan']);
         $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Surat berhasil diajukan untuk persetujuan.'];

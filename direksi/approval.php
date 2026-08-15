@@ -138,6 +138,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['proses_approval'])) {
                     $modul_map[$row['jenis_pengajuan']],
                     (int) $row['ref_id']
                 );
+
+                // ================== EMAIL KE PEMOHON (CUTI) ==================
+                if ($row['jenis_pengajuan'] === 'Cuti') {
+                    $emailPemohon = getEmailByUserId($conn, (int) $row['requester_id']);
+                    if ($emailPemohon) {
+                        $stmtRolePemohon = $conn->prepare("SELECT role FROM Users WHERE id = ?");
+                        $stmtRolePemohon->execute([(int) $row['requester_id']]);
+                        $rolePemohon = $stmtRolePemohon->fetchColumn() ?: 'admin';
+
+                        $bodyStatusUmum = templateEmailNotifikasi(
+                            $judul_notif,
+                            $pesan_notif,
+                            ['Catatan' => $catatan ?: '-'],
+                            $base_url . $rolePemohon . '/' . $modul_map[$row['jenis_pengajuan']] . '.php'
+                        );
+                        kirimEmail($emailPemohon, $judul_notif, $bodyStatusUmum);
+                    }
+                }
             }
 
             catatAudit(
@@ -250,6 +268,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['proses_approval_surat
                 'surat',
                 $surat_id
             );
+
+            // ================== EMAIL KE PEMBUAT SURAT ==================
+            $emailPembuatSurat = getEmailByUserId($conn, (int) $rowSurat['dibuat_oleh']);
+            if ($emailPembuatSurat) {
+                $stmtRolePembuatSurat = $conn->prepare("SELECT role FROM Users WHERE id = ?");
+                $stmtRolePembuatSurat->execute([(int) $rowSurat['dibuat_oleh']]);
+                $rolePembuatSurat = $stmtRolePembuatSurat->fetchColumn() ?: 'admin';
+
+                $bodyStatusSurat = templateEmailNotifikasi(
+                    'Surat ' . $status_surat_baru,
+                    "Surat \"{$rowSurat['perihal']}\" Anda telah {$status_surat_baru}.",
+                    ['Catatan' => $catatan ?: '-'],
+                    $base_url . $rolePembuatSurat . '/surat.php'
+                );
+                kirimEmail($emailPembuatSurat, 'Surat ' . $status_surat_baru . ': ' . $rowSurat['perihal'], $bodyStatusSurat);
+            }
 
             catatAudit(
                 $conn,
@@ -947,8 +981,8 @@ include "../includes/topbar.php";
                 <button type="button" class="btn-primary-custom" id="modalLihatFilePrint" style="display:none;">
                     <i class="bi bi-printer"></i> Cetak
                 </button>
-                <a href="#" id="modalLihatFileDownload" target="_blank" rel="noopener noreferrer" class="btn-secondary-custom"
-                    onclick="return bukaTabBaruDenganFokus(this.getAttribute('data-url'))">
+                <a href="#" id="modalLihatFileDownload" target="_blank" rel="noopener noreferrer"
+                    class="btn-secondary-custom" onclick="return bukaTabBaruDenganFokus(this.getAttribute('data-url'))">
                     <i class="bi bi-box-arrow-up-right"></i> Buka di Tab Baru
                 </a>
                 <button type="button" class="btn-secondary-custom" data-bs-dismiss="modal">Tutup</button>

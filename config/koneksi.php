@@ -88,4 +88,5 @@ try {
 // sekaligus membuat tabel Audit_Log otomatis kalau belum ada.
 require_once __DIR__ . '/../includes/audit_helper.php';
 require_once __DIR__ . '/../includes/notifikasi_helper.php';
+require_once __DIR__ . '/../includes/mail_helper.php'; 
 ?>
