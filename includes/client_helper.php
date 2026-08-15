@@ -74,7 +74,7 @@ if (!function_exists('arp_klien_lengkap')) {
             return false;
         }
 
-        $wajib = ['nama_perusahaan', 'alamat', 'pic_nama', 'pic_whatsapp', 'pic_email'];
+        $wajib = ['nama_perusahaan', 'alamat', 'pic_nama', 'jabatan_pic', 'pic_whatsapp', 'pic_email'];
         foreach ($wajib as $kolom) {
             if (trim((string) ($data_klien[$kolom] ?? '')) === '') {
                 return false;

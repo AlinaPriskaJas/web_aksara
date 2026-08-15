@@ -107,12 +107,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $nama_perusahaan = trim($_POST['nama_perusahaan'] ?? '');
         $alamat          = trim($_POST['alamat'] ?? '');
         $pic_nama        = trim($_POST['pic_nama'] ?? '');
+        $jabatan_pic     = trim($_POST['jabatan_pic'] ?? '');
         $pic_whatsapp    = trim($_POST['pic_whatsapp'] ?? '');
         $pic_email       = trim($_POST['pic_email'] ?? '');
 
         // Semua kolom wajib diisi LENGKAP oleh client sendiri, supaya admin
         // tidak perlu (dan tidak berisiko salah) mengetik ulang data perusahaan.
-        if ($nama_perusahaan === '' || $alamat === '' || $pic_nama === '' || $pic_whatsapp === '' || $pic_email === '') {
+        if ($nama_perusahaan === '' || $alamat === '' || $pic_nama === '' || $jabatan_pic === '' || $pic_whatsapp === '' || $pic_email === '') {
             $error_msg = "Semua kolom data perusahaan wajib diisi lengkap sebelum disimpan!";
         } elseif (!filter_var($pic_email, FILTER_VALIDATE_EMAIL)) {
             $error_msg = "Format email PIC tidak valid!";
@@ -135,13 +136,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $upd = $conn->prepare("
                         UPDATE Data_Klien
                         SET nama_perusahaan = :nama_perusahaan, alamat = :alamat,
-                            pic_nama = :pic_nama, pic_whatsapp = :pic_whatsapp, pic_email = :pic_email
+                            pic_nama = :pic_nama, jabatan_pic = :jabatan_pic,
+                            pic_whatsapp = :pic_whatsapp, pic_email = :pic_email
                         WHERE user_id = :uid
                     ");
                     $upd->execute([
                         'nama_perusahaan' => $nama_perusahaan,
                         'alamat'          => $alamat,
                         'pic_nama'        => $pic_nama,
+                        'jabatan_pic'     => $jabatan_pic,
                         'pic_whatsapp'    => $pic_whatsapp,
                         'pic_email'       => $pic_email,
                         'uid'             => $current_user_id,
@@ -275,6 +278,12 @@ include "../includes/topbar.php";
                             <input type="text" class="form-control-custom" name="pic_nama" required
                                 placeholder="Nama penanggung jawab / kontak"
                                 value="<?= htmlspecialchars($data_klien['pic_nama'] ?? '') ?>">
+                        </div>
+                        <div class="col-md-6 col-12">
+                            <label class="form-label fw-semibold fs-7 mb-2">Jabatan PIC <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control-custom" name="jabatan_pic" required
+                                placeholder="Contoh: HRD Manager"
+                                value="<?= htmlspecialchars($data_klien['jabatan_pic'] ?? '') ?>">
                         </div>
                         <div class="col-md-6 col-12">
                             <label class="form-label fw-semibold fs-7 mb-2">No. WhatsApp PIC <span class="text-danger">*</span></label>
