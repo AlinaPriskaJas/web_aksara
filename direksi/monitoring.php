@@ -1,6 +1,13 @@
 <?php
 // direksi/monitoring.php
 session_start();
+
+// Auth guard: pastikan sudah login dan role-nya memang direksi
+if (empty($_SESSION['login']) || ($_SESSION['role'] ?? '') !== 'direksi') {
+    header("Location: ../login.php");
+    exit;
+}
+
 require_once "../config/koneksi.php";
 
 $page_title = "Monitoring Operasional";

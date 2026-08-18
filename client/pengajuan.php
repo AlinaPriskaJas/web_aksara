@@ -1,11 +1,17 @@
 <?php
 // client/pengajuan.php
 session_start();
+
+// Auth guard: pastikan sudah login dan role-nya memang client
+if (empty($_SESSION['login']) || ($_SESSION['role'] ?? '') !== 'client') {
+    header("Location: ../login.php");
+    exit;
+}
+
 require_once "../config/koneksi.php";
 require_once "../includes/drive_helper.php";
 
-// TODO: ganti dengan user_id dari sesi login sebenarnya setelah proses_login.php terhubung penuh.
-$user_id = $_SESSION['user_id'] ?? 1;
+$user_id = $_SESSION['user_id'];
 
 // ================== MODE AJAX: AUTOCOMPLETE NAMA UNIT ==================
 // pengajuan.php?ajax=cari_unit&q=f

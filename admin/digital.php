@@ -1,11 +1,17 @@
 <?php
 // admin/digital.php
 session_start();
+
+// Auth guard: pastikan sudah login dan role-nya memang admin
+if (empty($_SESSION['login']) || ($_SESSION['role'] ?? '') !== 'admin') {
+    header("Location: ../login.php");
+    exit;
+}
+
 require_once "../config/koneksi.php";
 require_once "../includes/drive_helper.php";
 
-// TODO: ganti dengan user_id dari sesi login sebenarnya (proses_login.php belum tersambung penuh).
-$admin_id = $_SESSION['user_id'] ?? 1;
+$admin_id = $_SESSION['user_id'];
 
 $page_title = "Digital Sign - Arsip Digital Perusahaan";
 $flash = null;

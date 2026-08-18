@@ -1,12 +1,18 @@
 <?php
 // client/riwayat.php
 session_start();
+
+// Auth guard: pastikan sudah login dan role-nya memang client
+if (empty($_SESSION['login']) || ($_SESSION['role'] ?? '') !== 'client') {
+    header("Location: ../login.php");
+    exit;
+}
+
 require_once "../config/koneksi.php";
 
 $page_title = "Riwayat Pemeriksaan";
 
-// TODO: ganti dengan user_id dari sesi login sebenarnya setelah proses_login.php terhubung penuh.
-$user_id = $_SESSION['user_id'] ?? 1;
+$user_id = $_SESSION['user_id'];
 
 // ================== AMBIL KLIEN_ID DARI USER YANG LOGIN ==================
 $klien_id = null;

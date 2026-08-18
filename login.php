@@ -72,8 +72,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     break;
             }
 
-        } elseif ($emailCocokPersis) {
-            $error = "Password salah.";
+        } elseif ($user) {
+            // Email ditemukan di database (baik cocok persis maupun beda kapitalisasi),
+            // tapi password salah ATAU kapitalisasi email tidak cocok persis.
+            // Pesan disamakan agar tidak membocorkan status akun (user enumeration).
+            $error = "Email atau password salah.";
         } else {
             $error = "Email tidak ditemukan.";
         }

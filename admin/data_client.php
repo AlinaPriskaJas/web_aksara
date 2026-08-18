@@ -1,10 +1,16 @@
 <?php
 // admin/data_client.php
 session_start();
+
+// Auth guard: pastikan sudah login dan role-nya memang admin
+if (empty($_SESSION['login']) || ($_SESSION['role'] ?? '') !== 'admin') {
+    header("Location: ../login.php");
+    exit;
+}
+
 require_once "../config/koneksi.php";
 
-// TODO: ganti dengan user_id dari sesi login sebenarnya (proses_login.php belum tersambung penuh).
-$admin_id = $_SESSION['user_id'] ?? 1;
+$admin_id = $_SESSION['user_id'];
 
 $page_title = "Data Klien";
 $flash = null;

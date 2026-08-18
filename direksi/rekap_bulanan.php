@@ -5,6 +5,13 @@
 // dan bisa DIUNDUH langsung sebagai file PDF (tombol "Unduh PDF") tanpa perlu dicetak
 // lewat dialog print browser. PDF dibuat pakai library FPDF (../vendor_fpdf/fpdf.php).
 session_start();
+
+// Auth guard: pastikan sudah login dan role-nya memang direksi
+if (empty($_SESSION['login']) || ($_SESSION['role'] ?? '') !== 'direksi') {
+    header("Location: ../login.php");
+    exit;
+}
+
 require_once "../config/koneksi.php";
 
 // ================== VALIDASI INPUT ==================
