@@ -119,6 +119,411 @@ if (($_GET['ajax'] ?? '') === 'get_template') {
     exit;
 }
 
+if (!function_exists('buatPdfSederhanaTable')) {
+    /**
+     * Membuat file PDF berbentuk TABEL RAPI (garis kolom/baris, header
+     * berwarna, baris selang-seling) TANPA bergantung pada LibreOffice
+     * atau library composer tambahan apa pun.
+     */
+    function buatPdfSederhanaTable(string $judul, string $subjudul, array $headers, array $colChars, array $rows): string
+    {
+        $pageWidth = 841.89;   // A4 landscape (pt)
+        $pageHeight = 595.28;
+        $marginX = 28.0;
+        $marginTop = 50.0;
+        $marginBottom = 30.0;
+
+        $fontSize = 7.2;
+        $fontSizeHeader = 7.2;
+        $fontSizeTitle = 13.0;
+        $fontSizeSub = 8.5;
+        $lineHeight = 9.2;
+        $cellPadX = 4.0;
+        $cellPadY = 3.0;
+        $charWidthFactor = 0.6; // rasio lebar karakter Courier terhadap font size
+
+        $colorHeaderBg = '0.80 0.85 0.92'; // biru keabuan lembut
+        $colorAltRowBg = '0.96 0.97 0.98'; // abu sangat muda (baris genap)
+        $colorBorder = '0.55 0.58 0.62';
+        $colorTextHeader = '0.10 0.14 0.28';
+        $colorText = '0.15 0.15 0.15';
+
+        $escape = function (string $s): string {
+            $s = str_replace(['\\', '(', ')'], ['\\\\', '\\(', '\\)'], $s);
+            $conv = @iconv('UTF-8', 'CP1252//TRANSLIT//IGNORE', $s);
+            if ($conv === false) {
+                $conv = preg_replace('/[^\x20-\x7E]/', '?', $s);
+            }
+            return $conv;
+        };
+
+        // ----- Lebar kolom proporsional dari bobot $colChars -----
+        $usableWidth = $pageWidth - 2 * $marginX;
+        $totalBobot = array_sum($colChars) ?: 1;
+        $colWidths = [];
+        foreach ($colChars as $bobot) {
+            $colWidths[] = $usableWidth * ($bobot / $totalBobot);
+        }
+        $colX = [];
+        $xJalan = $marginX;
+        foreach ($colWidths as $w) {
+            $colX[] = $xJalan;
+            $xJalan += $w;
+        }
+        $tableWidth = array_sum($colWidths);
+
+        // ----- Word-wrap berdasarkan LEBAR kolom (pt), bukan jumlah karakter tetap -----
+        $wrapByWidth = function (string $text, float $colWidth, float $fs) use ($charWidthFactor, $cellPadX): array {
+            $availWidth = max(14.0, $colWidth - 2 * $cellPadX);
+            $maxChars = max(3, (int) floor($availWidth / ($fs * $charWidthFactor)));
+            $text = trim(preg_replace('/\s+/', ' ', $text));
+            if ($text === '') {
+                return [''];
+            }
+            $words = explode(' ', $text);
+            $lines = [];
+            $current = '';
+            foreach ($words as $word) {
+                while (mb_strlen($word) > $maxChars) {
+                    if ($current !== '') {
+                        $lines[] = $current;
+                        $current = '';
+                    }
+                    $lines[] = mb_substr($word, 0, $maxChars);
+                    $word = mb_substr($word, $maxChars);
+                }
+                $candidate = $current === '' ? $word : $current . ' ' . $word;
+                if (mb_strlen($candidate) > $maxChars) {
+                    if ($current !== '') {
+                        $lines[] = $current;
+                    }
+                    $current = $word;
+                } else {
+                    $current = $candidate;
+                }
+            }
+            if ($current !== '') {
+                $lines[] = $current;
+            }
+            return $lines ?: [''];
+        };
+
+        $siapkanBaris = function (array $sel, bool $isHeader) use ($wrapByWidth, $colWidths, $fontSize, $fontSizeHeader, $lineHeight, $cellPadY): array {
+            $fs = $isHeader ? $fontSizeHeader : $fontSize;
+            $wrapped = [];
+            foreach (array_values($sel) as $i => $val) {
+                $wrapped[$i] = $wrapByWidth((string) $val, $colWidths[$i] ?? 60, $fs);
+            }
+            $maxLines = max(1, max(array_map('count', $wrapped)));
+            $tinggi = $maxLines * $lineHeight + 2 * $cellPadY;
+            return ['wrapped' => $wrapped, 'tinggi' => $tinggi, 'isHeader' => $isHeader];
+        };
+
+        $baris_header = $siapkanBaris($headers, true);
+        $semua_baris_data = [];
+        foreach ($rows as $row) {
+            $semua_baris_data[] = $siapkanBaris($row, false);
+        }
+
+        // ----- Paginasi: susun baris ke dalam beberapa halaman -----
+        $usableHeightPertama = $pageHeight - $marginTop - $marginBottom - 34; // dikurangi ruang judul
+        $usableHeightLain = $pageHeight - $marginTop - $marginBottom;
+
+        $halaman = [];
+        $halIni = [$baris_header];
+        $tinggiTersisa = $usableHeightPertama - $baris_header['tinggi'];
+
+        foreach ($semua_baris_data as $br) {
+            if ($br['tinggi'] > $tinggiTersisa) {
+                $halaman[] = $halIni;
+                $halIni = [$baris_header];
+                $tinggiTersisa = $usableHeightLain - $baris_header['tinggi'];
+            }
+            $halIni[] = $br;
+            $tinggiTersisa -= $br['tinggi'];
+        }
+        $halaman[] = $halIni;
+
+        // ----- Bangun content stream per halaman -----
+        $contentStreams = [];
+        foreach ($halaman as $idxHal => $barisHalaman) {
+            $ops = "q\n";
+            $yTop = $pageHeight - $marginTop;
+
+            if ($idxHal === 0) {
+                $ops .= sprintf("0 0 0 rg\nBT /F2 %.2f Tf %.2f %.2f Td (%s) Tj ET\n", $fontSizeTitle, $marginX, $yTop, $escape($judul));
+                $yTop -= 16;
+                $ops .= sprintf("0.35 0.35 0.35 rg\nBT /F1 %.2f Tf %.2f %.2f Td (%s) Tj ET\n", $fontSizeSub, $marginX, $yTop, $escape($subjudul));
+                $yTop -= 18;
+            }
+
+            $tableTopY = $yTop;
+            $yCursor = $tableTopY;
+
+            foreach ($barisHalaman as $idxBaris => $br) {
+                $tinggiBaris = $br['tinggi'];
+                $yBarisAtas = $yCursor;
+                $yBarisBawah = $yCursor - $tinggiBaris;
+
+                // Latar belakang baris
+                if ($br['isHeader']) {
+                    $ops .= sprintf("%s rg\n%.2f %.2f %.2f %.2f re f\n", $colorHeaderBg, $marginX, $yBarisBawah, $tableWidth, $tinggiBaris);
+                } elseif ($idxBaris % 2 === 0) {
+                    $ops .= sprintf("%s rg\n%.2f %.2f %.2f %.2f re f\n", $colorAltRowBg, $marginX, $yBarisBawah, $tableWidth, $tinggiBaris);
+                }
+
+                // Teks per kolom
+                $fs = $br['isHeader'] ? $fontSizeHeader : $fontSize;
+                $font = $br['isHeader'] ? 'F2' : 'F1';
+                $warnaTeks = $br['isHeader'] ? $colorTextHeader : $colorText;
+                $ops .= sprintf("%s rg\n", $warnaTeks);
+                foreach ($br['wrapped'] as $i => $lines) {
+                    $cellX = $colX[$i] + $cellPadX;
+                    $lineY = $yBarisAtas - $cellPadY - $fs * 0.85;
+                    foreach ($lines as $line) {
+                        $ops .= sprintf("BT /%s %.2f Tf %.2f %.2f Td (%s) Tj ET\n", $font, $fs, $cellX, $lineY, $escape($line));
+                        $lineY -= $lineHeight;
+                    }
+                }
+
+                $yCursor = $yBarisBawah;
+            }
+
+            $tableBottomY = $yCursor;
+
+            // Garis horizontal (antar baris + batas atas/bawah)
+            $ops .= sprintf("%s RG 0.6 w\n", $colorBorder);
+            $yGaris = $tableTopY;
+            $ops .= sprintf("%.2f %.2f m %.2f %.2f l S\n", $marginX, $yGaris, $marginX + $tableWidth, $yGaris);
+            foreach ($barisHalaman as $br) {
+                $yGaris -= $br['tinggi'];
+                $ops .= sprintf("%.2f %.2f m %.2f %.2f l S\n", $marginX, $yGaris, $marginX + $tableWidth, $yGaris);
+            }
+
+            // Garis vertikal (antar kolom + batas kiri/kanan)
+            $xGaris = $marginX;
+            $ops .= sprintf("%.2f %.2f m %.2f %.2f l S\n", $xGaris, $tableTopY, $xGaris, $tableBottomY);
+            foreach ($colWidths as $w) {
+                $xGaris += $w;
+                $ops .= sprintf("%.2f %.2f m %.2f %.2f l S\n", $xGaris, $tableTopY, $xGaris, $tableBottomY);
+            }
+
+            $ops .= "Q\n";
+            $contentStreams[] = $ops;
+        }
+
+        // ----- Rakit objek PDF -----
+        $numPages = count($contentStreams);
+        $objCatalog = 1;
+        $objPages = 2;
+        $firstPageObj = 3;
+        $firstContentObj = 3 + $numPages;
+        $fontF1Obj = 3 + 2 * $numPages;
+        $fontF2Obj = $fontF1Obj + 1;
+
+        $kidsRefs = [];
+        for ($i = 0; $i < $numPages; $i++) {
+            $kidsRefs[] = ($firstPageObj + $i) . ' 0 R';
+        }
+
+        $objects = [];
+        $objects[$objCatalog] = "<< /Type /Catalog /Pages {$objPages} 0 R >>";
+        $objects[$objPages] = "<< /Type /Pages /Kids [" . implode(' ', $kidsRefs) . "] /Count {$numPages} >>";
+
+        for ($i = 0; $i < $numPages; $i++) {
+            $pageNum = $firstPageObj + $i;
+            $contentNum = $firstContentObj + $i;
+            $objects[$pageNum] = "<< /Type /Page /Parent {$objPages} 0 R /MediaBox [0 0 {$pageWidth} {$pageHeight}] "
+                . "/Resources << /Font << /F1 {$fontF1Obj} 0 R /F2 {$fontF2Obj} 0 R >> >> /Contents {$contentNum} 0 R >>";
+            $stream = $contentStreams[$i];
+            $objects[$contentNum] = "<< /Length " . strlen($stream) . " >>\nstream\n{$stream}endstream";
+        }
+
+        $objects[$fontF1Obj] = "<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>";
+        $objects[$fontF2Obj] = "<< /Type /Font /Subtype /Type1 /BaseFont /Courier-Bold >>";
+
+        ksort($objects);
+        $pdf = "%PDF-1.4\n";
+        $offsets = [];
+        foreach ($objects as $num => $body) {
+            $offsets[$num] = strlen($pdf);
+            $pdf .= "{$num} 0 obj\n{$body}\nendobj\n";
+        }
+        $xrefStart = strlen($pdf);
+        $maxObjNum = max(array_keys($objects));
+
+        $pdf .= "xref\n0 " . ($maxObjNum + 1) . "\n";
+        $pdf .= "0000000000 65535 f \n";
+        for ($n = 1; $n <= $maxObjNum; $n++) {
+            $pdf .= isset($offsets[$n]) ? sprintf("%010d 00000 n \n", $offsets[$n]) : "0000000000 00000 f \n";
+        }
+        $pdf .= "trailer\n<< /Size " . ($maxObjNum + 1) . " /Root {$objCatalog} 0 R >>\n";
+        $pdf .= "startxref\n{$xrefStart}\n%%EOF";
+
+        return $pdf;
+    }
+}
+
+// ==========================================
+// [EXPORT] REKAP SURAT PER PERIODE (BULAN/TAHUN) -> CSV atau PDF
+// 1 baris = 1 NOMOR SURAT (family), pakai data dari REVISI TERBARU/FINAL.
+// Filter periode memakai TANGGAL SURAT ASLI (bukan tanggal revisi),
+// supaya 1 nomor surat tidak dobel hanya karena direvisi di bulan lain.
+// ==========================================
+if (($_GET['ajax'] ?? '') === 'export_rekap') {
+    $bulanFilter = (int) ($_GET['bulan'] ?? 0);     // 0 = semua bulan
+    $tahunFilter = (int) ($_GET['tahun'] ?? date('Y'));
+    $arahFilter = in_array($_GET['arah'] ?? '', ['Keluar', 'Masuk'], true) ? $_GET['arah'] : 'Semua';
+    $formatExport = in_array($_GET['format'] ?? '', ['csv', 'pdf'], true) ? $_GET['format'] : 'csv';
+
+    $where = [];
+    $params = [];
+    if ($arahFilter !== 'Semua') {
+        $where[] = 's.arah = ?';
+        $params[] = $arahFilter;
+    }
+    $sqlWhere = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
+
+    $stmtRekap = $pdo->prepare("
+        SELECT s.*, k.kode AS kode_str, k.nama AS jenis_surat_nama,
+               u.nama_lengkap AS pembuat_nama,
+               COALESCE(s.induk_surat_id, s.id) AS root_id,
+               COALESCE(rootS.tgl_dibuat, s.tgl_dibuat) AS tgl_surat_asli,
+               COALESCE(rootS.nomor, s.nomor) AS nomor_family
+        FROM surat s
+        JOIN kode_surat k ON s.kode_id = k.id
+        LEFT JOIN Users u ON s.dibuat_oleh = u.id
+        LEFT JOIN surat rootS ON rootS.id = COALESCE(s.induk_surat_id, s.id)
+        {$sqlWhere}
+        ORDER BY root_id ASC, s.revisi_ke DESC
+    ");
+    $stmtRekap->execute($params);
+    $semuaBaris = $stmtRekap->fetchAll();
+
+    // Kelompokkan per root_id. Karena sudah diurutkan revisi_ke DESC,
+    // baris PERTAMA tiap grup = versi final/terbaru yang berlaku sekarang.
+    $family = [];
+    foreach ($semuaBaris as $row) {
+        $rid = $row['root_id'];
+        if (!isset($family[$rid])) {
+            $family[$rid] = [
+                'final' => $row,
+                'jumlah_revisi' => 0,
+                'tgl_revisi_terakhir' => ((int) $row['revisi_ke'] > 0) ? $row['tgl_dibuat'] : null,
+            ];
+        } else {
+            $family[$rid]['jumlah_revisi']++;
+        }
+    }
+
+    // Filter periode berdasarkan tanggal surat ASLI
+    $family = array_filter($family, function ($f) use ($bulanFilter, $tahunFilter) {
+        $tglAsli = $f['final']['tgl_surat_asli'] ?? null;
+        if (!$tglAsli)
+            return false;
+        $ts = strtotime($tglAsli);
+        if ((int) date('Y', $ts) !== $tahunFilter)
+            return false;
+        if ($bulanFilter > 0 && (int) date('n', $ts) !== $bulanFilter)
+            return false;
+        return true;
+    });
+
+    usort($family, fn($a, $b) => strtotime($a['final']['tgl_surat_asli']) <=> strtotime($b['final']['tgl_surat_asli']));
+
+    $namaBulanIndo = ['', 'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+    $labelPeriode = ($bulanFilter > 0 ? $namaBulanIndo[$bulanFilter] . ' ' : 'Semua Bulan ') . $tahunFilter;
+    $labelPeriodeFile = ($bulanFilter > 0 ? $namaBulanIndo[$bulanFilter] . '_' : '') . $tahunFilter;
+    $namaFileDasar = 'Rekap_Surat_' . ($arahFilter !== 'Semua' ? $arahFilter . '_' : '') . $labelPeriodeFile;
+
+    // ===================== FORMAT: CSV =====================
+    if ($formatExport === 'csv') {
+        header('Content-Type: text/csv; charset=UTF-8');
+        header('Content-Disposition: attachment; filename="' . $namaFileDasar . '.csv"');
+
+        $out = fopen('php://output', 'w');
+        fwrite($out, "\xEF\xBB\xBF"); // BOM supaya Excel baca UTF-8 dengan benar
+
+        fputcsv($out, [
+            'No',
+            'Nomor Surat',
+            'Tanggal Surat',
+            'Arah',
+            'Jenis Surat',
+            'Perihal',
+            'Tujuan/Pengirim',
+            'Dibuat Oleh',
+            'Status Saat Ini',
+            'Jumlah Revisi',
+            'Tanggal Revisi Terakhir',
+            'Link File Final'
+        ], ';');
+
+        $no = 1;
+        foreach ($family as $f) {
+            $s = $f['final'];
+            fputcsv($out, [
+                $no++,
+                $s['nomor_family'],
+                !empty($s['tgl_surat_asli']) ? date('d-m-Y', strtotime($s['tgl_surat_asli'])) : '-',
+                $s['arah'],
+                $s['jenis_surat_nama'] . ' (' . $s['kode_str'] . ')',
+                $s['perihal'],
+                $s['tujuan'],
+                $s['pembuat_nama'] ?? '-',
+                $s['status'],
+                $f['jumlah_revisi'],
+                $f['tgl_revisi_terakhir'] ? date('d-m-Y', strtotime($f['tgl_revisi_terakhir'])) : '-',
+                $s['drive_link'] ?? $s['file_hasil'] ?? '-',
+            ], ';');
+        }
+
+        fclose($out);
+        exit;
+    }
+
+    // ===================== FORMAT: PDF (dibuat langsung, TANPA LibreOffice) =====================
+    $headersPdf = ['No', 'Nomor Surat', 'Tanggal', 'Arah', 'Jenis Surat', 'Perihal', 'Tujuan/Pengirim', 'Dibuat Oleh', 'Status', 'Jml Revisi', 'Revisi Terakhir'];
+    $colCharsPdf = [3, 20, 10, 7, 20, 32, 24, 16, 14, 5, 10];
+
+    $rowsPdf = [];
+    $noPdf = 1;
+    foreach ($family as $f) {
+        $s = $f['final'];
+        $rowsPdf[] = [
+            (string) $noPdf++,
+            (string) $s['nomor_family'],
+            !empty($s['tgl_surat_asli']) ? date('d-m-Y', strtotime($s['tgl_surat_asli'])) : '-',
+            (string) $s['arah'],
+            $s['jenis_surat_nama'] . ' (' . $s['kode_str'] . ')',
+            (string) $s['perihal'],
+            (string) $s['tujuan'],
+            (string) ($s['pembuat_nama'] ?? '-'),
+            (string) $s['status'],
+            (string) $f['jumlah_revisi'],
+            $f['tgl_revisi_terakhir'] ? date('d-m-Y', strtotime($f['tgl_revisi_terakhir'])) : '-',
+        ];
+    }
+    if (empty($rowsPdf)) {
+        $rowsPdf[] = ['-', 'Tidak ada data surat pada periode ini.', '', '', '', '', '', '', '', '', ''];
+    }
+
+    $judulArahPdf = $arahFilter === 'Semua' ? 'Surat Masuk & Keluar' : 'Surat ' . $arahFilter;
+    $pdfBytes = buatPdfSederhanaTable(
+        'Rekap ' . $judulArahPdf,
+        'Periode: ' . $labelPeriode . '  |  Dicetak: ' . date('d-m-Y H:i'),
+        $headersPdf,
+        $colCharsPdf,
+        $rowsPdf
+    );
+
+    header('Content-Type: application/pdf');
+    header('Content-Disposition: attachment; filename="' . $namaFileDasar . '.pdf"');
+    header('Content-Length: ' . strlen($pdfBytes));
+    echo $pdfBytes;
+    exit;
+}
+
 // ==========================================
 // Helper: ubah "Nama Template" isian user jadi nama file yang aman & rapi
 // ==========================================
@@ -1595,6 +2000,9 @@ include "../includes/topbar.php";
                             <input type="text" class="search-box" placeholder="Cari nomor surat, perihal, tujuan..."
                                 data-table-search="tabelSuratKeluar" onkeyup="handleTableSearch('tabelSuratKeluar')">
                         </div>
+                        <button type="button" class="btn-secondary-custom" onclick="openModal('modalExportRekap')">
+                            <i class="bi bi-file-earmark-spreadsheet"></i> Export Rekap
+                        </button>
                         <button class="btn-primary-custom"
                             onclick="switchTab('tabPanelBuatSurat', document.querySelector('[data-tab-target=tabPanelBuatSurat]'))">
                             <i class="bi bi-file-earmark-plus"></i>
@@ -3105,6 +3513,84 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
                     <button type="button" class="btn-secondary-custom"
                         onclick="closeModal('modalSuratApproval')">Batal</button>
                     <button type="submit" class="btn-primary-custom" id="modalSuratApprovalSubmit">Setujui</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Export Rekap Surat per Periode -->
+<div class="arp-modal-overlay" id="modalExportRekap" onclick="closeModalOutside(event,'modalExportRekap')">
+    <div class="arp-modal-box" style="max-width:420px;">
+        <div class="arp-modal-header">
+            <h5 class="fw-bold mb-0">Export Rekap Surat</h5>
+            <button class="arp-modal-close" onclick="closeModal('modalExportRekap')">&times;</button>
+        </div>
+        <div class="arp-modal-body">
+            <form method="GET" action="surat.php" target="_blank">
+                <input type="hidden" name="ajax" value="export_rekap">
+
+                <div class="mb-3">
+                    <label class="form-label fw-semibold mb-2">Arah Surat</label>
+                    <select name="arah" class="select-custom">
+                        <option value="Semua">Semua (Masuk &amp; Keluar)</option>
+                        <option value="Keluar">Surat Keluar</option>
+                        <option value="Masuk">Surat Masuk</option>
+                    </select>
+                </div>
+
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold mb-2">Bulan</label>
+                        <select name="bulan" class="select-custom">
+                            <option value="0">Semua Bulan</option>
+                            <?php
+                            $namaBulanIndoForm = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+                            foreach ($namaBulanIndoForm as $i => $nb): ?>
+                                <option value="<?= $i + 1 ?>" <?= ((int) date('n') === $i + 1) ? 'selected' : '' ?>>
+                                    <?= e($nb) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold mb-2">Tahun</label>
+                        <select name="tahun" class="select-custom">
+                            <?php for ($th = (int) date('Y'); $th >= (int) date('Y') - 5; $th--): ?>
+                                <option value="<?= $th ?>" <?= ($th === (int) date('Y')) ? 'selected' : '' ?>>
+                                    <?= $th ?>
+                                </option>
+                            <?php endfor; ?>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="mt-3">
+                    <label class="form-label fw-semibold mb-2 d-block">Format Export</label>
+                    <div class="d-flex gap-3">
+                        <label class="d-flex align-items-center gap-2" style="cursor:pointer;">
+                            <input type="radio" name="format" value="csv" checked>
+                            <span>CSV <small class="text-secondary">(Excel)</small></span>
+                        </label>
+                        <label class="d-flex align-items-center gap-2" style="cursor:pointer;">
+                            <input type="radio" name="format" value="pdf">
+                            <span>PDF</span>
+                        </label>
+                    </div>
+                </div>
+
+                <p class="text-secondary text-xs mt-3 mb-0">
+                    Satu baris = satu nomor surat (bukan per revisi). Data yang ditampilkan adalah
+                    versi <b>terbaru/final</b>, plus jumlah revisinya. Filter periode memakai tanggal
+                    surat pertama kali dibuat. Rekap ini mencakup surat dari semua pengguna.
+                </p>
+
+                <div class="d-flex justify-content-end gap-2 mt-4">
+                    <button type="button" class="btn-secondary-custom"
+                        onclick="closeModal('modalExportRekap')">Batal</button>
+                    <button type="submit" class="btn-primary-custom">
+                        <i class="bi bi-download"></i> Unduh
+                    </button>
                 </div>
             </form>
         </div>
