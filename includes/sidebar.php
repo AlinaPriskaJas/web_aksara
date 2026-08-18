@@ -72,7 +72,6 @@ switch ($current_role) {
             ['label' => 'Upload Laporan', 'url' => 'upload.php', 'icon' => 'bi-upload'],
             ['label' => 'Laporan Pemeriksaan', 'url' => 'pemeriksaan.php', 'icon' => 'bi-file-earmark-medical'],
             ['label' => 'Rekomendasi', 'url' => 'rekomendasi.php', 'icon' => 'bi-exclamation-triangle'],
-            ['label' => 'Laporan Insiden', 'url' => 'insiden.php', 'icon' => 'bi-cone-striped'],
             ['label' => 'Sertifikat Ahli K3', 'url' => 'sertifikat_ahli.php', 'icon' => 'bi-award'],
             ['label' => 'Riwayat K3', 'url' => 'riwayat.php', 'icon' => 'bi-journal-text'],
             ['label' => 'Transportasi', 'url' => 'transportasi.php', 'icon' => 'bi-truck'],
@@ -80,6 +79,7 @@ switch ($current_role) {
             ['label' => 'Reimburse', 'url' => 'reimburse.php', 'icon' => 'bi-cash-coin'],
             ['label' => 'Absensi', 'url' => 'absensi.php', 'icon' => 'bi-calendar-check'],
             ['label' => 'Cuti', 'url' => 'cuti.php', 'icon' => 'bi-calendar-x'],
+            ['label' => 'Laporan Insiden', 'url' => 'insiden.php', 'icon' => 'bi-cone-striped'],
             ['label' => 'Profile', 'url' => 'profile.php', 'icon' => 'bi-person']
         ];
         break;
