@@ -226,7 +226,7 @@ $sukets = $conn->query("
 <div class="modal fade modal-custom" id="suketModal" tabindex="-1" aria-labelledby="suketModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content">
-            <form method="POST" action="suket.php">
+            <form method="POST" action="suket.php" id="suketForm">
                 <input type="hidden" name="action" value="save">
                 <input type="hidden" name="id" id="form-id">
 
@@ -236,69 +236,57 @@ $sukets = $conn->query("
                 </div>
                 <div class="modal-body">
                     <div class="row g-3">
-                        <div class="col-md-6">
+                        <!-- Rujukan Pengajuan K3 (autocomplete, opsional) -->
+                        <div class="col-md-6 autocomplete-wrapper">
                             <label class="form-label fw-semibold fs-7 mb-1">Rujukan Pengajuan K3</label>
-                            <select name="pengajuan_id" id="form-pengajuan-id" class="select-custom">
-                                <option value="">-- Tanpa Rujukan Pengajuan --</option>
-                                <?php foreach ($pengajuan_list as $p): ?>
-                                    <option value="<?= $p['id'] ?>">ID: #<?= $p['id'] ?> -
-                                        <?= htmlspecialchars($p['klasifikasi_objek_k3']) ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
+                            <input type="text" id="form-pengajuan-search" class="form-control-custom"
+                                placeholder="Ketik ID / jenis pemeriksaan / klasifikasi objek..." autocomplete="off">
+                            <input type="hidden" name="pengajuan_id" id="form-pengajuan-id">
+                            <div class="autocomplete-list" id="form-pengajuan-list"></div>
                         </div>
-                        <div class="col-6">
+
+                        <!-- Pilih Laporan Pemeriksaan (autocomplete) -->
+                        <div class="col-6 autocomplete-wrapper">
                             <label class="form-label fw-semibold fs-7 mb-1">Pilih Laporan Pemeriksaan</label>
-                            <select id="form-laporan-id" name="laporan_id" class="select-custom"
-                                onchange="pilihLaporan(this.value)">
-                                <option value="">-- Tanpa Rujukan Laporan --</option>
-                                <?php foreach ($laporan_list as $lp): ?>
-                                    <option value="<?= $lp['id'] ?>">
-                                        <?= htmlspecialchars($lp['nomor_laporan']) ?> —
-                                        <?= htmlspecialchars($lp['nama_perusahaan']) ?>
-                                        (<?= htmlspecialchars($lp['nama_unit']) ?>)
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
+                            <input type="text" id="form-laporan-search" class="form-control-custom"
+                                placeholder="Ketik nomor laporan / nama klien..." autocomplete="off">
+                            <input type="hidden" name="laporan_id" id="form-laporan-id">
+                            <div class="autocomplete-list" id="form-laporan-list"></div>
                         </div>
+
                         <div class="col-md-6">
                             <label class="form-label fw-semibold fs-7 mb-1">Nomor Laporan / Suket *</label>
                             <input type="text" name="nomor_laporan" id="form-nomor-laporan" class="form-control-custom"
                                 placeholder="Contoh: SK3/ARP-01/2026" required>
                         </div>
-                        <div class="col-md-6">
+
+                        <!-- Perusahaan Klien (autocomplete) -->
+                        <div class="col-md-6 autocomplete-wrapper">
                             <label class="form-label fw-semibold fs-7 mb-1">Perusahaan Klien *</label>
-                            <select name="klien_id" id="form-klien-id" class="select-custom" required>
-                                <option value="">-- Pilih Klien --</option>
-                                <?php foreach ($klien_list as $k): ?>
-                                    <option value="<?= $k['id'] ?>"><?= htmlspecialchars($k['nama_perusahaan']) ?></option>
-                                <?php endforeach; ?>
-                            </select>
+                            <input type="text" id="form-klien-search" class="form-control-custom"
+                                placeholder="Ketik nama perusahaan..." autocomplete="off">
+                            <input type="hidden" name="klien_id" id="form-klien-id">
+                            <div class="autocomplete-list" id="form-klien-list"></div>
                         </div>
-                        <div class="col-md-6">
+
+                        <!-- Objek K3 Unit (autocomplete) -->
+                        <div class="col-md-6 autocomplete-wrapper">
                             <label class="form-label fw-semibold fs-7 mb-1">Objek K3 Unit *</label>
-                            <select name="objek_id" id="form-objek-id" class="select-custom" required>
-                                <option value="">-- Pilih Objek Unit --</option>
-                                <?php foreach ($objek_list as $o): ?>
-                                    <option value="<?= $o['id'] ?>"><?= htmlspecialchars($o['nama_perusahaan']) ?> -
-                                        <?= htmlspecialchars($o['nama_unit']) ?> (SN:
-                                        <?= htmlspecialchars($o['serial_number'] ?: '-') ?>)
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
+                            <input type="text" id="form-objek-search" class="form-control-custom"
+                                placeholder="Ketik nama unit / SN / klien..." autocomplete="off">
+                            <input type="hidden" name="objek_id" id="form-objek-id">
+                            <div class="autocomplete-list" id="form-objek-list"></div>
                         </div>
-                        <div class="col-md-6">
+
+                        <!-- Ahli K3 Pelaksana (autocomplete) -->
+                        <div class="col-md-6 autocomplete-wrapper">
                             <label class="form-label fw-semibold fs-7 mb-1">Ahli K3 Pelaksana *</label>
-                            <select name="ahli_k3_id" id="form-ahli-id" class="select-custom" required>
-                                <option value="">-- Pilih Ahli K3 --</option>
-                                <?php foreach ($ahli_list as $a): ?>
-                                    <option value="<?= $a['id'] ?>"><?= htmlspecialchars($a['nama_lengkap']) ?> -
-                                        <?= htmlspecialchars($a['tingkat_ahli']) ?>
-                                        (<?= htmlspecialchars($a['bidang_keahlian']) ?>)
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
+                            <input type="text" id="form-ahli-search" class="form-control-custom"
+                                placeholder="Ketik nama ahli K3..." autocomplete="off">
+                            <input type="hidden" name="ahli_k3_id" id="form-ahli-id">
+                            <div class="autocomplete-list" id="form-ahli-list"></div>
                         </div>
+
                         <div class="col-md-6">
                             <label class="form-label fw-semibold fs-7 mb-1">Jenis Pemeriksaan</label>
                             <select name="jenis_pemeriksaan" id="form-jenis-pemeriksaan" class="select-custom">
@@ -351,19 +339,225 @@ $sukets = $conn->query("
     </div>
 </div>
 
+<style>
+    .autocomplete-wrapper {
+        position: relative;
+    }
+
+    .autocomplete-list {
+        display: none;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        z-index: 2000;
+        max-height: 220px;
+        overflow-y: auto;
+        background: #fff;
+        border: 1px solid #d9dde3;
+        border-radius: 8px;
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+        margin-top: 4px;
+    }
+
+    .autocomplete-list.show {
+        display: block;
+    }
+
+    .autocomplete-item {
+        padding: 8px 12px;
+        font-size: 0.85rem;
+        cursor: pointer;
+        border-bottom: 1px solid #f1f2f4;
+    }
+
+    .autocomplete-item:last-child {
+        border-bottom: none;
+    }
+
+    .autocomplete-item:hover,
+    .autocomplete-item.active {
+        background: #f0f4ff;
+    }
+
+    .autocomplete-item small {
+        display: block;
+        color: #8a8f98;
+        font-size: 0.75rem;
+    }
+
+    .autocomplete-empty {
+        padding: 8px 12px;
+        font-size: 0.8rem;
+        color: #9aa0a8;
+    }
+</style>
+
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         initTablePagination('tabelSuket', 10);
     });
 
+    // ===== Data untuk autocomplete =====
+    const laporanDataAll = <?= json_encode($laporan_list) ?>;
+    const klienDataAll = <?= json_encode($klien_list) ?>;
+    const objekDataAll = <?= json_encode($objek_list) ?>;
+    const ahliDataAll = <?= json_encode($ahli_list) ?>;
+    const pengajuanDataAll = <?= json_encode($pengajuan_list) ?>;
+
+    /**
+     * Membuat komponen autocomplete generik.
+     * @param {string} searchId  id input teks (yang diketik user)
+     * @param {string} hiddenId  id input hidden (id sebenarnya yang dikirim ke server)
+     * @param {string} listId    id container dropdown hasil pencarian
+     * @param {Array}  data      array data sumber
+     * @param {Function} matchFn (item, query) => boolean, menentukan apakah item cocok dengan query
+     * @param {Function} labelFn (item) => string, label utama yang ditampilkan & dipakai mengisi input saat dipilih
+     * @param {Function} subLabelFn (item) => string, label kecil tambahan (opsional)
+     * @param {Function} onSelect (item) => void, dipanggil saat item dipilih
+     */
+    function setupAutocomplete({ searchId, hiddenId, listId, data, matchFn, labelFn, subLabelFn, onSelect }) {
+        const searchEl = document.getElementById(searchId);
+        const hiddenEl = document.getElementById(hiddenId);
+        const listEl = document.getElementById(listId);
+
+        function renderList(query) {
+            const q = (query || '').trim().toLowerCase();
+            const filtered = data.filter(item => matchFn(item, q));
+
+            listEl.innerHTML = '';
+
+            if (filtered.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'autocomplete-empty';
+                empty.textContent = 'Tidak ditemukan';
+                listEl.appendChild(empty);
+            } else {
+                filtered.slice(0, 50).forEach(item => {
+                    const row = document.createElement('div');
+                    row.className = 'autocomplete-item';
+                    const sub = subLabelFn ? subLabelFn(item) : '';
+                    row.innerHTML = labelFn(item) + (sub ? `<small>${sub}</small>` : '');
+                    row.addEventListener('mousedown', function (e) {
+                        // mousedown supaya tereksekusi sebelum event blur pada input
+                        e.preventDefault();
+                        searchEl.value = labelFn(item).replace(/<[^>]*>/g, '');
+                        hiddenEl.value = item.id;
+                        listEl.classList.remove('show');
+                        if (onSelect) onSelect(item);
+                    });
+                    listEl.appendChild(row);
+                });
+            }
+
+            listEl.classList.add('show');
+        }
+
+        searchEl.addEventListener('focus', function () {
+            renderList(searchEl.value);
+        });
+
+        searchEl.addEventListener('input', function () {
+            hiddenEl.value = ''; // reset pilihan sampai user memilih ulang dari daftar
+            renderList(searchEl.value);
+        });
+
+        searchEl.addEventListener('blur', function () {
+            setTimeout(() => listEl.classList.remove('show'), 150);
+        });
+
+        // API kecil untuk set nilai secara programatik (dipakai saat edit / pilih laporan)
+        searchEl._setValue = function (text, id) {
+            searchEl.value = text || '';
+            hiddenEl.value = id || '';
+        };
+    }
+
+    // --- Rujukan Pengajuan K3 (opsional) ---
+    setupAutocomplete({
+        searchId: 'form-pengajuan-search',
+        hiddenId: 'form-pengajuan-id',
+        listId: 'form-pengajuan-list',
+        data: pengajuanDataAll,
+        matchFn: (item, q) => !q ||
+            String(item.id).includes(q) ||
+            (item.jenis_pemeriksaan || '').toLowerCase().includes(q) ||
+            (item.klasifikasi_objek_k3 || '').toLowerCase().includes(q),
+        labelFn: (item) => `ID: #${item.id} - ${item.klasifikasi_objek_k3 || '-'}`,
+        subLabelFn: (item) => item.jenis_pemeriksaan || ''
+    });
+
+    // --- Klien ---
+    setupAutocomplete({
+        searchId: 'form-klien-search',
+        hiddenId: 'form-klien-id',
+        listId: 'form-klien-list',
+        data: klienDataAll,
+        matchFn: (item, q) => !q || item.nama_perusahaan.toLowerCase().includes(q),
+        labelFn: (item) => item.nama_perusahaan
+    });
+
+    // --- Objek K3 ---
+    setupAutocomplete({
+        searchId: 'form-objek-search',
+        hiddenId: 'form-objek-id',
+        listId: 'form-objek-list',
+        data: objekDataAll,
+        matchFn: (item, q) => !q ||
+            item.nama_unit.toLowerCase().includes(q) ||
+            item.nama_perusahaan.toLowerCase().includes(q) ||
+            (item.serial_number || '').toLowerCase().includes(q),
+        labelFn: (item) => `${item.nama_perusahaan} - ${item.nama_unit}`,
+        subLabelFn: (item) => `SN: ${item.serial_number || '-'}`
+    });
+
+    // --- Ahli K3 ---
+    setupAutocomplete({
+        searchId: 'form-ahli-search',
+        hiddenId: 'form-ahli-id',
+        listId: 'form-ahli-list',
+        data: ahliDataAll,
+        matchFn: (item, q) => !q ||
+            item.nama_lengkap.toLowerCase().includes(q) ||
+            (item.bidang_keahlian || '').toLowerCase().includes(q),
+        labelFn: (item) => item.nama_lengkap,
+        subLabelFn: (item) => `${item.tingkat_ahli} - ${item.bidang_keahlian}`
+    });
+
+    // --- Laporan Pemeriksaan (memicu auto-isi field lain saat dipilih) ---
+    setupAutocomplete({
+        searchId: 'form-laporan-search',
+        hiddenId: 'form-laporan-id',
+        listId: 'form-laporan-list',
+        data: laporanDataAll,
+        matchFn: (item, q) => !q ||
+            item.nomor_laporan.toLowerCase().includes(q) ||
+            item.nama_perusahaan.toLowerCase().includes(q) ||
+            item.nama_unit.toLowerCase().includes(q),
+        labelFn: (item) => item.nomor_laporan,
+        subLabelFn: (item) => `${item.nama_perusahaan} (${item.nama_unit})`,
+        onSelect: (lp) => pilihLaporan(lp)
+    });
+
     function resetForm() {
-        document.getElementById('form-pilih-laporan').value = '';
         document.getElementById('form-id').value = '';
+        document.getElementById('form-pengajuan-search').value = '';
         document.getElementById('form-pengajuan-id').value = '';
+
+        document.getElementById('form-laporan-search').value = '';
+        document.getElementById('form-laporan-id').value = '';
+
         document.getElementById('form-nomor-laporan').value = '';
+
+        document.getElementById('form-klien-search').value = '';
         document.getElementById('form-klien-id').value = '';
+
+        document.getElementById('form-objek-search').value = '';
         document.getElementById('form-objek-id').value = '';
+
+        document.getElementById('form-ahli-search').value = '';
         document.getElementById('form-ahli-id').value = '';
+
         document.getElementById('form-jenis-pemeriksaan').value = 'Pemeriksaan Baru';
         document.getElementById('form-tgl-jadwal').value = '';
         document.getElementById('form-tgl-pemeriksaan').value = '';
@@ -376,11 +570,36 @@ $sukets = $conn->query("
 
     function editSuket(data) {
         document.getElementById('form-id').value = data.id;
-        document.getElementById('form-pengajuan-id').value = data.pengajuan_id || '';
+
+        if (data.pengajuan_id) {
+            const pengajuan = pengajuanDataAll.find(p => String(p.id) === String(data.pengajuan_id));
+            document.getElementById('form-pengajuan-search').value = pengajuan
+                ? `ID: #${pengajuan.id} - ${pengajuan.klasifikasi_objek_k3 || '-'}`
+                : `ID: #${data.pengajuan_id}`;
+            document.getElementById('form-pengajuan-id').value = data.pengajuan_id;
+        } else {
+            document.getElementById('form-pengajuan-search').value = '';
+            document.getElementById('form-pengajuan-id').value = '';
+        }
+
+        // Laporan tidak diisi otomatis saat edit (suket sudah terbit, biasanya tanpa rujukan baru)
+        document.getElementById('form-laporan-search').value = '';
+        document.getElementById('form-laporan-id').value = '';
+
         document.getElementById('form-nomor-laporan').value = data.nomor_laporan;
+
+        const klien = klienDataAll.find(k => String(k.id) === String(data.klien_id));
+        document.getElementById('form-klien-search').value = klien ? klien.nama_perusahaan : (data.nama_perusahaan || '');
         document.getElementById('form-klien-id').value = data.klien_id;
+
+        const objek = objekDataAll.find(o => String(o.id) === String(data.objek_id));
+        document.getElementById('form-objek-search').value = objek ? `${objek.nama_perusahaan} - ${objek.nama_unit}` : (data.nama_unit || '');
         document.getElementById('form-objek-id').value = data.objek_id;
+
+        const ahli = ahliDataAll.find(a => String(a.id) === String(data.ahli_k3_id));
+        document.getElementById('form-ahli-search').value = ahli ? ahli.nama_lengkap : (data.nama_ahli || '');
         document.getElementById('form-ahli-id').value = data.ahli_k3_id;
+
         document.getElementById('form-jenis-pemeriksaan').value = data.jenis_pemeriksaan;
         document.getElementById('form-tgl-jadwal').value = data.tanggal_jadwal || '';
         document.getElementById('form-tgl-pemeriksaan').value = data.tanggal_pemeriksaan || '';
@@ -391,15 +610,21 @@ $sukets = $conn->query("
         document.getElementById('suketModalLabel').textContent = 'Edit Suket K3';
     }
 
-    const laporanDataAll = <?= json_encode($laporan_list) ?>;
-
-    function pilihLaporan(id) {
-        if (!id) return;
-        const lp = laporanDataAll.find(l => String(l.id) === String(id));
+    function pilihLaporan(lp) {
         if (!lp) return;
+
+        const klien = klienDataAll.find(k => String(k.id) === String(lp.klien_id));
+        document.getElementById('form-klien-search').value = klien ? klien.nama_perusahaan : (lp.nama_perusahaan || '');
         document.getElementById('form-klien-id').value = lp.klien_id;
+
+        const objek = objekDataAll.find(o => String(o.id) === String(lp.objek_id));
+        document.getElementById('form-objek-search').value = objek ? `${objek.nama_perusahaan} - ${objek.nama_unit}` : (lp.nama_unit || '');
         document.getElementById('form-objek-id').value = lp.objek_id;
+
+        const ahli = ahliDataAll.find(a => String(a.id) === String(lp.ahli_k3_id));
+        document.getElementById('form-ahli-search').value = ahli ? ahli.nama_lengkap : '';
         document.getElementById('form-ahli-id').value = lp.ahli_k3_id;
+
         document.getElementById('form-jenis-pemeriksaan').value = lp.jenis_pemeriksaan;
         document.getElementById('form-tgl-pemeriksaan').value = lp.tanggal_pemeriksaan || '';
         document.getElementById('form-tgl-expiry').value = lp.tanggal_expiry || '';
@@ -407,6 +632,22 @@ $sukets = $conn->query("
         document.getElementById('form-rekomendasi').value = lp.rekomendasi_teknis || '';
         // Nomor laporan suket dikosongkan / diketik admin sendiri sebagai nomor resmi baru
     }
+
+    // Validasi manual sebelum submit, karena field wajib sekarang berupa hidden input
+    document.getElementById('suketForm').addEventListener('submit', function (e) {
+        const requiredHidden = [
+            { id: 'form-klien-id', label: 'Perusahaan Klien' },
+            { id: 'form-objek-id', label: 'Objek K3 Unit' },
+            { id: 'form-ahli-id', label: 'Ahli K3 Pelaksana' }
+        ];
+        for (const f of requiredHidden) {
+            if (!document.getElementById(f.id).value) {
+                e.preventDefault();
+                alert(`Silakan pilih "${f.label}" dari daftar hasil pencarian sebelum menyimpan.`);
+                return;
+            }
+        }
+    });
 </script>
 
 <?php
