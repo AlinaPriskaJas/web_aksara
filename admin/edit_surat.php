@@ -175,9 +175,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
             $revisiTertinggiFamily = (int) ($stmtMaxRevisi->fetchColumn() ?: 0);
             $revisiKeDipakai = $tandaiRevisiBaru ? ($revisiTertinggiFamily + 1) : $revisiKeSaatIni;
 
-            $dataForm = [];
+            $dataFormMentah = [];   // disimpan ke isi_data (tetap YYYY-MM-DD, aman untuk <input type="date">)
+            $dataForm = [];         // dipakai untuk generate docx (tanggal sudah diformat Indonesia)
             foreach ($_POST['dinamis'] ?? [] as $fieldName => $fieldValue) {
                 $fieldValue = trim((string) $fieldValue);
+                $dataFormMentah[$fieldName] = $fieldValue;
                 if (preg_match('/tanggal|tgl/i', $fieldName) && $fieldValue !== '') {
                     $fieldValue = formatTanggalIndonesia($fieldValue);
                 }
@@ -296,7 +298,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
                     ?? $dataForm['item_nama_perusahaan']
                     ?? '-');
 
-            $isiDataDisimpan = $dataForm;
+            $isiDataDisimpan = $dataFormMentah;
             if (!empty($items)) {
                 $isiDataDisimpan['__items'] = $items;
             }

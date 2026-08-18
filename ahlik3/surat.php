@@ -529,9 +529,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
             }
             $nomorAgenda = generateNomorAgenda($pdo, 'Keluar');
 
-            $dataForm = [];
+            $dataFormMentah = [];   // disimpan ke isi_data (tetap YYYY-MM-DD, aman untuk <input type="date">)
+            $dataForm = [];         // dipakai untuk generate docx (tanggal sudah diformat Indonesia)
             foreach ($_POST['dinamis'] ?? [] as $fieldName => $fieldValue) {
                 $fieldValue = trim((string) $fieldValue);
+                $dataFormMentah[$fieldName] = $fieldValue;
                 if (preg_match('/tanggal|tgl/i', $fieldName) && $fieldValue !== '') {
                     $fieldValue = formatTanggalIndonesia($fieldValue);
                 }
@@ -634,7 +636,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
 
             $statusInput = trim($_POST['status'] ?? '') ?: 'Draft';
 
-            $isiDataDisimpan = $dataForm;
+            $isiDataDisimpan = $dataFormMentah;
             if (!empty($items)) {
                 $isiDataDisimpan['__items'] = $items;
             }
