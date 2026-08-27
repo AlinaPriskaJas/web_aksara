@@ -764,6 +764,30 @@ footer{
     display:flex;
     align-items:center;
     justify-content:center;
+    flex-shrink:0;
+}
+
+.role-icon svg{
+    display:block;
+}
+.role-section .role-icon,
+.access-section .role-box .role-icon{
+    color:#F7C65A;
+    
+}
+
+/*================ ROLE (Beranda) =================*/
+.role-section .role-icon,
+.access-section .role-box .role-icon{
+    color:#F7C65A;
+}
+
+/* Admin latarnya kuning/emas juga (#F4D03F) -- kalau ikonnya dipaksa emas
+   juga, jadi nyaris tidak kelihatan (emas di atas emas). Ikon Admin dikembalikan
+   ke warna gelap kontras. */
+.role-section .role-icon.admin,
+.access-section .role-box .role-icon.admin{
+    color:#7A5B00;
 }
 
 .role-icon i{
@@ -1274,6 +1298,10 @@ button:focus-visible,
     margin-bottom:18px;
     display:block;
 }
+.feature-card svg{
+    color:#F7C65A;
+    margin-bottom:18px;
+}
 
 .feature-card h4{
     font-size:19px;
@@ -1317,8 +1345,11 @@ button:focus-visible,
     background:rgba(255,255,255,.18);
     backdrop-filter:blur(10px);
     border-radius:12px;
-    padding:26px 14px 22px;
-    text-align:center;
+    padding:20px 18px;
+    display:flex;
+    align-items:center;
+    gap:14px;
+    text-align:left;
     color:#fff;
     font-size:15px;
     font-weight:700;
@@ -1331,7 +1362,7 @@ button:focus-visible,
 }
 
 .role-box .role-icon{
-    margin:0 auto 14px;
+    margin:0;
 }
 
 /*================ CTA =================*/
