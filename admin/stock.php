@@ -89,15 +89,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['action']) && $_POST['action'] === 'tambah_barang') {
         $kode_barang = trim($_POST['kode_barang']);
         $nama_barang = trim($_POST['nama_barang']);
-        $kategori_pilih = trim($_POST['kategori_pilih']);
-        $kategori_manual = trim($_POST['kategori_manual'] ?? '');
+        // Kategori sekarang otomatis mengikuti tab asal (dikirim via field tersembunyi),
+        // tidak lagi lewat dropdown manual supaya tidak salah input.
+        $nama_kategori = trim($_POST['kategori_pilih'] ?? '');
         $satuan = trim($_POST['satuan']);
         $stok_awal = intval($_POST['stok_awal']);
         $stok_minimum = (!empty($_POST['stok_minimum'])) ? intval($_POST['stok_minimum']) : null;
         $lokasi_rak = trim($_POST['lokasi_rak']);
         $harga_satuan = (!empty($_POST['harga_satuan'])) ? floatval($_POST['harga_satuan']) : null;
-
-        $nama_kategori = ($kategori_pilih === 'Lainnya') ? $kategori_manual : $kategori_pilih;
 
         if (empty($kode_barang) || empty($nama_barang) || empty($nama_kategori) || empty($satuan)) {
             $error_msg = "Semua field wajib (Kode, Nama Barang, Kategori, Satuan) harus diisi!";
@@ -325,17 +324,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // ============================== FETCH DATA ==============================
 
-// Kategori dasar untuk dropdown "Tambah Barang" (tetap ada opsi Lainnya)
-$kategori_dasar = ['ATK', 'AAK3', 'Konsumsi', 'Kebersihan'];
-$kategori_custom_rows = $conn->query("SELECT nama_kategori FROM kategori_barang_gudang ORDER BY nama_kategori ASC")->fetchAll();
-$kategori_custom = [];
-foreach ($kategori_custom_rows as $row) {
-    if (!in_array($row['nama_kategori'], $kategori_dasar)) {
-        $kategori_custom[] = $row['nama_kategori'];
-    }
-}
-$kategori_options = array_merge($kategori_dasar, $kategori_custom, ['Lainnya']);
-
 // Semua kategori (ini yang jadi TAB di halaman, urut sesuai id_kategori)
 $kategoris = $conn->query("SELECT * FROM kategori_barang_gudang ORDER BY id_kategori ASC")->fetchAll();
 
@@ -416,6 +404,38 @@ foreach ($kategoris as $kat) {
     $grandTotal['sisa'] += $nilaiSisa;
 }
 
+// Rekap Bulanan Pengeluaran Stok Gudang (dari nilai Barang Masuk = pembelian/restock)
+$namaBulanIndo = [
+    1 => 'Januari', 2 => 'Februari', 3 => 'Maret', 4 => 'April', 5 => 'Mei', 6 => 'Juni',
+    7 => 'Juli', 8 => 'Agustus', 9 => 'September', 10 => 'Oktober', 11 => 'November', 12 => 'Desember',
+];
+$rekapBulananRows = $conn->query("
+    SELECT DATE_FORMAT(ms.tanggal, '%Y-%m') AS bulan_key,
+        COUNT(*) AS jumlah_transaksi,
+        SUM(ms.jumlah) AS total_qty_masuk,
+        SUM(ms.jumlah * COALESCE(gs.harga_satuan, 0)) AS total_pengeluaran
+    FROM Mutasi_Stok ms
+    JOIN Gudang_Stok gs ON ms.barang_id = gs.id
+    WHERE ms.jenis_mutasi = 'Masuk'
+    GROUP BY DATE_FORMAT(ms.tanggal, '%Y-%m')
+    ORDER BY bulan_key DESC
+")->fetchAll();
+
+$rekapBulanan = [];
+$grandTotalBulanan = ['transaksi' => 0, 'qty' => 0, 'pengeluaran' => 0];
+foreach ($rekapBulananRows as $row) {
+    [$thn, $bln] = explode('-', $row['bulan_key']);
+    $rekapBulanan[] = [
+        'label' => $namaBulanIndo[(int) $bln] . ' ' . $thn,
+        'jumlah_transaksi' => (int) $row['jumlah_transaksi'],
+        'total_qty_masuk' => (int) $row['total_qty_masuk'],
+        'total_pengeluaran' => (float) $row['total_pengeluaran'],
+    ];
+    $grandTotalBulanan['transaksi'] += (int) $row['jumlah_transaksi'];
+    $grandTotalBulanan['qty'] += (int) $row['total_qty_masuk'];
+    $grandTotalBulanan['pengeluaran'] += (float) $row['total_pengeluaran'];
+}
+
 // Tentukan tab aktif kalau diarahkan lewat nama kategori (setelah tambah barang)
 if (strpos($active_tab, 'tabKatByName:') === 0) {
     $namaCari = substr($active_tab, strlen('tabKatByName:'));
@@ -466,9 +486,6 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
                 <button class="btn-primary-custom" onclick="openModal('modalImport')">
                     <i class="bi bi-file-earmark-arrow-up"></i> Import CSV/Excel
                 </button>
-                <button class="btn-secondary-custom" onclick="openModal('modalBarangMasuk')">
-                    <i class="bi bi-box-arrow-in-down"></i> Catat Barang Masuk
-                </button>
             </div>
         </div>
     </div>
@@ -510,7 +527,7 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
                 <div class="col-12 arp-tab-panel" id="tabKat<?= $kid ?>" <?= $active_tab === 'tabKat' . $kid ? '' : 'style="display:none;"' ?>>
                     <div class="card-box">
                         <div class="table-toolbar">
-                            <h5 class="table-toolbar-title fw-bold">Stok — <?= htmlspecialchars($kat['nama_kategori']) ?>
+                            <h5 class="table-toolbar-title fw-bold">Stok <?= htmlspecialchars($kat['nama_kategori']) ?>
                             </h5>
                             <div class="table-toolbar-actions">
                                 <div class="search-box-container">
@@ -642,7 +659,7 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
                                 <div class="mb-3">
                                     <label class="form-label fw-semibold mb-2">Nama Pemakai *</label>
                                     <input type="text" name="pemakai" class="form-control-custom"
-                                        placeholder="Contoh: Ayu" required>
+                                        placeholder="Contoh: Arya" required>
                                 </div>
                                 <div class="mb-4">
                                     <label class="form-label fw-semibold mb-2">Keterangan</label>
@@ -772,9 +789,60 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
 
             <!-- ===================== TAB KEUANGAN ===================== -->
             <div class="col-12 arp-tab-panel" id="tabKeuangan" <?= $active_tab === 'tabKeuangan' ? '' : 'style="display:none;"' ?>>
+                <div class="card-box mb-3">
+                    <div class="table-toolbar">
+                        <h5 class="table-toolbar-title fw-bold">Rekap Pengeluaran Stok Gudang per Bulan</h5>
+                        <div class="table-toolbar-actions">
+                            <small class="text-muted">Dihitung dari nilai Barang Masuk (pembelian/restock) ×
+                                Harga Satuan, dikelompokkan per bulan.</small>
+                        </div>
+                    </div>
+                    <div class="table-responsive-custom">
+                        <table class="table-custom" id="tabelRekapBulanan">
+                            <thead>
+                                <tr>
+                                    <th>Bulan</th>
+                                    <th>Jumlah Transaksi Masuk</th>
+                                    <th>Total Qty Masuk</th>
+                                    <th>Total Pengeluaran (Rp)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php if (count($rekapBulanan) === 0): ?>
+                                    <tr>
+                                        <td colspan="4" class="text-center py-4 text-muted">Belum ada riwayat
+                                            barang masuk untuk direkap.</td>
+                                    </tr>
+                                <?php else: ?>
+                                    <?php foreach ($rekapBulanan as $rb): ?>
+                                        <tr>
+                                            <td><strong><?= htmlspecialchars($rb['label']) ?></strong></td>
+                                            <td><?= $rb['jumlah_transaksi'] ?></td>
+                                            <td><?= $rb['total_qty_masuk'] ?></td>
+                                            <td><strong>Rp <?= number_format($rb['total_pengeluaran'], 0, ',', '.') ?></strong>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
+                            </tbody>
+                            <?php if (count($rekapBulanan) > 0): ?>
+                                <tfoot>
+                                    <tr style="font-weight:700;background:rgba(0,0,0,.02);">
+                                        <td>TOTAL</td>
+                                        <td><?= $grandTotalBulanan['transaksi'] ?></td>
+                                        <td><?= $grandTotalBulanan['qty'] ?></td>
+                                        <td>Rp <?= number_format($grandTotalBulanan['pengeluaran'], 0, ',', '.') ?>
+                                        </td>
+                                    </tr>
+                                </tfoot>
+                            <?php endif; ?>
+                        </table>
+                    </div>
+                </div>
+
                 <div class="card-box">
                     <div class="table-toolbar">
-                        <h5 class="table-toolbar-title fw-bold">Ringkasan Nilai Stok &amp; Keuangan</h5>
+                        <h5 class="table-toolbar-title fw-bold">Ringkasan Nilai Stok &amp; Keuangan per Kategori</h5>
                         <div class="table-toolbar-actions">
                             <small class="text-muted">Dihitung otomatis dari Harga Satuan × Jumlah barang.
                                 Lengkapi Harga Satuan lewat tombol edit di masing-masing tab kategori.</small>
@@ -848,8 +916,17 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-semibold mb-2">File (.csv atau .xlsx) *</label>
-                        <input type="file" name="file_import" class="form-control-custom" accept=".csv,.xlsx"
-                            required>
+                        <div class="upload-dropzone" id="dropzoneImportStok">
+                            <div class="upload-dropzone-icon"><i class="bi bi-cloud-arrow-up"></i></div>
+                            <div>
+                                <span class="fw-semibold" style="color: var(--primary);">Tarik &amp; lepas file di sini</span>
+                                atau <span class="fw-semibold text-decoration-underline">Pilih File</span>
+                            </div>
+                            <span class="fs-7 text-muted">Format: CSV, XLSX</span>
+                            <input type="file" name="file_import" id="inputImportStok" class="d-none"
+                                accept=".csv,.xlsx" required>
+                            <div class="upload-dropzone-filelist" id="fileListImportStok"></div>
+                        </div>
                     </div>
                     <div class="mb-4">
                         <small class="text-muted">
@@ -955,23 +1032,13 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label fw-semibold mb-2">Kategori Barang *</label>
-                        <select name="kategori_pilih" id="kategoriPilih" class="select-custom"
-                            onchange="toggleKategoriManual()" required>
-                            <option value="">-- Pilih Kategori --</option>
-                            <?php foreach ($kategori_options as $kat): ?>
-                                <option value="<?= htmlspecialchars($kat) ?>"><?= htmlspecialchars($kat) ?></option>
-                            <?php endforeach; ?>
-                            <option value="Lainnya">+ Lainnya (ketik / tambah kategori baru)</option>
-                        </select>
-                    </div>
-
-                    <div class="mb-3" id="wrapperKategoriManual" style="display:none;">
-                        <label class="form-label fw-semibold mb-2">Nama Kategori Baru *</label>
-                        <input type="text" name="kategori_manual" id="kategoriManual" class="form-control-custom"
-                            placeholder="Ketik nama kategori baru, contoh: APD Elektrikal">
-                        <small class="text-muted">Kategori baru ini akan otomatis tersimpan dan muncul sebagai tab
-                            baru.</small>
+                        <label class="form-label fw-semibold mb-2">Kategori Barang</label>
+                        <div class="form-control-custom" id="kategoriTampil"
+                            style="background:rgba(0,0,0,.03); font-weight:600; display:flex; align-items:center;">
+                            —</div>
+                        <input type="hidden" name="kategori_pilih" id="kategoriPilih" value="">
+                        <small class="text-muted">Kategori otomatis mengikuti tab yang sedang dibuka — tidak bisa
+                            dipilih manual agar tidak salah input.</small>
                     </div>
 
                     <div class="row g-3 mb-3">
@@ -1066,31 +1133,13 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
         initTablePagination('tabelTransaksi', 10);
     });
 
-    function toggleKategoriManual() {
-        const pilih = document.getElementById('kategoriPilih').value;
-        const wrapper = document.getElementById('wrapperKategoriManual');
-        const inputManual = document.getElementById('kategoriManual');
-        if (pilih === 'Lainnya') {
-            wrapper.style.display = 'block';
-            inputManual.required = true;
-        } else {
-            wrapper.style.display = 'none';
-            inputManual.required = false;
-            inputManual.value = '';
-        }
-    }
-
-    // Buka modal Tambah Barang dengan kategori sudah terpilih sesuai tab asal
+    // Buka modal Tambah Barang dengan kategori otomatis terkunci sesuai tab asal
+    // (tidak ada lagi opsi dropdown supaya tidak salah pilih kategori)
     function openModalTambah(namaKategori) {
-        const select = document.getElementById('kategoriPilih');
-        if (select) {
-            let found = false;
-            for (const opt of select.options) {
-                if (opt.value === namaKategori) { found = true; break; }
-            }
-            select.value = found ? namaKategori : '';
-            toggleKategoriManual();
-        }
+        const hiddenInput = document.getElementById('kategoriPilih');
+        const tampil = document.getElementById('kategoriTampil');
+        if (hiddenInput) hiddenInput.value = namaKategori;
+        if (tampil) tampil.textContent = namaKategori;
         openModal('modalTambahBarang');
     }
 

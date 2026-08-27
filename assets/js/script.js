@@ -523,6 +523,7 @@ setupDropzone('dropzoneFileLaporan', 'inputFileLaporan', 'fileListFileLaporan');
 setupDropzone('dropzoneBuktiReimburseAhli', 'inputBuktiReimburseAhli', 'fileListBuktiReimburseAhli'); // ahlik3/reimburse.php
 setupDropzone('dropzoneFileDokumentasi', 'inputFileDokumentasi', 'fileListFileDokumentasi');   // ahlik3/upload.php
 setupDropzone('dropzoneRestoreFile', 'inputRestoreFile', 'fileListRestoreFile');               // it/pengaturan.php
+setupDropzone('dropzoneImportStok', 'inputImportStok', 'fileListImportStok');                   // it/stock.php & admin/stock.php
 setupDropzone('dropzoneBuktiReimburseIt', 'inputBuktiReimburseIt', 'fileListBuktiReimburseIt'); // it/reimburse.php
 setupDropzone('dropzoneFilePathIt', 'inputFilePathIt', 'fileListFilePathIt');                   // it/digital.php
 
