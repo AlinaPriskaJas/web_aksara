@@ -629,8 +629,17 @@ $lastBackup = count($backupList) > 0 ? $backupList[0] : null;
                                 <input type="hidden" name="action" value="restore">
                                 <div class="mb-3">
                                     <label class="form-label fw-semibold mb-2">Unggah Berkas .sql *</label>
-                                    <input type="file" name="restore_file" class="form-control-custom" style="padding-top:8px;"
-                                        accept=".sql" required>
+                                    <div class="upload-dropzone" id="dropzoneRestoreFile">
+                                        <div class="upload-dropzone-icon"><i class="bi bi-cloud-arrow-up"></i></div>
+                                        <div>
+                                            <span class="fw-semibold" style="color: var(--primary);">Tarik &amp; lepas file di sini</span>
+                                            atau <span class="fw-semibold text-decoration-underline">Pilih File</span>
+                                        </div>
+                                        <span class="fs-7 text-muted">Format: SQL</span>
+                                        <input type="file" name="restore_file" id="inputRestoreFile" class="d-none"
+                                            accept=".sql" required>
+                                        <div class="upload-dropzone-filelist" id="fileListRestoreFile"></div>
+                                    </div>
                                 </div>
                                 <button type="submit" class="btn-danger-custom w-100">
                                     <i class="bi bi-arrow-counterclockwise"></i> Jalankan Restore

@@ -897,9 +897,16 @@ $dipakaiSakit = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year)
                 </div>
                 <div class="mb-4">
                     <label class="form-label fw-semibold fs-7 mb-2">Unggah Dokumen Pendukung</label>
-                    <input type="file" name="lampiran" class="form-control-custom" style="padding-top:8px;"
-                        accept=".pdf,.jpg,.jpeg,.png">
-                    <small class="text-muted d-block mt-1">Opsional. Format: PDF, JPG, PNG.</small>
+                    <div class="upload-dropzone" id="dzCutiTahunanNew">
+                        <div class="upload-dropzone-icon"><i class="bi bi-cloud-arrow-up"></i></div>
+                        <div>
+                            <span class="fw-semibold" style="color: var(--primary);">Tarik &amp; lepas file di sini</span>
+                            atau <span class="fw-semibold text-decoration-underline">Pilih File</span>
+                        </div>
+                        <span class="fs-7 text-muted">Format: PDF, JPG, PNG (Opsional)</span>
+                        <input type="file" name="lampiran" id="inputCutiTahunanNew" class="d-none" accept=".pdf,.jpg,.jpeg,.png">
+                        <div class="upload-dropzone-filelist" id="fileListCutiTahunanNew"></div>
+                    </div>
                 </div>
                 <div class="d-flex gap-2">
                     <button type="button" class="btn-secondary-custom flex-grow-1"
@@ -948,9 +955,16 @@ $dipakaiSakit = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year)
                 </div>
                 <div class="mb-4">
                     <label class="form-label fw-semibold fs-7 mb-2">Unggah Dokumen Pendukung</label>
-                    <input type="file" name="lampiran" class="form-control-custom" style="padding-top:8px;"
-                        accept=".pdf,.jpg,.jpeg,.png">
-                    <small class="text-muted d-block mt-1">Opsional. Format: PDF, JPG, PNG.</small>
+                    <div class="upload-dropzone" id="dzCutiKhususNew">
+                        <div class="upload-dropzone-icon"><i class="bi bi-cloud-arrow-up"></i></div>
+                        <div>
+                            <span class="fw-semibold" style="color: var(--primary);">Tarik &amp; lepas file di sini</span>
+                            atau <span class="fw-semibold text-decoration-underline">Pilih File</span>
+                        </div>
+                        <span class="fs-7 text-muted">Format: PDF, JPG, PNG (Opsional)</span>
+                        <input type="file" name="lampiran" id="inputCutiKhususNew" class="d-none" accept=".pdf,.jpg,.jpeg,.png">
+                        <div class="upload-dropzone-filelist" id="fileListCutiKhususNew"></div>
+                    </div>
                 </div>
                 <div class="d-flex gap-2">
                     <button type="button" class="btn-secondary-custom flex-grow-1"
@@ -990,9 +1004,16 @@ $dipakaiSakit = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year)
                 </div>
                 <div class="mb-4">
                     <label class="form-label fw-semibold fs-7 mb-2">Unggah Dokumen Pendukung</label>
-                    <input type="file" name="lampiran" class="form-control-custom" style="padding-top:8px;"
-                        accept=".pdf,.jpg,.jpeg,.png">
-                    <small class="text-muted d-block mt-1">Opsional. Contoh: surat keterangan dokter.</small>
+                    <div class="upload-dropzone" id="dzCutiSakitNew">
+                        <div class="upload-dropzone-icon"><i class="bi bi-cloud-arrow-up"></i></div>
+                        <div>
+                            <span class="fw-semibold" style="color: var(--primary);">Tarik &amp; lepas file di sini</span>
+                            atau <span class="fw-semibold text-decoration-underline">Pilih File</span>
+                        </div>
+                        <span class="fs-7 text-muted">Format: PDF, JPG, PNG (Opsional)</span>
+                        <input type="file" name="lampiran" id="inputCutiSakitNew" class="d-none" accept=".pdf,.jpg,.jpeg,.png">
+                        <div class="upload-dropzone-filelist" id="fileListCutiSakitNew"></div>
+                    </div>
                 </div>
                 <div class="d-flex gap-2">
                     <button type="button" class="btn-secondary-custom flex-grow-1"
@@ -1043,10 +1064,16 @@ $dipakaiSakit = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year)
                 </div>
                 <div class="mb-4">
                     <label class="form-label fw-semibold fs-7 mb-2">Ganti Dokumen Pendukung</label>
-                    <input type="file" name="lampiran" class="form-control-custom" style="padding-top:8px;"
-                        accept=".pdf,.jpg,.jpeg,.png">
-                    <small class="text-muted d-block mt-1">Opsional, kosongkan jika tidak ingin mengganti dokumen
-                        sebelumnya.</small>
+                    <div class="upload-dropzone" id="dzCutiTahunanEdit">
+                        <div class="upload-dropzone-icon"><i class="bi bi-cloud-arrow-up"></i></div>
+                        <div>
+                            <span class="fw-semibold" style="color: var(--primary);">Tarik &amp; lepas file di sini</span>
+                            atau <span class="fw-semibold text-decoration-underline">Pilih File</span>
+                        </div>
+                        <span class="fs-7 text-muted">Format: PDF, JPG, PNG (Opsional)</span>
+                        <input type="file" name="lampiran" id="inputCutiTahunanEdit" class="d-none" accept=".pdf,.jpg,.jpeg,.png">
+                        <div class="upload-dropzone-filelist" id="fileListCutiTahunanEdit"></div>
+                    </div>
                 </div>
                 <div class="d-flex gap-2">
                     <button type="button" class="btn-secondary-custom flex-grow-1"
@@ -1097,10 +1124,16 @@ $dipakaiSakit = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year)
                 </div>
                 <div class="mb-4">
                     <label class="form-label fw-semibold fs-7 mb-2">Ganti Dokumen Pendukung</label>
-                    <input type="file" name="lampiran" class="form-control-custom" style="padding-top:8px;"
-                        accept=".pdf,.jpg,.jpeg,.png">
-                    <small class="text-muted d-block mt-1">Opsional, kosongkan jika tidak ingin mengganti dokumen
-                        sebelumnya.</small>
+                    <div class="upload-dropzone" id="dzCutiKhususEdit">
+                        <div class="upload-dropzone-icon"><i class="bi bi-cloud-arrow-up"></i></div>
+                        <div>
+                            <span class="fw-semibold" style="color: var(--primary);">Tarik &amp; lepas file di sini</span>
+                            atau <span class="fw-semibold text-decoration-underline">Pilih File</span>
+                        </div>
+                        <span class="fs-7 text-muted">Format: PDF, JPG, PNG (Opsional)</span>
+                        <input type="file" name="lampiran" id="inputCutiKhususEdit" class="d-none" accept=".pdf,.jpg,.jpeg,.png">
+                        <div class="upload-dropzone-filelist" id="fileListCutiKhususEdit"></div>
+                    </div>
                 </div>
                 <div class="d-flex gap-2">
                     <button type="button" class="btn-secondary-custom flex-grow-1"
@@ -1143,10 +1176,16 @@ $dipakaiSakit = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year)
                 </div>
                 <div class="mb-4">
                     <label class="form-label fw-semibold fs-7 mb-2">Ganti Dokumen Pendukung</label>
-                    <input type="file" name="lampiran" class="form-control-custom" style="padding-top:8px;"
-                        accept=".pdf,.jpg,.jpeg,.png">
-                    <small class="text-muted d-block mt-1">Opsional, kosongkan jika tidak ingin mengganti dokumen
-                        sebelumnya.</small>
+                    <div class="upload-dropzone" id="dzCutiSakitEdit">
+                        <div class="upload-dropzone-icon"><i class="bi bi-cloud-arrow-up"></i></div>
+                        <div>
+                            <span class="fw-semibold" style="color: var(--primary);">Tarik &amp; lepas file di sini</span>
+                            atau <span class="fw-semibold text-decoration-underline">Pilih File</span>
+                        </div>
+                        <span class="fs-7 text-muted">Format: PDF, JPG, PNG (Opsional)</span>
+                        <input type="file" name="lampiran" id="inputCutiSakitEdit" class="d-none" accept=".pdf,.jpg,.jpeg,.png">
+                        <div class="upload-dropzone-filelist" id="fileListCutiSakitEdit"></div>
+                    </div>
                 </div>
                 <div class="d-flex gap-2">
                     <button type="button" class="btn-secondary-custom flex-grow-1"

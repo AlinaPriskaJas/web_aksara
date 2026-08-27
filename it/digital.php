@@ -255,8 +255,17 @@ $klienList = $conn->query("SELECT id, nama_perusahaan FROM Data_Klien ORDER BY n
                 </div>
                 <div class="mb-4">
                     <label class="form-label fw-semibold mb-2">Berkas *</label>
-                    <input type="file" name="file_path" class="form-control-custom" style="padding-top:8px;" required>
-                    <small class="text-muted d-block mt-1">Format: PDF, JPG, PNG, DOC, XLS</small>
+                    <div class="upload-dropzone" id="dropzoneFilePathIt">
+                        <div class="upload-dropzone-icon"><i class="bi bi-cloud-arrow-up"></i></div>
+                        <div>
+                            <span class="fw-semibold" style="color: var(--primary);">Tarik &amp; lepas file di sini</span>
+                            atau <span class="fw-semibold text-decoration-underline">Pilih File</span>
+                        </div>
+                        <span class="fs-7 text-muted">Format: PDF, JPG, PNG, DOC, XLS</span>
+                        <input type="file" name="file_path" id="inputFilePathIt" class="d-none"
+                            accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx" required>
+                        <div class="upload-dropzone-filelist" id="fileListFilePathIt"></div>
+                    </div>
                 </div>
                 <div class="d-flex gap-2 justify-content-end">
                     <button type="button" class="btn-secondary-custom"

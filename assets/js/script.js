@@ -457,14 +457,54 @@ function setupDropzone(dropzoneId, inputId, fileListId) {
     });
     fileInput.addEventListener('change', renderList);
 
+    // Hapus 1 file dari daftar (mendukung input single maupun multiple),
+    // dibangun ulang lewat DataTransfer supaya FileList tetap valid untuk di-submit.
+    function removeFileAt(index) {
+        const dt = new DataTransfer();
+        Array.from(fileInput.files).forEach(function (file, i) {
+            if (i !== index) dt.items.add(file);
+        });
+        fileInput.files = dt.files;
+        renderList();
+    }
+
     function renderList() {
         if (!fileList) return;
         fileList.innerHTML = '';
-        Array.from(fileInput.files).forEach(function (file) {
+        Array.from(fileInput.files).forEach(function (file, index) {
             const item = document.createElement('div');
             item.className = 'file-item';
-            item.innerHTML = '<span><i class="bi bi-paperclip me-2"></i>' + file.name + '</span>' +
-                '<span class="text-muted">' + (file.size / 1024).toFixed(0) + ' KB</span>';
+
+            const info = document.createElement('span');
+            const icon = document.createElement('i');
+            icon.className = 'bi bi-paperclip me-2';
+            const nameText = document.createElement('span');
+            nameText.textContent = file.name;
+            info.appendChild(icon);
+            info.appendChild(nameText);
+
+            const right = document.createElement('span');
+            right.className = 'file-item-right';
+
+            const sizeText = document.createElement('span');
+            sizeText.className = 'text-muted';
+            sizeText.textContent = (file.size / 1024).toFixed(0) + ' KB';
+
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.className = 'file-item-remove';
+            removeBtn.title = 'Hapus file ini';
+            removeBtn.innerHTML = '<i class="bi bi-x-lg"></i>';
+            removeBtn.addEventListener('click', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                removeFileAt(index);
+            });
+
+            right.appendChild(sizeText);
+            right.appendChild(removeBtn);
+            item.appendChild(info);
+            item.appendChild(right);
             fileList.appendChild(item);
         });
     }
@@ -472,6 +512,31 @@ function setupDropzone(dropzoneId, inputId, fileListId) {
 
 // client/pengajuan.php -> Upload Dokumen Pendukung (Opsional)
 setupDropzone('uploadDropzone', 'dokumenPendukung', 'uploadFileList');
+
+// Dropzone untuk field upload file WAJIB (required) di berbagai halaman.
+// setupDropzone otomatis no-op jika elemen tidak ada di halaman yang sedang dibuka,
+// sehingga aman didaftarkan semua di sini secara terpusat.
+setupDropzone('dropzoneImportClient', 'inputImportClient', 'fileListImportClient');           // admin/data_client.php
+setupDropzone('dropzoneBuktiReimburseAdmin', 'inputBuktiReimburseAdmin', 'fileListBuktiReimburseAdmin'); // admin/reimburse.php
+setupDropzone('dropzoneFileTemplate', 'inputFileTemplate', 'fileListFileTemplate');           // admin/surat.php
+setupDropzone('dropzoneFileLaporan', 'inputFileLaporan', 'fileListFileLaporan');               // ahlik3/pemeriksaan.php
+setupDropzone('dropzoneBuktiReimburseAhli', 'inputBuktiReimburseAhli', 'fileListBuktiReimburseAhli'); // ahlik3/reimburse.php
+setupDropzone('dropzoneFileDokumentasi', 'inputFileDokumentasi', 'fileListFileDokumentasi');   // ahlik3/upload.php
+setupDropzone('dropzoneRestoreFile', 'inputRestoreFile', 'fileListRestoreFile');               // it/pengaturan.php
+setupDropzone('dropzoneBuktiReimburseIt', 'inputBuktiReimburseIt', 'fileListBuktiReimburseIt'); // it/reimburse.php
+setupDropzone('dropzoneFilePathIt', 'inputFilePathIt', 'fileListFilePathIt');                   // it/digital.php
+
+// Dropzone untuk field upload file OPSIONAL (cuti.php, insiden.php)
+setupDropzone('dzCutiTahunanNew', 'inputCutiTahunanNew', 'fileListCutiTahunanNew');
+setupDropzone('dzCutiKhususNew', 'inputCutiKhususNew', 'fileListCutiKhususNew');
+setupDropzone('dzCutiSakitNew', 'inputCutiSakitNew', 'fileListCutiSakitNew');
+setupDropzone('dzCutiTahunanEdit', 'inputCutiTahunanEdit', 'fileListCutiTahunanEdit');
+setupDropzone('dzCutiKhususEdit', 'inputCutiKhususEdit', 'fileListCutiKhususEdit');
+setupDropzone('dzCutiSakitEdit', 'inputCutiSakitEdit', 'fileListCutiSakitEdit');
+setupDropzone('dzInsidenBukti', 'inputInsidenBukti', 'fileListInsidenBukti');                     // admin/insiden.php
+setupDropzone('dzInsidenBuktiMulti', 'inputInsidenBuktiMulti', 'fileListInsidenBuktiMulti');      // ahlik3/insiden.php
+setupDropzone('dzSertifikatBaru', 'inputSertifikatBaru', 'fileListSertifikatBaru');               // admin & ahlik3 sertifikat_ahli.php (tambah)
+setupDropzone('dzSertifikatGanti', 'inputSertifikatGanti', 'fileListSertifikatGanti');            // admin & ahlik3 sertifikat_ahli.php (ganti)
 
 /*=========================================
 =            SLIDER PREVIEW HERO

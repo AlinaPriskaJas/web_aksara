@@ -962,7 +962,16 @@ include "../includes/topbar.php";
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-semibold fs-7 mb-2">Pilih File *</label>
-                        <input type="file" name="file_import" class="form-control-custom" accept=".xlsx,.csv" required>
+                        <div class="upload-dropzone" id="dropzoneImportClient">
+                            <div class="upload-dropzone-icon"><i class="bi bi-cloud-arrow-up"></i></div>
+                            <div>
+                                <span class="fw-semibold" style="color: var(--primary);">Tarik &amp; lepas file di sini</span>
+                                atau <span class="fw-semibold text-decoration-underline">Pilih File</span>
+                            </div>
+                            <span class="fs-7 text-muted">Format: XLSX, CSV</span>
+                            <input type="file" name="file_import" id="inputImportClient" class="d-none" accept=".xlsx,.csv" required>
+                            <div class="upload-dropzone-filelist" id="fileListImportClient"></div>
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">

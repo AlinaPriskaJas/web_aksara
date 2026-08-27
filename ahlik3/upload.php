@@ -225,9 +225,17 @@ if ($ahli_k3_id > 0) {
                 </div>
                 <div class="mb-3">
                     <label class="form-label fw-semibold fs-7 mb-2">Pilih File *</label>
-                    <input type="file" name="file_dokumentasi" class="form-control-custom" style="padding-top:8px;"
-                        required>
-                    <small class="text-muted d-block mt-1">Ekstensi yang diizinkan: JPG, PNG, PDF, DOC, DOCX</small>
+                    <div class="upload-dropzone" id="dropzoneFileDokumentasi">
+                        <div class="upload-dropzone-icon"><i class="bi bi-cloud-arrow-up"></i></div>
+                        <div>
+                            <span class="fw-semibold" style="color: var(--primary);">Tarik &amp; lepas file di sini</span>
+                            atau <span class="fw-semibold text-decoration-underline">Pilih File</span>
+                        </div>
+                        <span class="fs-7 text-muted">Format: JPG, PNG, PDF, DOC, DOCX</span>
+                        <input type="file" name="file_dokumentasi" id="inputFileDokumentasi" class="d-none"
+                            accept=".jpg,.jpeg,.png,.pdf,.doc,.docx" required>
+                        <div class="upload-dropzone-filelist" id="fileListFileDokumentasi"></div>
+                    </div>
                 </div>
                 <div class="mb-4">
                     <label class="form-label fw-semibold fs-7 mb-2">Deskripsi / Keterangan</label>

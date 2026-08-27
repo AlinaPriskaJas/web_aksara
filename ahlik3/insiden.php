@@ -427,10 +427,17 @@ try {
 
                 <div class="mb-4">
                     <label class="form-label fw-semibold fs-7 mb-2">Upload Foto/Dokumen Bukti</label>
-                    <input type="file" name="foto_bukti[]" class="form-control-custom" multiple
-                        accept="image/jpeg,image/png,application/pdf">
-                    <small class="text-muted d-block mt-1">Bisa unggah lebih dari satu file (JPG, PNG, atau PDF),
-                        maksimal 5MB per file.</small>
+                    <div class="upload-dropzone" id="dzInsidenBuktiMulti">
+                        <div class="upload-dropzone-icon"><i class="bi bi-cloud-arrow-up"></i></div>
+                        <div>
+                            <span class="fw-semibold" style="color: var(--primary);">Tarik &amp; lepas file di sini</span>
+                            atau <span class="fw-semibold text-decoration-underline">Pilih File</span>
+                        </div>
+                        <span class="fs-7 text-muted">Bisa lebih dari satu file (JPG, PNG, atau PDF), maks 5MB/file</span>
+                        <input type="file" name="foto_bukti[]" id="inputInsidenBuktiMulti" class="d-none" multiple
+                            accept="image/jpeg,image/png,application/pdf">
+                        <div class="upload-dropzone-filelist" id="fileListInsidenBuktiMulti"></div>
+                    </div>
                     <!-- Kotak catatan file lama: pakai .blok-box + .text-xs yang sudah ada (dipakai di "Buat Surat"),
                          bukan bikin kelas baru. Disembunyikan lewat inline style, di-toggle oleh JS. -->
                     <div class="blok-box text-xs mt-2" id="existingFotoNote" style="display:none;"></div>

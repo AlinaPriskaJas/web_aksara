@@ -3762,8 +3762,17 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
 
                 <div class="mt-3">
                     <label class="form-label fw-semibold mb-2">File Template *</label>
-                    <input type="file" name="file_template" class="form-control-custom" accept=".doc,.docx,.pdf"
-                        style="padding-top:8px;" required>
+                    <div class="upload-dropzone" id="dropzoneFileTemplate">
+                        <div class="upload-dropzone-icon"><i class="bi bi-cloud-arrow-up"></i></div>
+                        <div>
+                            <span class="fw-semibold" style="color: var(--primary);">Tarik &amp; lepas file di sini</span>
+                            atau <span class="fw-semibold text-decoration-underline">Pilih File</span>
+                        </div>
+                        <span class="fs-7 text-muted">Format: DOC, DOCX, PDF</span>
+                        <input type="file" name="file_template" id="inputFileTemplate" class="d-none"
+                            accept=".doc,.docx,.pdf" required>
+                        <div class="upload-dropzone-filelist" id="fileListFileTemplate"></div>
+                    </div>
                 </div>
 
                 <div class="d-flex justify-content-end gap-2 mt-4">

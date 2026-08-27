@@ -436,9 +436,16 @@ try {
                 </div>
                 <div class="mb-4">
                     <label class="form-label fw-semibold fs-7 mb-2">Upload File Sertifikat</label>
-                    <input type="file" name="file_sertifikat" class="form-control-custom" style="padding-top:8px;"
-                        accept=".pdf,.jpg,.jpeg,.png">
-                    <small class="text-muted d-block mt-1">Format: PDF, JPG, PNG</small>
+                    <div class="upload-dropzone" id="dzSertifikatBaru">
+                        <div class="upload-dropzone-icon"><i class="bi bi-cloud-arrow-up"></i></div>
+                        <div>
+                            <span class="fw-semibold" style="color: var(--primary);">Tarik &amp; lepas file di sini</span>
+                            atau <span class="fw-semibold text-decoration-underline">Pilih File</span>
+                        </div>
+                        <span class="fs-7 text-muted">Format: PDF, JPG, PNG</span>
+                        <input type="file" name="file_sertifikat" id="inputSertifikatBaru" class="d-none" accept=".pdf,.jpg,.jpeg,.png">
+                        <div class="upload-dropzone-filelist" id="fileListSertifikatBaru"></div>
+                    </div>
                 </div>
                 <div class="d-flex gap-2">
                     <button type="button" class="btn-secondary-custom flex-grow-1"
@@ -509,9 +516,16 @@ try {
                 </div>
                 <div class="mb-4">
                     <label class="form-label fw-semibold fs-7 mb-2">Ganti File Sertifikat (opsional)</label>
-                    <input type="file" name="file_sertifikat" class="form-control-custom" style="padding-top:8px;"
-                        accept=".pdf,.jpg,.jpeg,.png">
-                    <small class="text-muted d-block mt-1">Kosongkan jika tidak ingin mengganti file.</small>
+                    <div class="upload-dropzone" id="dzSertifikatGanti">
+                        <div class="upload-dropzone-icon"><i class="bi bi-cloud-arrow-up"></i></div>
+                        <div>
+                            <span class="fw-semibold" style="color: var(--primary);">Tarik &amp; lepas file di sini</span>
+                            atau <span class="fw-semibold text-decoration-underline">Pilih File</span>
+                        </div>
+                        <span class="fs-7 text-muted">Kosongkan jika tidak ingin mengganti file</span>
+                        <input type="file" name="file_sertifikat" id="inputSertifikatGanti" class="d-none" accept=".pdf,.jpg,.jpeg,.png">
+                        <div class="upload-dropzone-filelist" id="fileListSertifikatGanti"></div>
+                    </div>
                 </div>
                 <div class="d-flex gap-2">
                     <button type="button" class="btn-secondary-custom flex-grow-1"
