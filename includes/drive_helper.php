@@ -90,6 +90,31 @@ function arp_drive_kompres_gambar(string $path_file_lokal, string $mime_type): a
     return ['path' => $path_sementara, 'mime_type' => 'image/jpeg', 'is_temp' => true];
 }
 
+/**
+ * Bangun nama file untuk bukti foto absensi yang diunggah ke folder "Absensi" di Drive.
+ * Format: TAHUN_BULAN_TANGGAL_NamaKaryawan.ekstensi
+ * Bulan & tanggal otomatis diberi angka 0 di depan kalau nilainya 1-9
+ * (mis. tanggal 7 Agustus 2026 atas nama Budi Santoso -> 2026_08_07_Budi_Santoso.jpg).
+ */
+function arp_nama_file_absensi(string $nama_karyawan, string $ekstensi): string
+{
+    // Bersihkan nama karyawan supaya aman jadi nama file: hanya huruf & angka yang
+    // dipertahankan, selain itu (spasi, titik, dsb.) diganti underscore.
+    $nama_bersih = preg_replace('/[^A-Za-z0-9]+/', '_', trim($nama_karyawan));
+    $nama_bersih = trim((string) $nama_bersih, '_');
+    if ($nama_bersih === '') {
+        $nama_bersih = 'Karyawan';
+    }
+
+    $ekstensi = strtolower(ltrim($ekstensi, '.'));
+    if ($ekstensi === '') {
+        $ekstensi = 'jpg';
+    }
+
+    // date('Y_m_d') otomatis zero-pad bulan & tanggal (01-09), jadi sudah sesuai format yang diminta.
+    return date('Y_m_d') . '_' . $nama_bersih . '.' . $ekstensi;
+}
+
 /** Menyimpan pesan error detail dari percobaan upload terakhir. */
 function arp_drive_set_last_error(string $pesan): void
 {

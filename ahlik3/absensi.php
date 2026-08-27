@@ -55,7 +55,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!in_array($ext, ['jpg', 'jpeg', 'png', 'webp'])) {
                 $error_msg = "Format foto tidak didukung. Gunakan JPG, PNG, atau WEBP.";
             } else {
-                $hasil_drive = arp_upload_ke_drive($file['tmp_name'], $file['name'], $file['type'], $current_user_id, 'Absensi');
+                $nama_file_drive = arp_nama_file_absensi($current_user_name, $ext);
+                $hasil_drive = arp_upload_ke_drive($file['tmp_name'], $nama_file_drive, $file['type'], $current_user_id, 'Absensi');
                 if ($hasil_drive && !empty($hasil_drive['link'])) {
                     $bukti_foto = $hasil_drive['link'];
                 } else {
