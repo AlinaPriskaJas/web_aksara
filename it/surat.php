@@ -36,6 +36,77 @@ if (($_GET['ajax'] ?? '') === 'cari_klien') {
     exit;
 }
 
+// ==========================================
+// [AJAX] Cek apakah kode surat sudah ada di database.
+// ==========================================
+if (($_GET['ajax'] ?? '') === 'cek_kode') {
+    header('Content-Type: application/json');
+    $kodeCek = strtoupper(trim($_GET['kode'] ?? ''));
+    $namaCek = trim($_GET['nama'] ?? '');
+    $hasil = ['kode_exists' => false, 'combo_exists' => false, 'daftar_nama_lain' => []];
+    if ($kodeCek !== '') {
+        $stmtSemua = $pdo->prepare("SELECT nama FROM kode_surat WHERE kode = ?");
+        $stmtSemua->execute([$kodeCek]);
+        $semuaNama = $stmtSemua->fetchAll(PDO::FETCH_COLUMN);
+        if (!empty($semuaNama)) {
+            $hasil['kode_exists'] = true;
+            foreach ($semuaNama as $n) {
+                if ($namaCek !== '' && strcasecmp($n, $namaCek) === 0) {
+                    $hasil['combo_exists'] = true;
+                } else {
+                    $hasil['daftar_nama_lain'][] = $n;
+                }
+            }
+        }
+    }
+    echo json_encode($hasil);
+    exit;
+}
+
+// ==========================================
+// [AJAX] Ambil detail template + daftar kode yang terhubung, untuk modal Edit Template
+// ==========================================
+if (($_GET['ajax'] ?? '') === 'get_template') {
+    header('Content-Type: application/json');
+    $templateId = (int) ($_GET['id'] ?? 0);
+
+    $stmt = $pdo->prepare("SELECT * FROM template_master WHERE id = ?");
+    $stmt->execute([$templateId]);
+    $tpl = $stmt->fetch();
+
+    if (!$tpl) {
+        echo json_encode(['error' => 'Template tidak ditemukan.']);
+        exit;
+    }
+
+    $stmtKode = $pdo->prepare("
+        SELECT k.id AS kode_id, k.kode, k.nama AS nama_kode, kt.id AS kode_template_id, kt.is_default
+        FROM kode_template kt
+        JOIN kode_surat k ON k.id = kt.kode_id
+        WHERE kt.template_id = ?
+        ORDER BY kt.is_default DESC, k.kode ASC
+    ");
+    $stmtKode->execute([$templateId]);
+    $daftarKodeTerhubung = $stmtKode->fetchAll();
+
+    $decoded = $tpl['fields_json'] ? (json_decode($tpl['fields_json'], true) ?: []) : [];
+
+    echo json_encode([
+        'template' => [
+            'id' => (int) $tpl['id'],
+            'nama' => $tpl['nama'],
+            'deskripsi' => $tpl['deskripsi'],
+            'format' => $tpl['format'],
+            'file_path' => $tpl['file_path'],
+        ],
+        'kode_terhubung' => $daftarKodeTerhubung,
+        'fields' => $decoded['fields'] ?? [],
+        'table_fields' => $decoded['table_fields'] ?? [],
+        'blocks' => $decoded['blocks'] ?? [],
+    ]);
+    exit;
+}
+
 if (!function_exists('buatPdfSederhanaTable')) {
     /**
      * Membuat file PDF berbentuk TABEL RAPI (garis kolom/baris, header
@@ -44,26 +115,26 @@ if (!function_exists('buatPdfSederhanaTable')) {
      */
     function buatPdfSederhanaTable(string $judul, string $subjudul, array $headers, array $colChars, array $rows): string
     {
-        $pageWidth  = 841.89;   // A4 landscape (pt)
+        $pageWidth = 841.89;   // A4 landscape (pt)
         $pageHeight = 595.28;
         $marginX = 28.0;
         $marginTop = 50.0;
         $marginBottom = 30.0;
 
-        $fontSize       = 7.2;
+        $fontSize = 7.2;
         $fontSizeHeader = 7.2;
-        $fontSizeTitle  = 13.0;
-        $fontSizeSub    = 8.5;
-        $lineHeight     = 9.2;
+        $fontSizeTitle = 13.0;
+        $fontSizeSub = 8.5;
+        $lineHeight = 9.2;
         $cellPadX = 4.0;
         $cellPadY = 3.0;
         $charWidthFactor = 0.6; // rasio lebar karakter Courier terhadap font size
 
-        $colorHeaderBg   = '0.80 0.85 0.92'; // biru keabuan lembut
-        $colorAltRowBg   = '0.96 0.97 0.98'; // abu sangat muda (baris genap)
-        $colorBorder     = '0.55 0.58 0.62';
+        $colorHeaderBg = '0.80 0.85 0.92'; // biru keabuan lembut
+        $colorAltRowBg = '0.96 0.97 0.98'; // abu sangat muda (baris genap)
+        $colorBorder = '0.55 0.58 0.62';
         $colorTextHeader = '0.10 0.14 0.28';
-        $colorText       = '0.15 0.15 0.15';
+        $colorText = '0.15 0.15 0.15';
 
         $escape = function (string $s): string {
             $s = str_replace(['\\', '(', ')'], ['\\\\', '\\(', '\\)'], $s);
@@ -76,7 +147,7 @@ if (!function_exists('buatPdfSederhanaTable')) {
 
         // ----- Lebar kolom proporsional dari bobot $colChars -----
         $usableWidth = $pageWidth - 2 * $marginX;
-        $totalBobot  = array_sum($colChars) ?: 1;
+        $totalBobot = array_sum($colChars) ?: 1;
         $colWidths = [];
         foreach ($colChars as $bobot) {
             $colWidths[] = $usableWidth * ($bobot / $totalBobot);
@@ -102,19 +173,26 @@ if (!function_exists('buatPdfSederhanaTable')) {
             $current = '';
             foreach ($words as $word) {
                 while (mb_strlen($word) > $maxChars) {
-                    if ($current !== '') { $lines[] = $current; $current = ''; }
+                    if ($current !== '') {
+                        $lines[] = $current;
+                        $current = '';
+                    }
                     $lines[] = mb_substr($word, 0, $maxChars);
                     $word = mb_substr($word, $maxChars);
                 }
                 $candidate = $current === '' ? $word : $current . ' ' . $word;
                 if (mb_strlen($candidate) > $maxChars) {
-                    if ($current !== '') { $lines[] = $current; }
+                    if ($current !== '') {
+                        $lines[] = $current;
+                    }
                     $current = $word;
                 } else {
                     $current = $candidate;
                 }
             }
-            if ($current !== '') { $lines[] = $current; }
+            if ($current !== '') {
+                $lines[] = $current;
+            }
             return $lines ?: [''];
         };
 
@@ -137,7 +215,7 @@ if (!function_exists('buatPdfSederhanaTable')) {
 
         // ----- Paginasi: susun baris ke dalam beberapa halaman -----
         $usableHeightPertama = $pageHeight - $marginTop - $marginBottom - 34; // dikurangi ruang judul
-        $usableHeightLain    = $pageHeight - $marginTop - $marginBottom;
+        $usableHeightLain = $pageHeight - $marginTop - $marginBottom;
 
         $halaman = [];
         $halIni = [$baris_header];
@@ -172,7 +250,7 @@ if (!function_exists('buatPdfSederhanaTable')) {
 
             foreach ($barisHalaman as $idxBaris => $br) {
                 $tinggiBaris = $br['tinggi'];
-                $yBarisAtas  = $yCursor;
+                $yBarisAtas = $yCursor;
                 $yBarisBawah = $yCursor - $tinggiBaris;
 
                 // Latar belakang baris
@@ -232,7 +310,9 @@ if (!function_exists('buatPdfSederhanaTable')) {
         $fontF2Obj = $fontF1Obj + 1;
 
         $kidsRefs = [];
-        for ($i = 0; $i < $numPages; $i++) { $kidsRefs[] = ($firstPageObj + $i) . ' 0 R'; }
+        for ($i = 0; $i < $numPages; $i++) {
+            $kidsRefs[] = ($firstPageObj + $i) . ' 0 R';
+        }
 
         $objects = [];
         $objects[$objCatalog] = "<< /Type /Catalog /Pages {$objPages} 0 R >>";
@@ -391,7 +471,7 @@ if (($_GET['ajax'] ?? '') === 'export_rekap') {
         exit;
     }
 
-        // ===================== FORMAT: PDF (dibuat langsung, TANPA LibreOffice) =====================
+    // ===================== FORMAT: PDF (dibuat langsung, TANPA LibreOffice) =====================
     $headersPdf = ['No', 'Nomor Surat', 'Tanggal', 'Arah', 'Jenis Surat', 'Perihal', 'Tujuan/Pengirim', 'Dibuat Oleh', 'Status', 'Jml Revisi', 'Revisi Terakhir'];
     $colCharsPdf = [3, 20, 10, 7, 20, 32, 24, 16, 14, 5, 10];
 
@@ -442,6 +522,22 @@ require_once "../includes/drive_helper.php";
 $page_title = "Manajemen Surat";
 $current_user_id = $_SESSION['user_id'];
 
+if (!function_exists('slugifyNamaTemplate')) {
+    function slugifyNamaTemplate(string $nama): string
+    {
+        $nama = trim($nama);
+        if (function_exists('iconv')) {
+            $hasil = @iconv('UTF-8', 'ASCII//TRANSLIT', $nama);
+            if ($hasil !== false) {
+                $nama = $hasil;
+            }
+        }
+        $nama = strtolower($nama);
+        $nama = preg_replace('/[^a-z0-9]+/', '-', $nama);
+        $nama = trim($nama, '-');
+        return $nama !== '' ? $nama : 'template';
+    }
+}
 
 // ==========================================
 // Helper: cek nama kolom tabel item (harga / qty)
@@ -464,7 +560,7 @@ const STATUS_OPSI_MASUK = ['Baru', 'Diproses', 'Didisposisi', 'Selesai', 'Diarsi
 
 // Tab aktif (dipetakan ke id panel arp-tab-panel) — IT/Ahli K3 punya tab
 // Surat, Surat Masuk (read-only), & Buat Surat.
-$tabMap = ['surat' => 'tabPanelSurat', 'masuk' => 'tabPanelSuratMasuk', 'buat' => 'tabPanelBuatSurat'];
+$tabMap = ['surat' => 'tabPanelSurat', 'masuk' => 'tabPanelSuratMasuk', 'buat' => 'tabPanelBuatSurat', 'template' => 'tabPanelTemplate'];
 $tabGet = $_GET['tab'] ?? 'surat';
 $active_tab = $tabMap[$tabGet] ?? 'tabPanelSurat';
 
@@ -476,6 +572,273 @@ function suratRedirect(string $tab, array $extraQuery = []): void
     $query = array_merge(['tab' => $tab], $extraQuery);
     header('Location: surat.php?' . http_build_query($query));
     exit;
+}
+
+// ==========================================
+// [TAB: UPLOAD TEMPLATE] UPLOAD TEMPLATE MASTER + TENTUKAN KODE SURAT
+// ==========================================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'upload_template') {
+    try {
+        $pdo->beginTransaction();
+
+        $filePathAsli = uploadTemplateFile($_FILES['file_template']);
+        $format = pathinfo($filePathAsli, PATHINFO_EXTENSION) === 'docx' ? 'word_pdf' : 'pdf_only';
+
+        $namaTemplateInput = trim($_POST['nama_template'] ?? '');
+        $ekstensiFile = pathinfo($filePathAsli, PATHINFO_EXTENSION);
+        $slugNamaTemplate = slugifyNamaTemplate($namaTemplateInput);
+
+        $direktoriRelatif = dirname($filePathAsli);
+        $namaFileBaru = $slugNamaTemplate . '.' . $ekstensiFile;
+        $urutan = 1;
+        while (is_file(BASE_PATH . '/' . $direktoriRelatif . '/' . $namaFileBaru)) {
+            $urutan++;
+            $namaFileBaru = $slugNamaTemplate . '-' . $urutan . '.' . $ekstensiFile;
+        }
+
+        $filePathBaru = ($direktoriRelatif === '.' ? '' : $direktoriRelatif . '/') . $namaFileBaru;
+        $filePath = rename(BASE_PATH . '/' . $filePathAsli, BASE_PATH . '/' . $filePathBaru)
+            ? $filePathBaru
+            : $filePathAsli;
+
+        $hasilScan = ['fields' => [], 'table_fields' => [], 'blocks' => []];
+        $fieldsJson = null;
+        if ($format === 'word_pdf') {
+            $hasilScan = scanPlaceholdersFromDocx(BASE_PATH . '/' . $filePath);
+            $fieldsJson = json_encode(buildFieldsWithDefaultLabels($hasilScan), JSON_UNESCAPED_UNICODE);
+        }
+
+        $deskripsiTemplateInput = trim($_POST['deskripsi'] ?? '');
+
+        $stmt = $pdo->prepare("INSERT INTO template_master (nama, deskripsi, file_path, format, fields_json, diupload_oleh) VALUES (?, ?, ?, ?, ?, ?)");
+        $stmt->execute([
+            $namaTemplateInput,
+            $deskripsiTemplateInput !== '' ? $deskripsiTemplateInput : null,
+            $filePath,
+            $format,
+            $fieldsJson,
+            $current_user_id
+        ]);
+        $templateId = (int) $pdo->lastInsertId();
+
+        $kodeInput = strtoupper(trim($_POST['kode'] ?? ''));
+        if ($kodeInput === '') {
+            throw new RuntimeException("Kode surat wajib diisi.");
+        }
+        $namaKodeInput = trim($_POST['nama_kode'] ?? '');
+        $namaKodeFinal = $namaKodeInput !== '' ? $namaKodeInput : $kodeInput;
+
+        $stmtCekKode = $pdo->prepare("SELECT id FROM kode_surat WHERE kode = ? AND nama = ?");
+        $stmtCekKode->execute([$kodeInput, $namaKodeFinal]);
+        $kodeId = (int) $stmtCekKode->fetchColumn();
+
+        if (!$kodeId) {
+            $stmtKode = $pdo->prepare("INSERT INTO kode_surat (kode, nama) VALUES (?, ?)");
+            $stmtKode->execute([$kodeInput, $namaKodeFinal]);
+            $kodeId = (int) $pdo->lastInsertId();
+        }
+
+        $cek = $pdo->prepare("SELECT COUNT(*) FROM kode_template WHERE kode_id = ?");
+        $cek->execute([$kodeId]);
+        $jadikanDefault = ((int) $cek->fetchColumn() === 0) ? 1 : 0;
+
+        $stmtHubung = $pdo->prepare("INSERT INTO kode_template (kode_id, template_id, is_default) VALUES (?, ?, ?)");
+        $stmtHubung->execute([$kodeId, $templateId, $jadikanDefault]);
+
+        $pdo->commit();
+
+        catatAudit(
+            $pdo,
+            'Surat',
+            'Upload Template',
+            "Mengupload template \"{$namaTemplateInput}\" (kode {$kodeInput})",
+            null,
+            ['nama' => $namaTemplateInput, 'kode' => $kodeInput, 'format' => $format]
+        );
+
+        $ringkasanField = [];
+        if (!empty($hasilScan['fields'])) {
+            $ringkasanField[] = count($hasilScan['fields']) . ' field: ' . implode(', ', $hasilScan['fields']);
+        }
+        if (!empty($hasilScan['table_fields'])) {
+            $ringkasanField[] = 'tabel item dengan kolom: ' . implode(', ', $hasilScan['table_fields']);
+        }
+        if (!empty($hasilScan['blocks'])) {
+            $ringkasanField[] = 'blok list berulang: ' . implode(', ', array_keys($hasilScan['blocks']));
+        }
+        $pesanField = $ringkasanField ? implode(' | ', $ringkasanField) : 'Tidak ada placeholder ${...} yang terdeteksi.';
+
+        $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Template berhasil diupload dan langsung dihubungkan ke kode surat. ' . $pesanField];
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction())
+            $pdo->rollBack();
+        $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Gagal menyimpan template: ' . $e->getMessage()];
+    }
+    suratRedirect('template');
+}
+
+// ==========================================
+// [TAB: UPLOAD TEMPLATE] HAPUS TEMPLATE MASTER
+// ==========================================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'hapus_template') {
+    try {
+        $templateId = (int) $_POST['template_id'];
+
+        $stmt = $pdo->prepare("SELECT * FROM template_master WHERE id = ?");
+        $stmt->execute([$templateId]);
+        $tpl = $stmt->fetch();
+        if (!$tpl) {
+            throw new RuntimeException("Template tidak ditemukan.");
+        }
+
+        $cekDipakai = $pdo->prepare("SELECT COUNT(*) FROM surat WHERE template_id = ?");
+        $cekDipakai->execute([$templateId]);
+        if ((int) $cekDipakai->fetchColumn() > 0) {
+            throw new RuntimeException("Template \"{$tpl['nama']}\" sudah pernah dipakai untuk membuat surat, tidak bisa dihapus.");
+        }
+
+        $pdo->beginTransaction();
+        $pdo->prepare("DELETE FROM kode_template WHERE template_id = ?")->execute([$templateId]);
+        $pdo->prepare("DELETE FROM template_master WHERE id = ?")->execute([$templateId]);
+        $pdo->commit();
+
+        catatAudit($pdo, 'Surat', 'Hapus Template', "Menghapus template \"{$tpl['nama']}\" (#{$templateId})", $tpl, null);
+
+        $fullPath = BASE_PATH . '/' . $tpl['file_path'];
+        if (is_file($fullPath)) {
+            @unlink($fullPath);
+        }
+
+        $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Template "' . $tpl['nama'] . '" beserta file & koneksinya berhasil dihapus.'];
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction())
+            $pdo->rollBack();
+        $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Gagal menghapus template: ' . $e->getMessage()];
+    }
+    suratRedirect('template');
+}
+
+// ==========================================
+// [TAB: UPLOAD TEMPLATE] EDIT TEMPLATE
+// ==========================================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'edit_template') {
+    try {
+        $templateId = (int) ($_POST['template_id'] ?? 0);
+        $pdo->beginTransaction();
+
+        $stmt = $pdo->prepare("SELECT * FROM template_master WHERE id = ?");
+        $stmt->execute([$templateId]);
+        $tpl = $stmt->fetch();
+        if (!$tpl) {
+            throw new RuntimeException("Template tidak ditemukan.");
+        }
+
+        $namaTemplateBaru = trim($_POST['nama_template'] ?? '');
+        if ($namaTemplateBaru === '') {
+            throw new RuntimeException("Nama template wajib diisi.");
+        }
+        $deskripsiBaru = trim($_POST['deskripsi'] ?? '');
+
+        $pdo->prepare("UPDATE template_master SET nama = ?, deskripsi = ? WHERE id = ?")
+            ->execute([$namaTemplateBaru, $deskripsiBaru !== '' ? $deskripsiBaru : null, $templateId]);
+
+        $mappingLama = $_POST['field_lama'] ?? [];
+        $mappingBaru = $_POST['field_baru'] ?? [];
+        $mappingLabel = $_POST['field_label'] ?? [];
+
+        if ($tpl['format'] === 'word_pdf' && is_file(BASE_PATH . '/' . $tpl['file_path'])) {
+            $fullPath = BASE_PATH . '/' . $tpl['file_path'];
+            $penggantianPlaceholder = [];
+            foreach ($mappingLama as $i => $namaLama) {
+                $namaLama = trim((string) $namaLama);
+                $namaBaru = trim((string) ($mappingBaru[$i] ?? ''));
+                if ($namaLama === '' || $namaBaru === '' || $namaLama === $namaBaru) {
+                    continue;
+                }
+                if (!preg_match('/^[a-zA-Z0-9_]+$/', $namaBaru)) {
+                    throw new RuntimeException("Nama field \"{$namaBaru}\" tidak valid. Hanya boleh huruf, angka, dan underscore (_), tanpa spasi.");
+                }
+                $penggantianPlaceholder[$namaLama] = $namaBaru;
+            }
+
+            if (!empty($penggantianPlaceholder)) {
+                renamePlaceholdersInDocx($fullPath, $penggantianPlaceholder);
+            }
+
+            $hasilScanBaru = scanPlaceholdersFromDocx($fullPath);
+            $fieldsBaruDenganLabel = buildFieldsWithDefaultLabels($hasilScanBaru);
+
+            $petaLabelBaru = [];
+            foreach ($mappingBaru as $i => $namaBaru) {
+                $namaBaru = trim((string) $namaBaru);
+                $labelBaru = trim((string) ($mappingLabel[$i] ?? ''));
+                if ($namaBaru !== '' && $labelBaru !== '') {
+                    $petaLabelBaru[$namaBaru] = $labelBaru;
+                }
+            }
+            foreach ($fieldsBaruDenganLabel['fields'] as &$f) {
+                if (isset($petaLabelBaru[$f['field']])) {
+                    $f['label'] = $petaLabelBaru[$f['field']];
+                }
+            }
+            unset($f);
+            foreach ($fieldsBaruDenganLabel['table_fields'] as &$f) {
+                if (isset($petaLabelBaru[$f['field']])) {
+                    $f['label'] = $petaLabelBaru[$f['field']];
+                }
+            }
+            unset($f);
+
+            $pdo->prepare("UPDATE template_master SET fields_json = ? WHERE id = ?")
+                ->execute([json_encode($fieldsBaruDenganLabel, JSON_UNESCAPED_UNICODE), $templateId]);
+        }
+
+        $kodeTemplateIds = $_POST['kode_template_id'] ?? [];
+        $kodeBaruList = $_POST['kode_baru'] ?? [];
+        $namaKodeBaruList = $_POST['nama_kode_baru'] ?? [];
+
+        foreach ($kodeTemplateIds as $i => $kodeTemplateId) {
+            $kodeTemplateId = (int) $kodeTemplateId;
+            $kodeBaru = strtoupper(trim((string) ($kodeBaruList[$i] ?? '')));
+            $namaKodeBaru = trim((string) ($namaKodeBaruList[$i] ?? ''));
+
+            if ($kodeBaru === '' || $namaKodeBaru === '') {
+                continue;
+            }
+
+            $stmtKodeId = $pdo->prepare("SELECT kode_id FROM kode_template WHERE id = ? AND template_id = ?");
+            $stmtKodeId->execute([$kodeTemplateId, $templateId]);
+            $kodeId = (int) $stmtKodeId->fetchColumn();
+            if (!$kodeId) {
+                continue;
+            }
+
+            $cekBentrok = $pdo->prepare("SELECT id FROM kode_surat WHERE kode = ? AND nama = ? AND id != ?");
+            $cekBentrok->execute([$kodeBaru, $namaKodeBaru, $kodeId]);
+            if ($cekBentrok->fetch()) {
+                throw new RuntimeException("Kombinasi kode \"{$kodeBaru}\" & jenis surat \"{$namaKodeBaru}\" sudah dipakai baris lain.");
+            }
+
+            $pdo->prepare("UPDATE kode_surat SET kode = ?, nama = ? WHERE id = ?")
+                ->execute([$kodeBaru, $namaKodeBaru, $kodeId]);
+        }
+
+        $pdo->commit();
+        catatAudit(
+            $pdo,
+            'Surat',
+            'Ubah Template',
+            "Mengubah template \"{$namaTemplateBaru}\" (#{$templateId})",
+            $tpl,
+            ['nama' => $namaTemplateBaru, 'deskripsi' => $deskripsiBaru]
+        );
+        $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Template "' . $namaTemplateBaru . '" berhasil diperbarui.'];
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction())
+            $pdo->rollBack();
+        $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Gagal memperbarui template: ' . $e->getMessage()];
+    }
+    suratRedirect('template');
 }
 
 // ==========================================
@@ -982,6 +1345,18 @@ $daftar_surat_masuk = $pdo->query("
 // ==========================================
 $daftar_kode = $pdo->query("SELECT * FROM kode_surat ORDER BY nama")->fetchAll();
 
+// ==========================================
+// [DATA: TAB UPLOAD TEMPLATE] Daftar template + kode yang terhubung
+// ==========================================
+$daftar_template = $pdo->query("SELECT * FROM template_master ORDER BY created_at DESC")->fetchAll();
+
+$daftar_kode_per_template = [];
+$rowsKodeTemplate = $pdo->query("SELECT kt.template_id, k.kode FROM kode_template kt
+                                  JOIN kode_surat k ON k.id = kt.kode_id")->fetchAll();
+foreach ($rowsKodeTemplate as $r) {
+    $daftar_kode_per_template[$r['template_id']][] = $r['kode'];
+}
+
 $template_per_kode = [];
 $rowsTplPerKode = $pdo->query("SELECT kt.id AS kode_template_id, kt.kode_id, kt.template_id, kt.is_default,
                                        t.nama AS nama_template, t.deskripsi, t.format
@@ -1190,6 +1565,10 @@ include "../includes/topbar.php";
                 data-tab-target="tabPanelBuatSurat" onclick="switchTab('tabPanelBuatSurat', this)">
                 <i class="bi bi-file-earmark-plus me-1"></i> Buat Surat
             </button>
+            <button type="button" class="arp-tab-btn<?= $active_tab === 'tabPanelTemplate' ? ' active' : '' ?>"
+                data-tab-target="tabPanelTemplate" onclick="switchTab('tabPanelTemplate', this)">
+                <i class="bi bi-file-earmark-word me-1"></i> Upload Template
+            </button>
         </div>
 
         <!-- ============================== TAB: SURAT ============================== -->
@@ -1343,12 +1722,13 @@ include "../includes/topbar.php";
                                         <div class="table-actions">
                                             <?php if (!empty($s['file_hasil'])): ?>
                                                 <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
-                                                    href="<?= e(hrefBerkas($s['file_hasil'])) ?>" target="_blank" title="Lihat berkas">
+                                                    href="<?= e(hrefBerkas($s['file_hasil'])) ?>" target="_blank"
+                                                    title="Lihat berkas">
                                                     <i class="bi bi-eye"></i>
                                                 </a>
                                                 <?php if ($suratMilikSaya): ?>
-                                                    <a class="btn btn-outline-primary btn-sm py-1" style="font-size:0.75rem;" href="edit_surat.php?id=<?= (int) $s['id'] ?>"
-                                                        title="Edit Surat">
+                                                    <a class="btn btn-outline-primary btn-sm py-1" style="font-size:0.75rem;"
+                                                        href="edit_surat.php?id=<?= (int) $s['id'] ?>" title="Edit Surat">
                                                         <i class="bi bi-pencil-square"></i>
                                                     </a>
                                                 <?php endif; ?>
@@ -1508,16 +1888,16 @@ include "../includes/topbar.php";
                     <?php endif; ?>
 
                     <script id="data-template-per-kode" type="application/json">
-        <?php
-        $dataUntukJs = [];
-        foreach ($daftar_kode_dengan_template as $k) {
-            $tplTerhubung = $template_per_kode[$k['id']] ?? [];
-            $dataUntukJs[(int) $k['id']] = array_map(function ($tpl) {
-                return ['id' => (int) $tpl['template_id'], 'nama' => $tpl['nama_template']];
-            }, $tplTerhubung);
-        }
-        echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
-        ?>
+                <?php
+                $dataUntukJs = [];
+                foreach ($daftar_kode_dengan_template as $k) {
+                    $tplTerhubung = $template_per_kode[$k['id']] ?? [];
+                    $dataUntukJs[(int) $k['id']] = array_map(function ($tpl) {
+                        return ['id' => (int) $tpl['template_id'], 'nama' => $tpl['nama_template']];
+                    }, $tplTerhubung);
+                }
+                echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
+                ?>
                     </script>
                     <script>
                         (function () {
@@ -2506,9 +2886,230 @@ include "../includes/topbar.php";
             </div>
         </div>
 
+        <!-- ============================== TAB: UPLOAD TEMPLATE ============================== -->
+        <div class="col-12 arp-tab-panel" id="tabPanelTemplate" <?= $active_tab === 'tabPanelTemplate' ? '' : 'style="display:none;"' ?>>
+            <div class="card-box">
+                <div class="table-toolbar">
+                    <h5 class="table-toolbar-title fw-bold">Daftar Template Surat</h5>
+                    <div class="table-toolbar-actions">
+                        <div class="search-box-container">
+                            <i class="bi bi-search"></i>
+                            <input type="text" class="search-box" placeholder="Cari nama template atau kode..."
+                                data-table-search="tabelTemplate" onkeyup="handleTableSearch('tabelTemplate')">
+                        </div>
+                        <button class="btn-primary-custom" onclick="openModal('modalUploadTemplate')">
+                            <i class="bi bi-cloud-upload"></i>
+                            Upload Template
+                        </button>
+                    </div>
+                </div>
+                <div class="table-responsive-custom">
+                    <table class="table-custom" id="tabelTemplate">
+                        <thead>
+                            <tr>
+                                <th>No</th>
+                                <th>Nama Template</th>
+                                <th>Kode (Jenis)</th>
+                                <th>Tanggal Upload</th>
+                                <th>Format</th>
+                                <th>Status</th>
+                                <th class="col-aksi" style="text-align:center;">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if (empty($daftar_template)): ?>
+                                <tr>
+                                    <td colspan="7" class="text-center py-4 text-muted">
+                                        <i class="bi bi-file-earmark-x d-block mb-2" style="font-size:2rem;"></i>
+                                        Belum ada template surat.
+                                    </td>
+                                </tr>
+                            <?php endif; ?>
+                            <?php $no = 1; ?>
+                            <?php foreach ($daftar_template as $t): ?>
+                                <?php $fileTemplateAda = is_file(BASE_PATH . '/' . $t['file_path']); ?>
+                                <tr>
+                                    <td><?= $no++; ?></td>
+                                    <td>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <i class="bi bi-file-earmark-word text-primary"></i>
+                                            <div>
+                                                <strong><?= e($t['nama']) ?></strong>
+                                                <?php if (!empty($t['deskripsi'])): ?>
+                                                    <br><small class="text-secondary"><?= e($t['deskripsi']) ?></small>
+                                                <?php endif; ?>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td><span
+                                            class="badge-warning"><?= e(implode(', ', $daftar_kode_per_template[$t['id']] ?? ['-'])) ?></span>
+                                    </td>
+                                    <td><?= date('d-m-Y', strtotime($t['created_at'])) ?></td>
+                                    <td><?= $t['format'] === 'word_pdf' ? 'Word' : 'PDF' ?></td>
+                                    <td>
+                                        <?php if ($fileTemplateAda): ?>
+                                            <span class="badge-success">Aktif</span>
+                                        <?php else: ?>
+                                            <span class="badge-danger"
+                                                title="File fisik tidak ditemukan di storage">Hilang</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td class="col-aksi" style="text-align:center;">
+                                        <div class="table-actions">
+                                            <button type="button" class="btn btn-outline-primary btn-sm py-1"
+                                                style="font-size:0.75rem;" title="Edit Template"
+                                                onclick="bukaModalEditTemplate(<?= (int) $t['id'] ?>)">
+                                                <i class="bi bi-pencil-square"></i>
+                                            </button>
+                                            <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
+                                                href="../<?= e($t['file_path']) ?>" download title="Unduh">
+                                                <i class="bi bi-download"></i>
+                                            </a>
+                                            <form method="POST" action="surat.php" class="d-inline"
+                                                onsubmit="return confirm('Hapus template &quot;<?= e(addslashes($t['nama'])) ?>&quot;? Tindakan ini tidak bisa dibatalkan.');">
+                                                <input type="hidden" name="aksi" value="hapus_template">
+                                                <input type="hidden" name="template_id" value="<?= (int) $t['id'] ?>">
+                                                <button type="submit" class="btn-danger-custom"
+                                                    style="height:28px; padding:0 8px; font-size:0.75rem;">
+                                                    <i class="bi bi-trash-fill"></i>
+                                                </button>
+                                            </form>
+                                        </div>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="pagination-custom" id="pagination-tabelTemplate"></div>
+            </div>
+        </div>
+
     </div>
 
 </main>
+
+<!-- Modal: Upload Template -->
+<div class="arp-modal-overlay" id="modalUploadTemplate" onclick="closeModalOutside(event,'modalUploadTemplate')">
+    <div class="arp-modal-box" style="max-width:650px;">
+        <div class="arp-modal-header">
+            <div>
+                <h5 class="fw-bold mb-0">Upload Template Surat</h5>
+                <small class="text-muted">
+                    Placeholder <code>${...}</code>, tabel <code>${item_...}</code>, dan blok <code>${blok_...}</code>
+                    di dalam file Word akan otomatis terdeteksi.
+                </small>
+            </div>
+            <button class="arp-modal-close" onclick="closeModal('modalUploadTemplate')">&times;</button>
+        </div>
+        <div class="arp-modal-body">
+            <form method="POST" action="surat.php" enctype="multipart/form-data">
+                <input type="hidden" name="aksi" value="upload_template">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold mb-2">Nama Template *</label>
+                    <input type="text" name="nama_template" class="form-control-custom"
+                        placeholder="Contoh : Surat Tugas" required>
+                </div>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold mb-2">Kode Surat *</label>
+                        <input type="text" name="kode" id="input-kode" class="form-control-custom"
+                            style="text-transform:uppercase;" placeholder="Contoh : ST" required>
+                        <div id="status-cek-kode" class="text-xs mt-1"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold mb-2">Nama Jenis Surat</label>
+                        <input type="text" name="nama_kode" id="input-nama-kode" class="form-control-custom"
+                            placeholder="Contoh : Surat Tugas">
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <label class="form-label fw-semibold mb-2">Deskripsi Template</label>
+                    <input type="text" name="deskripsi" class="form-control-custom"
+                        placeholder="Contoh : Template surat tugas untuk kegiatan operasional.">
+                </div>
+                <div class="mt-3">
+                    <label class="form-label fw-semibold mb-2">File Template *</label>
+                    <input type="file" name="file_template" class="form-control-custom" accept=".doc,.docx,.pdf"
+                        style="padding-top:8px;" required>
+                </div>
+                <div class="d-flex justify-content-end gap-2 mt-4">
+                    <button type="button" class="btn-secondary-custom" onclick="closeModal('modalUploadTemplate')">Batal</button>
+                    <button type="submit" class="btn-primary-custom">
+                        <i class="bi bi-cloud-upload"></i> Upload Template
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Edit Template -->
+<div class="arp-modal-overlay" id="modalEditTemplate" onclick="closeModalOutside(event,'modalEditTemplate')">
+    <div class="arp-modal-box" style="max-width:750px;">
+        <div class="arp-modal-header">
+            <div>
+                <h5 class="fw-bold mb-0">Edit Template</h5>
+                <small class="text-muted">Ubah nama template, kode surat, jenis surat, deskripsi, dan nama field
+                    placeholder <code>${...}</code> di dalam file Word.</small>
+            </div>
+            <button class="arp-modal-close" onclick="closeModal('modalEditTemplate')">&times;</button>
+        </div>
+        <div class="arp-modal-body">
+            <div id="editTemplateLoading" class="text-center py-4 text-secondary">
+                <i class="bi bi-arrow-repeat" style="font-size:1.5rem;"></i>
+                <div class="mt-2 text-xs">Memuat data template...</div>
+            </div>
+            <div id="editTemplateError" class="alert alert-danger-custom text-xs" style="display:none;"></div>
+            <form method="POST" action="surat.php" id="formEditTemplate" style="display:none;">
+                <input type="hidden" name="aksi" value="edit_template">
+                <input type="hidden" name="template_id" id="editTplId" value="">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold mb-2">Nama Template *</label>
+                    <input type="text" name="nama_template" id="editTplNama" class="form-control-custom" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold mb-2">Deskripsi Template</label>
+                    <input type="text" name="deskripsi" id="editTplDeskripsi" class="form-control-custom">
+                </div>
+                <hr>
+                <label class="form-label fw-semibold mb-2 d-block">Kode Surat &amp; Jenis Surat Terhubung</label>
+                <div id="editTplKodeList" class="mb-3"></div>
+                <p class="text-secondary text-xs mb-3">Mengubah kode/nama di sini akan berlaku untuk SEMUA template
+                    lain yang memakai kombinasi kode ini juga (jika ada).</p>
+                <hr>
+                <label class="form-label fw-semibold mb-2 d-block">
+                    Field Placeholder di Dalam Template
+                    <span class="text-secondary fw-normal">(ubah nama field &amp; label tampilan form)</span>
+                </label>
+                <div class="table-responsive-custom mb-2">
+                    <table class="table-custom" id="editTplFieldTable">
+                        <thead>
+                            <tr>
+                                <th>Nama Field Saat Ini</th>
+                                <th>Nama Field Baru</th>
+                                <th>Label di Form</th>
+                            </tr>
+                        </thead>
+                        <tbody id="editTplFieldBody"></tbody>
+                    </table>
+                </div>
+                <p class="text-secondary text-xs mb-3">
+                    Contoh: ubah <code>nama_perusahaan_tujuan</code> jadi <code>nama_perusahaan</code> — sistem akan
+                    otomatis mengganti semua <code>${nama_perusahaan_tujuan}</code> di dalam file Word menjadi
+                    <code>${nama_perusahaan}</code>. Nama field baru hanya boleh huruf, angka, dan underscore
+                    (<code>_</code>), tanpa spasi.
+                </p>
+                <div class="d-flex justify-content-end gap-2 mt-4">
+                    <button type="button" class="btn-secondary-custom" onclick="closeModal('modalEditTemplate')">Batal</button>
+                    <button type="submit" class="btn-primary-custom">
+                        <i class="bi bi-save"></i> Simpan Perubahan
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 
 <!-- Modal: Export Rekap Surat per Periode -->
 <div class="arp-modal-overlay" id="modalExportRekap" onclick="closeModalOutside(event,'modalExportRekap')">
@@ -2592,6 +3193,7 @@ include "../includes/topbar.php";
     document.addEventListener('DOMContentLoaded', function () {
         initTablePagination('tabelSurat', 10);
         initTablePagination('tabelSuratMasuk', 10);
+        initTablePagination('tabelTemplate', 10);
     });
 </script>
 
@@ -2810,6 +3412,161 @@ include "../includes/topbar.php";
         document.addEventListener('DOMContentLoaded', function () {
             observerFieldBaru.observe(document.body, { childList: true, subtree: true });
         });
+    })();
+</script>
+
+<script>
+    function bukaModalEditTemplate(templateId) {
+        openModal('modalEditTemplate');
+        var loadingEl = document.getElementById('editTemplateLoading');
+        var errorEl = document.getElementById('editTemplateError');
+        var formEl = document.getElementById('formEditTemplate');
+        loadingEl.style.display = 'block';
+        errorEl.style.display = 'none';
+        formEl.style.display = 'none';
+
+        fetch('surat.php?ajax=get_template&id=' + encodeURIComponent(templateId))
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                loadingEl.style.display = 'none';
+                if (data.error) {
+                    errorEl.textContent = data.error;
+                    errorEl.style.display = 'block';
+                    return;
+                }
+                document.getElementById('editTplId').value = data.template.id;
+                document.getElementById('editTplNama').value = data.template.nama || '';
+                document.getElementById('editTplDeskripsi').value = data.template.deskripsi || '';
+
+                var kodeListEl = document.getElementById('editTplKodeList');
+                kodeListEl.innerHTML = '';
+                if (!data.kode_terhubung || data.kode_terhubung.length === 0) {
+                    kodeListEl.innerHTML = '<p class="text-secondary text-xs">Template ini belum terhubung ke kode surat manapun.</p>';
+                } else {
+                    data.kode_terhubung.forEach(function (k) {
+                        var row = document.createElement('div');
+                        row.className = 'row g-2 mb-2 align-items-center';
+                        row.innerHTML =
+                            '<input type="hidden" name="kode_template_id[]" value="' + k.kode_template_id + '">' +
+                            '<div class="col-md-5">' +
+                            '<input type="text" name="kode_baru[]" class="form-control-custom" style="text-transform:uppercase;" ' +
+                            'value="' + escapeHtmlAttr(k.kode) + '" placeholder="Kode (cth: ST)">' +
+                            '</div>' +
+                            '<div class="col-md-6">' +
+                            '<input type="text" name="nama_kode_baru[]" class="form-control-custom" ' +
+                            'value="' + escapeHtmlAttr(k.nama_kode) + '" placeholder="Nama jenis surat">' +
+                            '</div>' +
+                            '<div class="col-md-1 text-center">' +
+                            (k.is_default == 1 ? '<span class="badge-success" title="Default">Def</span>' : '') +
+                            '</div>';
+                        kodeListEl.appendChild(row);
+                    });
+                }
+
+                var fieldBody = document.getElementById('editTplFieldBody');
+                fieldBody.innerHTML = '';
+                var semuaField = [];
+                (data.fields || []).forEach(function (f) { semuaField.push({ field: f.field, label: f.label, tipe: 'Field' }); });
+                (data.table_fields || []).forEach(function (f) { semuaField.push({ field: f.field, label: f.label, tipe: 'Tabel (item_' + f.field + ')' }); });
+                Object.keys(data.blocks || {}).forEach(function (namaBlok) {
+                    (data.blocks[namaBlok] || []).forEach(function (f) {
+                        semuaField.push({ field: f.field, label: f.label, tipe: 'Blok: ' + namaBlok });
+                    });
+                });
+
+                if (semuaField.length === 0) {
+                    fieldBody.innerHTML = '<tr><td colspan="3" class="text-center text-secondary text-xs py-3">Tidak ada placeholder terdeteksi di template ini.</td></tr>';
+                } else {
+                    semuaField.forEach(function (f) {
+                        var tr = document.createElement('tr');
+                        tr.innerHTML =
+                            '<td>' +
+                            '<code>${' + escapeHtmlText(f.field) + '}</code>' +
+                            '<br><small class="text-secondary">' + escapeHtmlText(f.tipe) + '</small>' +
+                            '<input type="hidden" name="field_lama[]" value="' + escapeHtmlAttr(f.field) + '">' +
+                            '</td>' +
+                            '<td><input type="text" name="field_baru[]" class="form-control-custom field-baru-input" value="' + escapeHtmlAttr(f.field) + '"></td>' +
+                            '<td><input type="text" name="field_label[]" class="form-control-custom field-label-input" value="' + escapeHtmlAttr(f.label) + '" data-label-manual="0"></td>';
+                        fieldBody.appendChild(tr);
+                    });
+                    pasangAutoLabelListener();
+                }
+                formEl.style.display = 'block';
+            })
+            .catch(function () {
+                loadingEl.style.display = 'none';
+                errorEl.textContent = 'Gagal memuat data template. Silakan coba lagi.';
+                errorEl.style.display = 'block';
+            });
+    }
+
+    function escapeHtmlAttr(str) {
+        return String(str || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    function escapeHtmlText(str) {
+        return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    function labelDariNamaField(nama) {
+        nama = String(nama || '').trim();
+        if (nama === '') return '';
+        return nama.replace(/_/g, ' ').split(' ').map(function (kata) {
+            return kata.length ? kata.charAt(0).toUpperCase() + kata.slice(1) : kata;
+        }).join(' ');
+    }
+    function pasangAutoLabelListener() {
+        var baris = document.querySelectorAll('#editTplFieldBody tr');
+        baris.forEach(function (tr) {
+            var inputFieldBaru = tr.querySelector('.field-baru-input');
+            var inputLabel = tr.querySelector('.field-label-input');
+            if (!inputFieldBaru || !inputLabel) return;
+            inputLabel.addEventListener('input', function () { inputLabel.setAttribute('data-label-manual', '1'); });
+            inputFieldBaru.addEventListener('input', function () {
+                if (inputLabel.getAttribute('data-label-manual') === '1') return;
+                inputLabel.value = labelDariNamaField(inputFieldBaru.value);
+            });
+        });
+    }
+</script>
+
+<script>
+    (function () {
+        var inputKode = document.getElementById('input-kode');
+        var inputNamaKode = document.getElementById('input-nama-kode');
+        var statusEl = document.getElementById('status-cek-kode');
+        if (!inputKode || !inputNamaKode) return;
+        var timer = null;
+
+        function tampilkanStatus(pesan, jenis) {
+            if (!statusEl) return;
+            statusEl.textContent = pesan;
+            statusEl.className = 'text-xs mt-1 ' + (jenis === 'warning' ? 'text-warning' : (jenis === 'danger' ? 'text-danger' : 'text-success'));
+        }
+        function cekKode() {
+            var kode = inputKode.value.trim();
+            var nama = inputNamaKode.value.trim();
+            if (kode === '') { tampilkanStatus('', ''); return; }
+            fetch('surat.php?ajax=cek_kode&kode=' + encodeURIComponent(kode) + '&nama=' + encodeURIComponent(nama))
+                .then(function (res) { return res.json(); })
+                .then(function (data) {
+                    if (data.combo_exists) {
+                        tampilkanStatus('Kombinasi kode & jenis surat ini sudah ada — akan memakai data yang sama (bukan bikin baris baru).', 'warning');
+                    } else if (data.kode_exists) {
+                        var daftar = (data.daftar_nama_lain && data.daftar_nama_lain.length)
+                            ? ' Jenis surat lain yang sudah pakai kode ini: ' + data.daftar_nama_lain.join(', ') + '.'
+                            : '';
+                        tampilkanStatus('Kode ini sudah dipakai jenis surat lain — akan dibuat jenis surat BARU dengan kode yang sama.' + daftar, 'success');
+                    } else if (nama !== '') {
+                        tampilkanStatus('Kode & jenis surat baru — siap dibuat.', 'success');
+                    } else {
+                        tampilkanStatus('', '');
+                    }
+                })
+                .catch(function () { });
+        }
+        inputKode.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(cekKode, 400); });
+        inputNamaKode.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(cekKode, 400); });
+        inputKode.addEventListener('blur', cekKode);
+        inputNamaKode.addEventListener('blur', cekKode);
     })();
 </script>
 
