@@ -334,7 +334,7 @@ try {
                         placeholder="Contoh: Kantor Pusat / Project Site A" required>
                 </div>
                 <div class="mb-3">
-                    <label class="form-label fw-semibold fs-7 mb-2">Bukti Foto Selfie *</label>
+                    <label class="form-label fw-semibold fs-7 mb-2">Bukti Foto Selfie/Lokasi *</label>
                     <div class="upload-dropzone" id="dropzoneCheckin" onclick="bukaKameraSelfie()">
                         <div class="upload-dropzone-icon"><i class="bi bi-camera-fill"></i></div>
                         <div>
@@ -344,7 +344,7 @@ try {
                         <span class="fs-7 text-muted">Kamera akan terbuka otomatis</span>
                     </div>
                     <input type="file" name="bukti_foto" id="buktiFotoCheckin" class="d-none" required>
-                    <div id="previewFotoCheckin" class="mt-2 d-none">
+                    <div id="previewFotoCheckin" class="mt-2" style="display:none;">
                         <img id="imgPreviewCheckin" src=""
                             style="max-width:100%; border-radius:10px; border:1px solid var(--border-color);">
                         <button type="button" class="btn btn-sm btn-outline-danger mt-2 d-block"
@@ -384,8 +384,8 @@ try {
             <canvas id="canvasKameraCheckin" class="d-none"></canvas>
             <div id="errorKameraCheckin" class="alert alert-danger-custom mt-3" style="display:none;">
                 <i class="bi bi-exclamation-triangle-fill"></i>
-                <div>Tidak dapat mengakses kamera. Pastikan izin kamera diaktifkan pada browser, atau gunakan tombol
-                    <strong>Pilih File</strong> sebagai alternatif.
+                <div>Tidak dapat mengakses kamera. Pastikan izin kamera diaktifkan pada browser untuk dapat
+                    melakukan absensi.
                 </div>
             </div>
             <button type="button" class="btn-primary-custom w-100 mt-3" onclick="jepretFotoCheckin()">
@@ -536,21 +536,23 @@ try {
         }, 'image/jpeg', 0.9);
     }
 
-
-
     function setFotoCheckin(file) {
         const dt = new DataTransfer();
         dt.items.add(file);
         document.getElementById('buktiFotoCheckin').files = dt.files;
         document.getElementById('imgPreviewCheckin').src = URL.createObjectURL(file);
-        document.getElementById('previewFotoCheckin').classList.remove('d-none');
-        document.getElementById('dropzoneCheckin').classList.add('d-none');
+        document.getElementById('previewFotoCheckin').style.display = 'block';
+        document.getElementById('dropzoneCheckin').style.display = 'none';
     }
 
     function hapusFotoCheckin() {
         document.getElementById('buktiFotoCheckin').value = '';
-        document.getElementById('previewFotoCheckin').classList.add('d-none');
-        document.getElementById('dropzoneCheckin').classList.remove('d-none');
+        document.getElementById('previewFotoCheckin').style.display = 'none';
+        // Gunakan 'flex' (bukan 'block') karena .upload-dropzone di CSS
+        // memakai display:flex untuk men-tengah-kan icon & teksnya.
+        // Kalau di-set 'block', flex centering-nya hilang dan icon
+        // kamera jadi terlihat "geser" ke kiri.
+        document.getElementById('dropzoneCheckin').style.display = 'flex';
     }
 </script>
 
