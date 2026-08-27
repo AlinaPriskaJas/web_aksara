@@ -334,7 +334,7 @@ try {
                         placeholder="Contoh: Kantor Pusat / Project Site A" required>
                 </div>
                 <div class="mb-3">
-                    <label class="form-label fw-semibold fs-7 mb-2">Bukti Foto Selfie/Lokasi *</label>
+                    <label class="form-label fw-semibold fs-7 mb-2">Bukti Foto Selfie *</label>
                     <div class="upload-dropzone" id="dropzoneCheckin" onclick="bukaKameraSelfie()">
                         <div class="upload-dropzone-icon"><i class="bi bi-camera-fill"></i></div>
                         <div>
@@ -342,17 +342,9 @@ try {
                                 selfie</span>
                         </div>
                         <span class="fs-7 text-muted">Kamera akan terbuka otomatis</span>
-                        <div>
-                            <span class="upload-dropzone-link"
-                                onclick="event.stopPropagation(); document.getElementById('inputGaleriCheckin').click();">
-                                <i class="bi bi-image-fill me-1"></i>atau pilih dari galeri
-                            </span>
-                        </div>
                     </div>
-                    <input type="file" id="inputGaleriCheckin" accept="image/*" class="d-none"
-                        onchange="fotoDariGaleri(this)">
                     <input type="file" name="bukti_foto" id="buktiFotoCheckin" class="d-none" required>
-                    <div id="previewFotoCheckin" class="mt-2" style="display:none;">
+                    <div id="previewFotoCheckin" class="mt-2 d-none">
                         <img id="imgPreviewCheckin" src=""
                             style="max-width:100%; border-radius:10px; border:1px solid var(--border-color);">
                         <button type="button" class="btn btn-sm btn-outline-danger mt-2 d-block"
@@ -544,26 +536,21 @@ try {
         }, 'image/jpeg', 0.9);
     }
 
-    function fotoDariGaleri(input) {
-        if (input.files && input.files[0]) {
-            setFotoCheckin(input.files[0]);
-        }
-    }
+
 
     function setFotoCheckin(file) {
         const dt = new DataTransfer();
         dt.items.add(file);
         document.getElementById('buktiFotoCheckin').files = dt.files;
         document.getElementById('imgPreviewCheckin').src = URL.createObjectURL(file);
-        document.getElementById('previewFotoCheckin').style.display = 'block';
-        document.getElementById('dropzoneCheckin').style.display = 'none';
+        document.getElementById('previewFotoCheckin').classList.remove('d-none');
+        document.getElementById('dropzoneCheckin').classList.add('d-none');
     }
 
     function hapusFotoCheckin() {
         document.getElementById('buktiFotoCheckin').value = '';
-        document.getElementById('inputGaleriCheckin').value = '';
-        document.getElementById('previewFotoCheckin').style.display = 'none';
-        document.getElementById('dropzoneCheckin').style.display = 'block';
+        document.getElementById('previewFotoCheckin').classList.add('d-none');
+        document.getElementById('dropzoneCheckin').classList.remove('d-none');
     }
 </script>
 
