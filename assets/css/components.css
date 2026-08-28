@@ -256,6 +256,22 @@
   align-items: flex-start;
   gap: 12px;
   font-size: 0.9rem;
+
+  /* Auto-hide fade animation (dikontrol dari assets/js/script.js) */
+  overflow: hidden;
+  max-height: 200px;
+  opacity: 1;
+  transition: opacity 0.4s ease, max-height 0.4s ease, padding 0.4s ease, margin 0.4s ease;
+}
+
+.alert-success-custom.alert-auto-hide,
+.alert-danger-custom.alert-auto-hide {
+  opacity: 0;
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  margin-bottom: 0;
+  border-width: 0;
 }
 
 .alert-success-custom {

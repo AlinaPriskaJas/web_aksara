@@ -173,6 +173,41 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
     });
 });
 
+/* ============================================================
+   Auto-hide Notifikasi Sukses & Error (.alert-success-custom /
+   .alert-danger-custom)
+   Sebelumnya notif ini murni di-render PHP dan TIDAK PERNAH
+   hilang sendiri — nempel terus di halaman sampai di-reload.
+   Sekarang: notif sukses hilang cepat, notif error hilang lebih
+   lama (biar sempat dibaca), lalu dihapus dari DOM setelah
+   animasi fade selesai.
+   ============================================================ */
+(function () {
+    var DURASI_SUKSES = 3000;  // notif sukses hilang setelah 3 detik
+    var DURASI_ERROR = 8000;   // notif error hilang setelah 8 detik
+    var DURASI_FADE = 400;     // harus sama dengan transition di components.css
+
+    function autoHideAlert(el, durasi) {
+        if (!el) return;
+        setTimeout(function () {
+            el.classList.add('alert-auto-hide');
+            // Hapus elemen dari DOM setelah animasi fade selesai
+            setTimeout(function () {
+                if (el.parentNode) el.parentNode.removeChild(el);
+            }, DURASI_FADE);
+        }, durasi);
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        document.querySelectorAll('.alert-success-custom').forEach(function (el) {
+            autoHideAlert(el, DURASI_SUKSES);
+        });
+        document.querySelectorAll('.alert-danger-custom').forEach(function (el) {
+            autoHideAlert(el, DURASI_ERROR);
+        });
+    });
+})();
+
 // === Modal Global Functions ===
 function openModal(modalId) {
     const modal = document.getElementById(modalId);
