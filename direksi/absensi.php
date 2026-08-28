@@ -41,12 +41,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['action']) && $_POST['action'] === 'checkin') {
         $status_kehadiran = $_POST['status_kehadiran'];
         $lokasi_masuk = $_POST['lokasi_masuk'];
+        $latitude_masuk = $_POST['latitude_masuk'] ?? '';
+        $longitude_masuk = $_POST['longitude_masuk'] ?? '';
         $catatan_aktivitas = $_POST['catatan_aktivitas'];
         $jam_masuk = date('H:i:s');
         $bukti_foto = "";
 
         if (empty($status_kehadiran) || empty($lokasi_masuk)) {
             $error_msg = "Status Kehadiran dan Lokasi Masuk wajib diisi!";
+        } elseif ($latitude_masuk === '' || $longitude_masuk === '') {
+            $error_msg = "Titik GPS belum terdeteksi. Aktifkan izin lokasi pada browser, lalu tekan tombol muat ulang lokasi sebelum absen.";
         } elseif (!isset($_FILES['bukti_foto']) || $_FILES['bukti_foto']['error'] !== UPLOAD_ERR_OK) {
             $error_msg = "Bukti Foto Selfie/Lokasi wajib diunggah!";
         } else {
@@ -68,14 +72,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (empty($error_msg)) {
             try {
                 $stmt = $conn->prepare("
-                    INSERT INTO Absensi (user_id, tanggal, jam_masuk, lokasi_masuk, status_kehadiran, bukti_foto, catatan_aktivitas)
-                    VALUES (:user_id, :tanggal, :jam_masuk, :lokasi_masuk, :status, :bukti, :catatan)
+                    INSERT INTO Absensi (user_id, tanggal, jam_masuk, lokasi_masuk, latitude_masuk, longitude_masuk, status_kehadiran, bukti_foto, catatan_aktivitas)
+                    VALUES (:user_id, :tanggal, :jam_masuk, :lokasi_masuk, :latitude_masuk, :longitude_masuk, :status, :bukti, :catatan)
                 ");
                 $stmt->execute([
                     'user_id' => $current_user_id,
                     'tanggal' => $today,
                     'jam_masuk' => $jam_masuk,
                     'lokasi_masuk' => $lokasi_masuk,
+                    'latitude_masuk' => $latitude_masuk,
+                    'longitude_masuk' => $longitude_masuk,
                     'status' => $status_kehadiran,
                     'bukti' => $bukti_foto,
                     'catatan' => $catatan_aktivitas
@@ -116,20 +122,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Absen Pulang (Check-out)
     if (isset($_POST['action']) && $_POST['action'] === 'checkout') {
         $lokasi_pulang = $_POST['lokasi_pulang'];
+        $latitude_pulang = $_POST['latitude_pulang'] ?? '';
+        $longitude_pulang = $_POST['longitude_pulang'] ?? '';
         $jam_pulang = date('H:i:s');
 
         if (empty($lokasi_pulang)) {
             $error_msg = "Lokasi Pulang wajib diisi!";
+        } elseif ($latitude_pulang === '' || $longitude_pulang === '') {
+            $error_msg = "Titik GPS belum terdeteksi. Aktifkan izin lokasi pada browser, lalu tekan tombol muat ulang lokasi sebelum absen pulang.";
         } else {
             try {
                 $stmt = $conn->prepare("
                     UPDATE Absensi 
-                    SET jam_pulang = :jam_pulang, lokasi_pulang = :lokasi_pulang 
+                    SET jam_pulang = :jam_pulang, lokasi_pulang = :lokasi_pulang,
+                        latitude_pulang = :latitude_pulang, longitude_pulang = :longitude_pulang
                     WHERE user_id = :user_id AND tanggal = :today
                 ");
                 $stmt->execute([
                     'jam_pulang' => $jam_pulang,
                     'lokasi_pulang' => $lokasi_pulang,
+                    'latitude_pulang' => $latitude_pulang,
+                    'longitude_pulang' => $longitude_pulang,
                     'user_id' => $current_user_id,
                     'today' => $today
                 ]);
@@ -201,11 +214,11 @@ try {
                                 data-table-search="tabelAbsensiSaya" onkeyup="handleTableSearch('tabelAbsensiSaya')">
                         </div>
                         <?php if ($absen_status === 'belum'): ?>
-                            <button class="btn-primary-custom" onclick="openModal('modalAbsenCheckin')">
+                            <button class="btn-primary-custom" onclick="openModal('modalAbsenCheckin'); ambilLokasiCheckin();">
                                 <i class="bi bi-box-arrow-in-right me-1"></i>Absen Hari Ini
                             </button>
                         <?php elseif ($absen_status === 'checkin'): ?>
-                            <button class="btn-danger-custom" onclick="openModal('modalAbsenCheckout')">
+                            <button class="btn-danger-custom" onclick="openModal('modalAbsenCheckout'); ambilLokasiCheckout();">
                                 <i class="bi bi-box-arrow-left me-1"></i> Absen Pulang
                             </button>
                         <?php else: ?>
@@ -283,7 +296,13 @@ try {
                                             <span
                                                 class="<?= $badgeClass ?>"><?= htmlspecialchars($log['status_kehadiran']) ?></span>
                                         </td>
-                                        <td><?= htmlspecialchars($log['lokasi_masuk']) ?></td>
+                                        <td>
+                                            <?= htmlspecialchars($log['lokasi_masuk']) ?>
+                                            <?php if (!empty($log['latitude_masuk']) && !empty($log['longitude_masuk'])): ?>
+                                                <br><a href="https://www.google.com/maps?q=<?= urlencode($log['latitude_masuk'] . ',' . $log['longitude_masuk']) ?>"
+                                                    target="_blank" class="fs-7"><i class="bi bi-geo-alt-fill me-1"></i>Lihat di Peta</a>
+                                            <?php endif; ?>
+                                        </td>
                                         <td class="text-center">
                                             <?php if (!empty($log['bukti_foto']) && $log['bukti_foto'] !== 'input_manual_admin'): ?>
                                                 <button type="button" class="btn-icon-bukti"
@@ -330,9 +349,20 @@ try {
                     </select>
                 </div>
                 <div class="mb-3">
-                    <label class="form-label fw-semibold fs-7 mb-2">Lokasi Masuk *</label>
-                    <input type="text" name="lokasi_masuk" class="form-control-custom"
-                        placeholder="Contoh: Kantor Pusat / Project Site A" required>
+                    <label class="form-label fw-semibold fs-7 mb-2">Lokasi Masuk (GPS Otomatis) *</label>
+                    <div class="d-flex gap-2">
+                        <input type="text" name="lokasi_masuk" id="lokasiMasukInput" class="form-control-custom"
+                            placeholder="Mendeteksi lokasi..." required readonly>
+                        <button type="button" class="btn-secondary-custom" style="white-space:nowrap;"
+                            onclick="ambilLokasiCheckin()" title="Muat Ulang Lokasi">
+                            <i class="bi bi-arrow-clockwise"></i>
+                        </button>
+                    </div>
+                    <input type="hidden" name="latitude_masuk" id="latitudeMasukInput">
+                    <input type="hidden" name="longitude_masuk" id="longitudeMasukInput">
+                    <small id="statusLokasiCheckin" class="text-muted d-block mt-1">
+                        <span class="spinner-border spinner-border-sm me-1"></span>Meminta izin lokasi ke browser...
+                    </small>
                 </div>
                 <div class="mb-3">
                     <label class="form-label fw-semibold fs-7 mb-2">Bukti Foto Selfie/Lokasi *</label>
@@ -419,9 +449,20 @@ try {
             <form method="POST" action="absensi.php">
                 <input type="hidden" name="action" value="checkout">
                 <div class="mb-4">
-                    <label class="form-label fw-semibold fs-7 mb-2">Lokasi Pulang *</label>
-                    <input type="text" name="lokasi_pulang" class="form-control-custom"
-                        placeholder="Masukkan lokasi saat absen pulang" required>
+                    <label class="form-label fw-semibold fs-7 mb-2">Lokasi Pulang (GPS Otomatis) *</label>
+                    <div class="d-flex gap-2">
+                        <input type="text" name="lokasi_pulang" id="lokasiPulangInput" class="form-control-custom"
+                            placeholder="Mendeteksi lokasi..." required readonly>
+                        <button type="button" class="btn-secondary-custom" style="white-space:nowrap;"
+                            onclick="ambilLokasiCheckout()" title="Muat Ulang Lokasi">
+                            <i class="bi bi-arrow-clockwise"></i>
+                        </button>
+                    </div>
+                    <input type="hidden" name="latitude_pulang" id="latitudePulangInput">
+                    <input type="hidden" name="longitude_pulang" id="longitudePulangInput">
+                    <small id="statusLokasiCheckout" class="text-muted d-block mt-1">
+                        <span class="spinner-border spinner-border-sm me-1"></span>Meminta izin lokasi ke browser...
+                    </small>
                 </div>
                 <div class="d-flex gap-2">
                     <button type="button" class="btn-secondary-custom flex-grow-1"
@@ -555,6 +596,100 @@ try {
         // kamera jadi terlihat "geser" ke kiri.
         document.getElementById('dropzoneCheckin').style.display = 'flex';
     }
+
+    // ================== LOKASI GPS OTOMATIS (Absen Masuk & Pulang) ==================
+    // Alur: klik "Absen Masuk/Pulang" -> browser minta izin lokasi -> ambil GPS
+    // (Latitude & Longitude) -> koordinat disimpan di input hidden -> koordinat
+    // diubah menjadi alamat (reverse geocoding) lewat Nominatim OpenStreetMap ->
+    // alamat ditampilkan di kolom Lokasi -> baru form absensi bisa disimpan.
+    function ambilLokasiCheckin() {
+        ambilLokasiGPS('lokasiMasukInput', 'latitudeMasukInput', 'longitudeMasukInput', 'statusLokasiCheckin');
+    }
+
+    function ambilLokasiCheckout() {
+        ambilLokasiGPS('lokasiPulangInput', 'latitudePulangInput', 'longitudePulangInput', 'statusLokasiCheckout');
+    }
+
+    function ambilLokasiGPS(idInput, idLat, idLng, idStatus) {
+        const inputLokasi = document.getElementById(idInput);
+        const inputLat = document.getElementById(idLat);
+        const inputLng = document.getElementById(idLng);
+        const statusBox = document.getElementById(idStatus);
+        if (!inputLokasi || !inputLat || !inputLng) return;
+
+        inputLokasi.value = '';
+        inputLat.value = '';
+        inputLng.value = '';
+        if (statusBox) {
+            statusBox.classList.remove('text-danger');
+            statusBox.classList.add('text-muted');
+            statusBox.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Meminta izin lokasi ke browser...';
+        }
+
+        if (!navigator.geolocation) {
+            if (statusBox) {
+                statusBox.classList.remove('text-muted');
+                statusBox.classList.add('text-danger');
+                statusBox.textContent = 'Browser tidak mendukung GPS. Silakan isi lokasi secara manual.';
+            }
+            inputLokasi.removeAttribute('readonly');
+            inputLokasi.placeholder = 'Masukkan lokasi secara manual';
+            return;
+        }
+
+        navigator.geolocation.getCurrentPosition(async function (posisi) {
+            const lat = posisi.coords.latitude;
+            const lng = posisi.coords.longitude;
+            inputLat.value = lat;
+            inputLng.value = lng;
+
+            if (statusBox) {
+                statusBox.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Titik GPS didapat, mengubah ke alamat...';
+            }
+
+            try {
+                const resp = await fetch(
+                    `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
+                    { headers: { 'Accept-Language': 'id' } }
+                );
+                const data = await resp.json();
+                const alamat = (data && data.display_name) ? data.display_name : `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+                inputLokasi.value = alamat;
+                if (statusBox) {
+                    statusBox.classList.remove('text-danger');
+                    statusBox.innerHTML = '<i class="bi bi-geo-alt-fill me-1"></i>Lokasi GPS berhasil dideteksi.';
+                }
+            } catch (e) {
+                // Kalau reverse-geocoding gagal (mis. tidak ada internet ke layanan peta),
+                // tetap simpan koordinat mentahnya supaya absensi tidak terhambat.
+                inputLokasi.value = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+                if (statusBox) {
+                    statusBox.innerHTML = '<i class="bi bi-geo-alt-fill me-1"></i>Koordinat GPS didapat (alamat tidak dapat dimuat).';
+                }
+            }
+        }, function (err) {
+            let pesan = 'Gagal mengambil lokasi. ';
+            if (err.code === err.PERMISSION_DENIED) {
+                pesan += 'Izin lokasi ditolak. Aktifkan izin lokasi pada browser lalu tekan tombol muat ulang lokasi.';
+            } else if (err.code === err.TIMEOUT) {
+                pesan += 'Waktu permintaan lokasi habis. Coba lagi.';
+            } else {
+                pesan += 'Pastikan GPS/lokasi perangkat aktif, lalu coba lagi.';
+            }
+            if (statusBox) {
+                statusBox.classList.remove('text-muted');
+                statusBox.classList.add('text-danger');
+                statusBox.textContent = pesan;
+            }
+            // Fallback: izinkan isi manual kalau GPS benar-benar tidak bisa diakses.
+            inputLokasi.removeAttribute('readonly');
+            inputLokasi.placeholder = 'GPS gagal, isi lokasi manual';
+        }, {
+            enableHighAccuracy: true,
+            timeout: 15000,
+            maximumAge: 0
+        });
+    }
 </script>
 
 <?php if ($error_msg): ?>
@@ -562,8 +697,10 @@ try {
         document.addEventListener('DOMContentLoaded', () => {
             <?php if ($absen_status === 'checkin'): ?>
                 openModal('modalAbsenCheckout');
+                ambilLokasiCheckout();
             <?php else: ?>
                 openModal('modalAbsenCheckin');
+                ambilLokasiCheckin();
             <?php endif; ?>
         });
     </script>

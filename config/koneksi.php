@@ -83,6 +83,35 @@ try {
     // Biarkan saja kalau gagal; halaman yang memakainya sudah fallback ke kolom lama.
 }
 
+// ================== KOLOM KOORDINAT GPS PADA ABSENSI ==================
+// Menyimpan Latitude & Longitude asli dari GPS perangkat karyawan saat absen
+// masuk/pulang, terpisah dari kolom lokasi_masuk/lokasi_pulang (teks alamat
+// hasil reverse-geocoding) supaya titik koordinatnya tetap akurat dan bisa
+// dibuka langsung di Google Maps oleh admin/direksi. Dibuat otomatis
+// (ALTER TABLE bertahap) supaya tidak perlu migrasi manual di database.
+try {
+    $kolomGpsAbsensi = [
+        'latitude_masuk'   => "DECIMAL(10,7) NULL AFTER lokasi_masuk",
+        'longitude_masuk'  => "DECIMAL(10,7) NULL AFTER latitude_masuk",
+        'latitude_pulang'  => "DECIMAL(10,7) NULL AFTER lokasi_pulang",
+        'longitude_pulang' => "DECIMAL(10,7) NULL AFTER latitude_pulang",
+    ];
+    foreach ($kolomGpsAbsensi as $namaKolom => $definisiKolom) {
+        $cekKolomGps = $conn->query("
+            SELECT COUNT(*) AS jml FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'Absensi'
+              AND COLUMN_NAME = '$namaKolom'
+        ")->fetch();
+        if ((int) $cekKolomGps['jml'] === 0) {
+            $conn->exec("ALTER TABLE Absensi ADD COLUMN {$namaKolom} {$definisiKolom}");
+        }
+    }
+} catch (PDOException $e) {
+    // Biarkan saja kalau tabel Absensi belum ada / ALTER gagal (mis. hak akses
+    // DB terbatas); halaman absensi sudah punya fallback try-catch masing-masing.
+}
+
 // ================== AUDIT LOG ==================
 // Menyediakan fungsi catatAudit() ke semua file yang sudah require_once file ini,
 // sekaligus membuat tabel Audit_Log otomatis kalau belum ada.
