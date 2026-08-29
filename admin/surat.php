@@ -1843,7 +1843,8 @@ $checkedSertakanDp = $isPostBuatSurat ? isset($_POST['sertakan_dp']) : true;
 
 $nilai_dinamis = [];
 foreach ($fields_dinamis as $f) {
-    $nilai_dinamis[$f['field']] = $_POST['dinamis'][$f['field']] ?? '';
+    $isTanggalField = (bool) preg_match('/tanggal|tgl/i', $f['field']);
+    $nilai_dinamis[$f['field']] = $_POST['dinamis'][$f['field']] ?? ($isTanggalField ? date('Y-m-d') : '');
 }
 
 $nilai_items = $_POST['items'] ?? [];

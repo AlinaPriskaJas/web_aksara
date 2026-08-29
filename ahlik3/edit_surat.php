@@ -497,7 +497,9 @@ $nilai_dinamis = [];
 $nilai_no_surat_manual = $_POST['no_surat_manual'] ?? ($isiDataAsli['no_surat_manual'] ?? '');
 
 foreach ($fields_dinamis as $f) {
-    $nilai_dinamis[$f['field']] = $_POST['dinamis'][$f['field']] ?? ($isiDataAsli[$f['field']] ?? '');
+    $isTanggalField = (bool) preg_match('/tanggal|tgl/i', $f['field']);
+    $nilai_dinamis[$f['field']] = $_POST['dinamis'][$f['field']]
+        ?? ($isiDataAsli[$f['field']] ?? ($isTanggalField ? date('Y-m-d') : ''));
 }
 
 $nilai_items = $_POST['items'] ?? ($isiDataAsli['__items'] ?? []);
