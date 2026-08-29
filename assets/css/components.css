@@ -624,6 +624,16 @@
   width: 240px;
   max-width: 100%;
 }
+/* Modifier: stack title on its own row, actions (search/filter/button) below it */
+.table-toolbar-stack {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.table-toolbar-stack .table-toolbar-actions {
+  margin-left: 0;
+  width: 100%;
+}
 
 /* ==========================================================================
    Tab Navigation (Reusable)
@@ -728,6 +738,93 @@
         padding: 10px 14px;
     }
 }
+
+/* Dropdown Filter Kategori (Tab Gudang Barang) */
+.arp-dropdown-kategori {
+    position: relative;
+    display: inline-block;
+}
+
+.arp-dropdown-kategori-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: var(--input-height);
+    background: var(--bg-body);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0 14px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: border-color var(--transition), color var(--transition);
+}
+
+.arp-dropdown-kategori-btn:hover,
+.arp-dropdown-kategori-btn.open {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+.arp-dropdown-kategori-btn .bi-chevron-down {
+    transition: transform var(--transition);
+    font-size: 0.75rem;
+}
+
+.arp-dropdown-kategori-btn.open .bi-chevron-down {
+    transform: rotate(180deg);
+}
+
+.arp-dropdown-kategori-menu {
+    display: none;
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 50;
+    min-width: 240px;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    padding: 6px;
+}
+
+.arp-dropdown-kategori-menu.show {
+    display: block;
+}
+
+.arp-dropdown-kategori-item {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    padding: 9px 10px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-decoration: none;
+    cursor: pointer;
+    transition: background var(--transition), color var(--transition);
+}
+
+.arp-dropdown-kategori-item:hover {
+    background: var(--hover-overlay);
+    color: var(--primary);
+}
+
+.arp-dropdown-kategori-item.active {
+    background: rgba(27, 99, 196, 0.08);
+    color: var(--primary);
+}
+
+.arp-dropdown-kategori-item .badge-secondary {
+    margin-left: auto;
+}
+
 /* ==========================================================================
    Buat Surat — 2 Kolom Grid (Reusable)
    Dipakai di admin/surat.php, ahlik3/surat.php, it/surat.php pada tab
