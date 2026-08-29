@@ -213,8 +213,7 @@ try {
             <div class="stat-card">
                 <div class="stat-card-info">
                     <span class="stat-card-title">Status Backup</span>
-                    <span class="stat-card-value <?= $lastBackup ? 'text-success' : 'text-danger' ?>"
-                        style="font-size:1.3rem;">
+                    <span class="stat-card-value <?= $lastBackup ? 'text-success' : 'text-danger' ?>">
                         <?= $lastBackup ? 'Aman' : 'Belum Ada' ?>
                     </span>
                 </div>
