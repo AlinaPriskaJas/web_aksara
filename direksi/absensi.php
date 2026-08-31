@@ -46,6 +46,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $catatan_aktivitas = $_POST['catatan_aktivitas'];
         $jam_masuk = date('H:i:s');
         $bukti_foto = "";
+        $drive_file_id = "";
+        $drive_link = "";
 
         if (empty($status_kehadiran) || empty($lokasi_masuk)) {
             $error_msg = "Status Kehadiran dan Lokasi Masuk wajib diisi!";
@@ -63,6 +65,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $hasil_drive = arp_upload_ke_drive($file['tmp_name'], $nama_file_drive, $file['type'], $current_user_id, 'Absensi');
                 if ($hasil_drive && !empty($hasil_drive['link'])) {
                     $bukti_foto = $hasil_drive['link'];
+                    $drive_file_id = $hasil_drive['file_id'] ?? '';
+                    $drive_link = $hasil_drive['link'];
+
+                    if (empty($hasil_drive['sharing_ok'])) {
+                        error_log('Peringatan: foto absensi user_id=' . $current_user_id . ' ter-upload (file_id=' . $drive_file_id . ') tapi sharing GAGAL: ' . ($hasil_drive['sharing_error'] ?? ''));
+                    }
                 } else {
                     $error_msg = "Gagal mengunggah bukti foto ke Drive: " . arp_drive_last_error();
                 }
@@ -72,9 +80,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (empty($error_msg)) {
             try {
                 $stmt = $conn->prepare("
-                    INSERT INTO Absensi (user_id, tanggal, jam_masuk, lokasi_masuk, latitude_masuk, longitude_masuk, status_kehadiran, bukti_foto, catatan_aktivitas)
-                    VALUES (:user_id, :tanggal, :jam_masuk, :lokasi_masuk, :latitude_masuk, :longitude_masuk, :status, :bukti, :catatan)
-                ");
+    INSERT INTO Absensi (user_id, tanggal, jam_masuk, lokasi_masuk, latitude_masuk, longitude_masuk, status_kehadiran, bukti_foto, drive_file_id, drive_link, catatan_aktivitas)
+    VALUES (:user_id, :tanggal, :jam_masuk, :lokasi_masuk, :latitude_masuk, :longitude_masuk, :status, :bukti, :drive_file_id, :drive_link, :catatan)
+");
                 $stmt->execute([
                     'user_id' => $current_user_id,
                     'tanggal' => $today,
@@ -84,6 +92,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'longitude_masuk' => $longitude_masuk,
                     'status' => $status_kehadiran,
                     'bukti' => $bukti_foto,
+                    'drive_file_id' => $drive_file_id,
+                    'drive_link' => $drive_link,
                     'catatan' => $catatan_aktivitas
                 ]);
 
@@ -214,11 +224,13 @@ try {
                                 data-table-search="tabelAbsensiSaya" onkeyup="handleTableSearch('tabelAbsensiSaya')">
                         </div>
                         <?php if ($absen_status === 'belum'): ?>
-                            <button class="btn-primary-custom" onclick="openModal('modalAbsenCheckin'); ambilLokasiCheckin();">
+                            <button class="btn-primary-custom"
+                                onclick="openModal('modalAbsenCheckin'); ambilLokasiCheckin();">
                                 <i class="bi bi-box-arrow-in-right me-1"></i>Absen Hari Ini
                             </button>
                         <?php elseif ($absen_status === 'checkin'): ?>
-                            <button class="btn-danger-custom" onclick="openModal('modalAbsenCheckout'); ambilLokasiCheckout();">
+                            <button class="btn-danger-custom"
+                                onclick="openModal('modalAbsenCheckout'); ambilLokasiCheckout();">
                                 <i class="bi bi-box-arrow-left me-1"></i> Absen Pulang
                             </button>
                         <?php else: ?>
@@ -299,17 +311,28 @@ try {
                                         <td>
                                             <?= htmlspecialchars($log['lokasi_masuk']) ?>
                                             <?php if (!empty($log['latitude_masuk']) && !empty($log['longitude_masuk'])): ?>
-                                                <br><a href="https://www.google.com/maps?q=<?= urlencode($log['latitude_masuk'] . ',' . $log['longitude_masuk']) ?>"
-                                                    target="_blank" class="fs-7"><i class="bi bi-geo-alt-fill me-1"></i>Lihat di Peta</a>
+                                                <br><a
+                                                    href="https://www.google.com/maps?q=<?= urlencode($log['latitude_masuk'] . ',' . $log['longitude_masuk']) ?>"
+                                                    target="_blank" class="fs-7"><i class="bi bi-geo-alt-fill me-1"></i>Lihat di
+                                                    Peta</a>
                                             <?php endif; ?>
                                         </td>
                                         <td class="text-center">
-                                            <?php if (!empty($log['bukti_foto']) && $log['bukti_foto'] !== 'input_manual_admin'): ?>
+                                            <?php if (!empty($log['drive_file_id'])): ?>
+                                                <?php
+                                                $url_preview_foto = 'https://drive.google.com/thumbnail?id=' . urlencode($log['drive_file_id']) . '&sz=w1000';
+                                                $url_drive_asli = $log['drive_link'] ?? '';
+                                                ?>
                                                 <button type="button" class="btn-icon-bukti"
-                                                    onclick="tampilkanBuktiFoto('../<?= htmlspecialchars($log['bukti_foto']) ?>')"
+                                                    onclick="tampilkanBuktiFoto('<?= htmlspecialchars($url_preview_foto) ?>', '<?= htmlspecialchars($url_drive_asli) ?>')"
                                                     title="Lihat Bukti Foto">
                                                     <i class="bi bi-image"></i>
                                                 </button>
+                                            <?php elseif (!empty($log['drive_link'])): ?>
+                                                <a href="<?= htmlspecialchars($log['drive_link']) ?>" target="_blank"
+                                                    class="btn-icon-bukti" title="Buka di Drive">
+                                                    <i class="bi bi-image"></i>
+                                                </a>
                                             <?php else: ?>
                                                 <span class="text-muted">-</span>
                                             <?php endif; ?>
@@ -705,5 +728,64 @@ try {
         });
     </script>
 <?php endif; ?>
+
+<!-- ===== MODAL: Preview Bukti Foto Absensi ===== -->
+<div id="modalBuktiFoto" class="arp-modal-overlay" onclick="closeModalOutside(event, 'modalBuktiFoto')">
+    <div class="arp-modal-box" style="max-width:480px;">
+        <div class="arp-modal-header">
+            <h6 class="fw-bold mb-0">Bukti Foto Absensi</h6>
+            <button class="arp-modal-close" onclick="closeModal('modalBuktiFoto')">&times;</button>
+        </div>
+        <div class="arp-modal-body text-center">
+            <img id="imgBuktiFotoModal" src="" alt="Bukti Foto Absensi" referrerpolicy="no-referrer"
+                style="max-width:100%; max-height:70vh; border-radius:10px; border:1px solid var(--border-color); display:block; margin:0 auto;">
+
+            <!-- Ditampilkan hanya kalau gambar gagal dimuat (mis. sharing belum aktif / masih propagasi) -->
+            <div id="errorBuktiFotoModal" style="display:none;" class="alert alert-danger-custom mt-3 text-start">
+                <i class="bi bi-exclamation-triangle-fill"></i>
+                <div>
+                    Foto tidak dapat ditampilkan langsung di sini (kemungkinan izin akses foto di Drive belum aktif
+                    atau masih diproses). Silakan buka langsung lewat tombol di bawah.
+                </div>
+            </div>
+            <a id="linkBukaDiDrive" href="#" target="_blank" class="btn-secondary-custom mt-3 d-inline-block"
+                style="display:none;">
+                <i class="bi bi-box-arrow-up-right me-1"></i> Buka di Google Drive
+            </a>
+        </div>
+    </div>
+</div>
+
+<script>
+    /**
+     * Tampilkan modal preview bukti foto absensi.
+     * @param {string} urlThumbnail  URL thumbnail Drive (dari drive_file_id) untuk ditampilkan langsung.
+     * @param {string} urlDriveAsli  Opsional: link Drive asli (drive_link) untuk fallback "Buka di Drive"
+     *                               kalau thumbnail gagal dimuat.
+     */
+    function tampilkanBuktiFoto(urlThumbnail, urlDriveAsli) {
+        const img = document.getElementById('imgBuktiFotoModal');
+        const errBox = document.getElementById('errorBuktiFotoModal');
+        const linkDrive = document.getElementById('linkBukaDiDrive');
+
+        // Reset state tiap kali modal dibuka
+        errBox.style.display = 'none';
+        img.style.display = 'block';
+        linkDrive.style.display = 'none';
+
+        img.onerror = function () {
+            img.onerror = null;
+            img.style.display = 'none';
+            errBox.style.display = 'flex';
+            if (urlDriveAsli) {
+                linkDrive.href = urlDriveAsli;
+                linkDrive.style.display = 'inline-block';
+            }
+        };
+
+        img.src = urlThumbnail;
+        openModal('modalBuktiFoto');
+    }
+</script>
 
 <?php include "../includes/footer.php"; ?>

@@ -66,7 +66,7 @@ function arp_drive_kompres_gambar(string $path_file_lokal, string $mime_type): a
         return $asli;
     }
 
-    $lebar_asli  = imagesx($src);
+    $lebar_asli = imagesx($src);
     $tinggi_asli = imagesy($src);
 
     if ($lebar_asli > ARP_DRIVE_LEBAR_KOMPRESI) {
@@ -147,18 +147,18 @@ function arp_drive_kirim_request(array $config, string $base64, string $nama_fil
     curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
     curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query([
-        'token'        => $config['secret_token'],
-        'filename'     => $nama_file,
-        'mimetype'     => $mime_type,
-        'filedata'     => $base64,
+        'token' => $config['secret_token'],
+        'filename' => $nama_file,
+        'mimetype' => $mime_type,
+        'filedata' => $base64,
         'pengajuan_id' => $pengajuan_id,
-        'kategori'     => $kategori,
+        'kategori' => $kategori,
     ]));
 
-    $response   = curl_exec($ch);
-    $http_code  = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $response = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $curl_error = curl_error($ch);
-    $errno      = curl_errno($ch);
+    $errno = curl_errno($ch);
     curl_close($ch);
 
     if ($curl_error) {
@@ -208,9 +208,11 @@ function arp_upload_ke_drive(string $path_file_lokal, string $nama_file, string 
 
     $config = require $config_path;
 
-    if (empty($config['webapp_url']) || strpos($config['webapp_url'], 'GANTI_DENGAN') !== false
+    if (
+        empty($config['webapp_url']) || strpos($config['webapp_url'], 'GANTI_DENGAN') !== false
         || empty($config['secret_token']) || strpos($config['secret_token'], 'GANTI_DENGAN') !== false
-        || strpos($config['webapp_url'], 'ISI_') !== false || strpos($config['secret_token'], 'ISI_') !== false) {
+        || strpos($config['webapp_url'], 'ISI_') !== false || strpos($config['secret_token'], 'ISI_') !== false
+    ) {
         $pesan = 'config/drive_config.php belum diisi dengan kredensial asli.';
         error_log('Drive upload gagal: ' . $pesan);
         arp_drive_set_last_error($pesan);
@@ -241,10 +243,10 @@ function arp_upload_ke_drive(string $path_file_lokal, string $nama_file, string 
 
     // Kalau ini gambar, kompres & resize dulu -> lebih kecil, lebih cepat dikirim,
     // dan lebih jarang kena timeout. Dokumen non-gambar (PDF, dll) tidak disentuh.
-    $berkas_kirim   = arp_drive_kompres_gambar($path_file_lokal, $mime_type);
-    $path_dikirim   = $berkas_kirim['path'];
-    $mime_dikirim   = $berkas_kirim['mime_type'];
-    $nama_dikirim   = $nama_file;
+    $berkas_kirim = arp_drive_kompres_gambar($path_file_lokal, $mime_type);
+    $path_dikirim = $berkas_kirim['path'];
+    $mime_dikirim = $berkas_kirim['mime_type'];
+    $nama_dikirim = $nama_file;
     if ($berkas_kirim['is_temp'] && strtolower(pathinfo($nama_file, PATHINFO_EXTENSION)) !== 'jpg') {
         $nama_dikirim = pathinfo($nama_file, PATHINFO_FILENAME) . '.jpg';
     }
@@ -267,7 +269,9 @@ function arp_upload_ke_drive(string $path_file_lokal, string $nama_file, string 
             if ($hasil['ok']) {
                 return [
                     'file_id' => $hasil['data']['file_id'] ?? null,
-                    'link'    => $hasil['data']['link'] ?? null,
+                    'link' => $hasil['data']['link'] ?? null,
+                    'sharing_ok' => $hasil['data']['sharing_ok'] ?? true,
+                    'sharing_error' => $hasil['data']['sharing_error'] ?? '',
                 ];
             }
 
@@ -311,9 +315,11 @@ function arp_upload_ke_drive(string $path_file_lokal, string $nama_file, string 
 function arp_hapus_file_drive(string $fileId): bool
 {
     $config_path = __DIR__ . '/../config/drive_config.php';
-    if (!file_exists($config_path)) return false;
+    if (!file_exists($config_path))
+        return false;
     $config = require $config_path;
-    if (empty($config['webapp_url']) || empty($config['secret_token'])) return false;
+    if (empty($config['webapp_url']) || empty($config['secret_token']))
+        return false;
 
     $ch = curl_init($config['webapp_url']);
     curl_setopt($ch, CURLOPT_POST, true);
@@ -321,7 +327,7 @@ function arp_hapus_file_drive(string $fileId): bool
     curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
     curl_setopt($ch, CURLOPT_TIMEOUT, 30);
     curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query([
-        'token'  => $config['secret_token'],
+        'token' => $config['secret_token'],
         'action' => 'delete',
         'file_id' => $fileId,
     ]));
