@@ -2,6 +2,8 @@
 // direksi/approval.php
 session_start();
 require_once "../config/koneksi.php";
+require_once "../includes/drive_helper.php";
+require_once "../includes/cuti_surat_helper.php";
 
 // Guard: halaman ini khusus role direksi. Kalau belum login / bukan direksi,
 // lempar balik ke login — pola ini sama seperti yang dipakai it/cuti.php.
@@ -119,6 +121,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['proses_approval'])) {
 
             $conn->commit();
 
+            // ===================================================================
+            // SURAT CUTI & PENGALIHAN TUGAS: Cuti Tahunan yang baru Disetujui ->
+            // otomatis dibuat lalu WAJIB diunggah ke Drive (folder "Surat Cuti"),
+            // link-nya disimpan ke Cuti.surat_cuti_link supaya bisa dilihat dari
+            // kolom "Surat Cuti" di tabel cuti.php. Dijalankan SESUDAH commit
+            // (bukan bagian dari transaksi) karena ini panggilan jaringan ke
+            // Drive -- kalau lambat/gagal, keputusan approval yang sudah dicatat
+            // tidak boleh ikut batal. Kalau upload gagal, admin/direksi masih
+            // bisa memicunya lagi lewat tombol "Cetak Surat Cuti" (ada self-heal
+            // di includes/generate_cuti_surat.php).
+            $peringatanSuratCuti = null;
+            if ($row['jenis_pengajuan'] === 'Cuti' && $status_baru === 'Disetujui'
+                && isset($cutiRow) && $cutiRow['jenis_cuti'] === 'Cuti Tahunan') {
+                $linkSuratCuti = arp_generate_dan_unggah_surat_cuti($conn, (int) $row['ref_id']);
+                if (!$linkSuratCuti) {
+                    $pesanGagal = arp_drive_last_error();
+                    error_log('Gagal mengunggah Surat Cuti ke Drive untuk Cuti #' . $row['ref_id'] . ': ' . $pesanGagal);
+                    $peringatanSuratCuti = "Namun, Surat Cuti gagal diunggah ke Drive ({$pesanGagal}). Coba lagi lewat tombol \"Cetak Surat Cuti\" di halaman Cuti.";
+                }
+            }
+
+            // ===================================================================
+            // PENGAJUAN DITOLAK: hapus draft/berkas Surat Cuti dari Google Drive.
+            // Suratnya (yang otomatis diunggah begitu pemohon mengajukan Cuti
+            // Tahunan -- lihat arp_generate_dan_unggah_surat_cuti_draft() di
+            // halaman pengajuan cuti) sudah tidak relevan lagi kalau pengajuannya
+            // ditolak, jadi tidak perlu tetap tersimpan di Drive. Best-effort,
+            // dijalankan SESUDAH commit sama seperti blok "Disetujui" di atas.
+            if ($row['jenis_pengajuan'] === 'Cuti' && $status_baru === 'Ditolak') {
+                arp_hapus_surat_cuti_drive($conn, (int) $row['ref_id']);
+            }
+
             // ================== NOTIFIKASI BALIK KE PEMOHON ==================
             if (isset($modul_map[$row['jenis_pengajuan']])) {
                 $label_pengajuan = label_jenis_pengajuan($conn, $row['jenis_pengajuan'], (int) $row['ref_id']);
@@ -167,9 +201,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['proses_approval'])) {
                 ['status' => $status_baru, 'catatan' => $catatan],
                 $direksi_id
             );
+            $pesanFlash = $decision === 'approve' ? 'Pengajuan berhasil disetujui.' : 'Pengajuan berhasil ditolak.';
+            if (!empty($peringatanSuratCuti)) {
+                $pesanFlash .= ' ' . $peringatanSuratCuti;
+            }
             $flash = [
-                'type' => 'success',
-                'message' => $decision === 'approve' ? 'Pengajuan berhasil disetujui.' : 'Pengajuan berhasil ditolak.',
+                'type' => empty($peringatanSuratCuti) ? 'success' : 'warning',
+                'message' => $pesanFlash,
             ];
         } catch (Exception $e) {
             $conn->rollBack();
@@ -459,6 +497,24 @@ function ambil_file_ref(PDO $conn, string $jenis, int $ref_id): ?string
     return null;
 }
 
+// Untuk jenis "Cuti": kolom "Aksi" di tab Pengajuan Umum tidak lagi menampilkan
+// dokumen pendukung/lampiran, melainkan Surat Cuti & Pengalihan Tugas yang
+// otomatis dibuat & diunggah ke Drive saat pengajuan Disetujui (lihat
+// arp_generate_dan_unggah_surat_cuti() di atas). Linknya diambil dari
+// Cuti.surat_cuti_link -- kalau belum ada (mis. belum disetujui / masih
+// gagal upload), tombolnya tidak ditampilkan.
+function ambil_surat_cuti_link(PDO $conn, int $ref_id): ?string
+{
+    try {
+        $s = $conn->prepare("SELECT surat_cuti_link FROM Cuti WHERE id = :id");
+        $s->execute([':id' => $ref_id]);
+        $v = $s->fetchColumn();
+        return $v !== false && $v !== null && $v !== '' ? (string) $v : null;
+    } catch (PDOException $e) {
+        return null;
+    }
+}
+
 // Untuk pengajuan jenis "Cuti", kolom Jenis di tabel Approval Center cuma
 // nunjukin "Cuti" secara umum (sesuai ENUM Approval.jenis_pengajuan) —
 // nggak kelihatan apakah itu Cuti Tahunan, Cuti Khusus, atau Cuti Sakit
@@ -737,18 +793,56 @@ include "../includes/topbar.php";
                                             <?php endif; ?>
                                         </td>
                                         <td style="text-align:center;">
-                                            <?php $fileRefUmum = ambil_file_ref($conn, $a['jenis_pengajuan'], (int) $a['ref_id']); ?>
-                                            <?php if ($fileRefUmum):
-                                                $hrefFileUmum = str_starts_with($fileRefUmum, 'http') ? $fileRefUmum : '../' . $fileRefUmum;
+                                            <?php
+                                            $jenisCutiUmum = $a['jenis_pengajuan'] === 'Cuti'
+                                                ? label_jenis_pengajuan($conn, 'Cuti', (int) $a['ref_id'])
+                                                : null;
+                                            ?>
+                                            <?php if ($jenisCutiUmum === 'Cuti Tahunan'):
+                                                // Cuti Tahunan selalu punya Surat Cuti & Pengalihan Tugas untuk
+                                                // dilihat direksi: kalau sudah Disetujui, pakai link resmi dari
+                                                // Drive (Cuti.surat_cuti_link); kalau masih Menunggu, pakai
+                                                // pratinjau (dibuat on-the-fly dari data pengajuan) supaya direksi
+                                                // tahu isi suratnya SEBELUM memutuskan approve/reject.
+                                                $suratCutiLinkUmum = ambil_surat_cuti_link($conn, (int) $a['ref_id']);
+                                                $hrefSuratCutiUmum = $suratCutiLinkUmum
+                                                    ?: '../includes/generate_cuti_surat.php?id=' . (int) $a['ref_id'];
                                                 ?>
-                                                <button type="button" class="btn-icon-bukti"
-                                                    onclick="openFileModal('<?= htmlspecialchars($hrefFileUmum, ENT_QUOTES) ?>', '<?= htmlspecialchars(addslashes($a['jenis_pengajuan']), ENT_QUOTES) ?>')"
-                                                    title="Lihat File">
-                                                    <i class="bi bi-paperclip"></i>
-                                                </button>
-                                            <?php else: ?>
-                                                <span class="text-muted fs-7">-</span>
-                                            <?php endif; ?>
+                                                <a href="<?= htmlspecialchars($hrefSuratCutiUmum) ?>" target="_blank"
+                                                    class="btn btn-outline-success btn-sm py-1"
+                                                    style="font-size:0.75rem; border-radius: 8px;">
+                                                    <i class="bi bi-file-earmark-text"></i>
+                                                    <?= $suratCutiLinkUmum ? 'Lihat' : 'Lihat (Pratinjau)' ?>
+                                                </a>
+                                            <?php elseif ($a['jenis_pengajuan'] === 'Cuti'):
+                                                // Cuti Khusus / Izin Sakit tidak punya Surat Cuti -- tampilkan
+                                                // dokumen pendukung/lampiran seperti biasa.
+                                                $fileRefUmum = ambil_file_ref($conn, $a['jenis_pengajuan'], (int) $a['ref_id']);
+                                                if ($fileRefUmum):
+                                                    $hrefFileUmum = str_starts_with($fileRefUmum, 'http') ? $fileRefUmum : '../' . $fileRefUmum;
+                                                    ?>
+                                                    <button type="button" class="btn-icon-bukti"
+                                                        onclick="openFileModal('<?= htmlspecialchars($hrefFileUmum, ENT_QUOTES) ?>', '<?= htmlspecialchars(addslashes($a['jenis_pengajuan']), ENT_QUOTES) ?>')"
+                                                        title="Lihat File">
+                                                        <i class="bi bi-paperclip"></i>
+                                                    </button>
+                                                <?php else: ?>
+                                                    <span class="text-muted fs-7">-</span>
+                                                <?php endif;
+                                            else:
+                                                $fileRefUmum = ambil_file_ref($conn, $a['jenis_pengajuan'], (int) $a['ref_id']);
+                                                if ($fileRefUmum):
+                                                    $hrefFileUmum = str_starts_with($fileRefUmum, 'http') ? $fileRefUmum : '../' . $fileRefUmum;
+                                                    ?>
+                                                    <button type="button" class="btn-icon-bukti"
+                                                        onclick="openFileModal('<?= htmlspecialchars($hrefFileUmum, ENT_QUOTES) ?>', '<?= htmlspecialchars(addslashes($a['jenis_pengajuan']), ENT_QUOTES) ?>')"
+                                                        title="Lihat File">
+                                                        <i class="bi bi-paperclip"></i>
+                                                    </button>
+                                                <?php else: ?>
+                                                    <span class="text-muted fs-7">-</span>
+                                                <?php endif;
+                                            endif; ?>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
