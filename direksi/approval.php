@@ -979,8 +979,8 @@ include "../includes/topbar.php";
                                             $hrefFileSurat = str_starts_with($s['file_hasil'], 'http') ? $s['file_hasil'] : '../' . $s['file_hasil'];
                                             ?>
                                             <button type="button" class="btn-icon-bukti"
-                                                onclick="openFileModal('<?= htmlspecialchars($hrefFileSurat, ENT_QUOTES) ?>', '<?= htmlspecialchars(addslashes($s['nomor'] ?? $s['perihal'] ?? 'Surat'), ENT_QUOTES) ?>')"
-                                                title="Lihat File">
+                                                onclick="bukaTabBaruDenganFokus('<?= htmlspecialchars($hrefFileSurat, ENT_QUOTES) ?>')"
+                                                title="Buka File">
                                                 <i class="bi bi-paperclip"></i>
                                             </button>
                                         <?php else: ?>
