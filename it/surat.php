@@ -1791,7 +1791,7 @@ include "../includes/topbar.php";
                                                         </span>
                                                     <?php else: ?>
                                                         <a href="edit_surat.php?id=<?= (int) $s['id'] ?>&auto_revisi=1"
-                                                            class="btn-secondary-custom"
+                                                            class="btn-secondary-custom" data-arp-loading="Memuat halaman revisi surat..."
                                                             style="height:28px; padding:0 10px; font-size:0.75rem; display:inline-flex; align-items:center; gap:4px; text-decoration:none;">
                                                             <i class="bi bi-arrow-counterclockwise"></i> Revisi
                                                         </a>
@@ -1827,19 +1827,21 @@ include "../includes/topbar.php";
                                             <?php if (!empty($s['file_hasil'])): ?>
                                                 <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
                                                     href="<?= e(hrefBerkas($s['file_hasil'])) ?>" target="_blank"
-                                                    title="Lihat berkas">
+                                                    title="Lihat berkas" data-arp-loading="Membuka berkas...">
                                                     <i class="bi bi-eye"></i>
                                                 </a>
                                                 <?php if ($suratMilikSaya): ?>
                                                     <a class="btn btn-outline-primary btn-sm py-1" style="font-size:0.75rem;"
-                                                        href="edit_surat.php?id=<?= (int) $s['id'] ?>" title="Edit Surat">
+                                                        href="edit_surat.php?id=<?= (int) $s['id'] ?>" title="Edit Surat"
+                                                        data-arp-loading="Memuat halaman edit surat...">
                                                         <i class="bi bi-pencil-square"></i>
                                                     </a>
                                                 <?php endif; ?>
                                                 <?php $fileIdUnduh = $s['drive_file_id'] ?? driveFileIdDariUrl($s['file_hasil'] ?? null); ?>
                                                 <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
                                                     href="<?= e($fileIdUnduh ? urlUnduhLangsungDrive($fileIdUnduh) : hrefBerkas($s['file_hasil'])) ?>"
-                                                    title="Unduh Word (.docx)">
+                                                    title="Unduh Word (.docx)" target="_blank"
+                                                    data-arp-loading="Menyiapkan unduhan...">
                                                     <i class="bi bi-download"></i>
                                                 </a>
                                             <?php endif; ?>
@@ -1929,11 +1931,13 @@ include "../includes/topbar.php";
                                             <?php if (!empty($s['file_hasil'])): ?>
                                                 <?php $hrefMasuk = str_starts_with($s['file_hasil'], 'http') ? $s['file_hasil'] : '../' . $s['file_hasil']; ?>
                                                 <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
-                                                    href="<?= e($hrefMasuk) ?>" target="_blank" title="Lihat / unduh berkas">
+                                                    href="<?= e($hrefMasuk) ?>" target="_blank" title="Lihat / unduh berkas"
+                                                    data-arp-loading="Membuka berkas...">
                                                     <i class="bi bi-eye"></i>
                                                 </a>
                                                 <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
-                                                    href="<?= e($hrefMasuk) ?>" download title="Unduh">
+                                                    href="<?= e($hrefMasuk) ?>" download title="Unduh"
+                                                    data-arp-loading="Menyiapkan unduhan...">
                                                     <i class="bi bi-download"></i>
                                                 </a>
                                             <?php else: ?>
@@ -2014,12 +2018,14 @@ include "../includes/topbar.php";
                                 var url = 'surat.php?tab=buat';
                                 if (kodeId) url += '&kode_id=' + kodeId;
                                 if (templateId) url += '&template_id=' + templateId;
+                                if (window.arpShowLoader) window.arpShowLoader('Memuat form surat...');
                                 window.location.href = url;
                             }
 
                             selectJenis.addEventListener('change', function () {
                                 var kodeId = this.value;
                                 if (!kodeId) {
+                                    if (window.arpShowLoader) window.arpShowLoader('Memuat form surat...');
                                     window.location.href = 'surat.php?tab=buat';
                                     return;
                                 }
@@ -3335,7 +3341,8 @@ include "../includes/topbar.php";
                                             <?php if (!empty($t['drive_file_id'])): ?>
                                                 <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
                                                     href="https://docs.google.com/document/d/<?= e($t['drive_file_id']) ?>/edit"
-                                                    target="_blank" title="Lihat &amp; Edit Word di Drive">
+                                                    target="_blank" title="Lihat &amp; Edit Word di Drive"
+                                                    data-arp-loading="Membuka Word di Drive...">
                                                     <i class="bi bi-file-earmark-word"></i>
                                                 </a>
                                             <?php endif; ?>
@@ -3441,6 +3448,7 @@ include "../includes/topbar.php";
 
                 <div id="editTplBukaWordWrapper" class="mb-3" style="display:none;">
                     <a href="#" id="editTplBukaWordLink" target="_blank" class="btn-secondary-custom"
+                        data-arp-loading="Membuka Word di Drive..."
                         style="display:inline-flex; align-items:center; gap:6px; text-decoration:none;">
                         <i class="bi bi-file-earmark-word"></i> Lihat &amp; Edit Word di Drive
                     </a>
@@ -3547,7 +3555,7 @@ include "../includes/topbar.php";
                 <div class="d-flex justify-content-end gap-2 mt-4">
                     <button type="button" class="btn-secondary-custom"
                         onclick="closeModal('modalExportRekap')">Batal</button>
-                    <button type="submit" class="btn-primary-custom">
+                    <button type="submit" class="btn-primary-custom" data-arp-loading="Menyiapkan file rekap...">
                         <i class="bi bi-download"></i> Unduh
                     </button>
                 </div>

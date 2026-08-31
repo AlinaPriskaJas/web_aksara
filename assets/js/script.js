@@ -67,6 +67,36 @@
             });
         }, 0);
     });
+
+    // Ekspos showLoader/hideLoader supaya halaman lain (mis. surat.php) bisa
+    // memicu overlay ini untuk aksi berbasis <a>/tombol yang BUKAN form submit
+    // biasa (link navigasi, link unduh, link yang buka tab baru), lewat
+    // atribut data-arp-loading (lihat listener 'click' di bawah).
+    window.arpShowLoader = showLoader;
+    window.arpHideLoader = hideLoader;
+
+    // Tampilkan loader saat elemen dengan atribut data-arp-loading diklik
+    // (dipasang manual di halaman seperti surat.php pada tombol/link
+    // cetak, unduh, buat surat, kirim, edit dsb yang sebelumnya "diam"
+    // tanpa indikator karena bukan berupa form submit biasa).
+    document.addEventListener('click', function (e) {
+        var el = e.target.closest('[data-arp-loading]');
+        if (!el || e.defaultPrevented) return;
+
+        showLoader(el.getAttribute('data-arp-loading') || 'Memproses...');
+
+        // Link/tombol yang buka tab baru (target="_blank", termasuk tombol
+        // submit di dalam form target="_blank" seperti export/unduh) TIDAK
+        // membuat halaman ini reload, jadi loader tidak akan otomatis
+        // tersembunyi lewat DOMContentLoaded. Sembunyikan otomatis setelah
+        // jeda singkat supaya tidak "nyangkut" menutupi halaman.
+        var bukaTabBaru = (el.tagName === 'A' && (el.target === '_blank' || el.hasAttribute('download'))) ||
+            (el.tagName === 'BUTTON' && el.form && el.form.target === '_blank') ||
+            (el.tagName === 'INPUT' && el.form && el.form.target === '_blank');
+        if (bukaTabBaru) {
+            setTimeout(hideLoader, 2500);
+        }
+    });
 })();
 
 document.addEventListener('DOMContentLoaded', function () {
