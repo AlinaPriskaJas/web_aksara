@@ -526,7 +526,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
         $kodeIdPost = (int) ($_POST['kode_id'] ?? 0);
         $templateIdPost = (int) ($_POST['template_id'] ?? 0);
         try {
-            $stmt = $pdo->prepare("SELECT k.*, t.id AS template_id, t.file_path, t.format
+                        $stmt = $pdo->prepare("SELECT k.*, t.id AS template_id, t.drive_file_id, t.format
                                     FROM kode_surat k
                                     JOIN kode_template kt ON kt.kode_id = k.id AND kt.template_id = ?
                                     JOIN template_master t ON t.id = kt.template_id
@@ -534,11 +534,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
             $stmt->execute([$templateIdPost, $kodeIdPost]);
             $kode = $stmt->fetch();
 
-            if (!$kode || !$kode['file_path']) {
-                throw new RuntimeException("Kombinasi jenis surat & template ini tidak/belum terhubung.");
-            }
-            if (!is_file(BASE_PATH . '/' . $kode['file_path'])) {
-                throw new RuntimeException("File template master tidak ditemukan di storage. Silakan hubungi Admin untuk mengupload ulang template ini.");
+            if (!$kode || !$kode['drive_file_id']) {
+                throw new RuntimeException("Kombinasi jenis surat & template ini tidak/belum terhubung ke Google Drive.");
             }
             if ($kode['format'] !== 'word_pdf') {
                 throw new RuntimeException("Template ini bukan file Word (.docx), tidak bisa digenerate otomatis lewat form ini.");
@@ -546,10 +543,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
 
             $pdo->beginTransaction();
 
-            // Kalau template pakai ${no_surat} (format khusus JD+kode/bulan/tahun),
-            // pakai format itu SEBAGAI nomor surat -- jangan generate nomor ARP
-            // biasa juga, supaya tidak ada dua sistem penomoran berjalan sekaligus.
-            $adaNoSuratKhususPost = in_array('no_surat', scanAutoFieldsFromDocx(BASE_PATH . '/' . $kode['file_path']), true);
+            $adaNoSuratKhususPost = arp_dengan_template_sementara($kode['drive_file_id'], function ($p) {
+                return in_array('no_surat', scanAutoFieldsFromDocx($p), true);
+            });
 
             // Kalau surat ini dibuat dari Invoice (Kuitansi otomatis), nomor urutnya
             // WAJIB mengikuti nomor urut invoice sumbernya -- bukan memakai counter
@@ -668,7 +664,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
             ];
 
 
-            $fileHasilRelatif = generateSuratDocx(BASE_PATH . '/' . $kode['file_path'], $dataForm, $items, $nomorSurat, $blocksData, $kode['nama'], null, $ringkasanDisertakan);
+            $fileHasilRelatif = arp_dengan_template_sementara($kode['drive_file_id'], function ($pathTemplateLokal) use (
+                $dataForm, $items, $nomorSurat, $blocksData, $kode, $ringkasanDisertakan
+            ) {
+                return generateSuratDocx($pathTemplateLokal, $dataForm, $items, $nomorSurat, $blocksData, $kode['nama'], null, $ringkasanDisertakan);
+            });
 
             // Baca perihal SEBELUM upload, karena file lokal akan dihapus setelahnya.
             $perihalDariWord = extractPerihalFromDocxText(BASE_PATH . '/' . $fileHasilRelatif);
@@ -1087,7 +1087,7 @@ $fields_tabel = [];
 $fields_blok = [];
 $fields_invoice = [];
 if ($active_tab === 'tabPanelBuatSurat' && $kodeIdTerpilih && $templateIdTerpilih) {
-    $stmt = $pdo->prepare("SELECT k.*, t.id AS template_id, t.nama AS nama_template, t.file_path, t.format, t.fields_json
+    $stmt = $pdo->prepare("SELECT k.*, t.id AS template_id, t.nama AS nama_template, t.drive_file_id, t.drive_link, t.format, t.fields_json
                             FROM kode_surat k
                             JOIN kode_template kt ON kt.kode_id = k.id AND kt.template_id = ?
                             JOIN template_master t ON t.id = kt.template_id
@@ -1111,10 +1111,10 @@ if ($active_tab === 'tabPanelBuatSurat' && $kodeIdTerpilih && $templateIdTerpili
     }
 }
 
-$file_template_hilang = $kodeTerpilih && !is_file(BASE_PATH . '/' . $kodeTerpilih['file_path']);
+$file_template_hilang = $kodeTerpilih && empty($kodeTerpilih['drive_file_id']);
 
 $auto_fields_template = ($kodeTerpilih && !$file_template_hilang && $kodeTerpilih['format'] === 'word_pdf')
-    ? scanAutoFieldsFromDocx(BASE_PATH . '/' . $kodeTerpilih['file_path'])
+    ? arp_dengan_template_sementara($kodeTerpilih['drive_file_id'], fn($p) => scanAutoFieldsFromDocx($p))
     : [];
 $ada_total = in_array('total', $auto_fields_template, true);
 $ada_ppn = in_array('ppn', $auto_fields_template, true);
@@ -1272,8 +1272,8 @@ include "../includes/topbar.php";
     <div class="arp-tab-group">
         <div class="arp-tab-nav">
             <button type="button" class="arp-tab-btn<?= $active_tab === 'tabPanelSurat' ? ' active' : '' ?>"
-                data-tab-target="tabPanelSurat" onclick="switchTab('tabPanelSurat', this)">
-                <i class="bi bi-envelope-paper me-1"></i> Surat
+                data-tab-target="tabPanelSuratKeluar" onclick="switchTab('tabPanelSuratKeluar', this)">
+                <i class="bi bi-send-check me-1"></i> Surat Keluar
             </button>
             <button type="button" class="arp-tab-btn<?= $active_tab === 'tabPanelSuratMasuk' ? ' active' : '' ?>"
                 data-tab-target="tabPanelSuratMasuk" onclick="switchTab('tabPanelSuratMasuk', this)">

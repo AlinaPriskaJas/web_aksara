@@ -128,18 +128,19 @@ if (($_GET['ajax'] ?? '') === 'get_template') {
     $decoded = $tpl['fields_json'] ? (json_decode($tpl['fields_json'], true) ?: []) : [];
 
     echo json_encode([
-        'template' => [
-            'id' => (int) $tpl['id'],
-            'nama' => $tpl['nama'],
-            'deskripsi' => $tpl['deskripsi'],
-            'format' => $tpl['format'],
-            'file_path' => $tpl['file_path'],
-        ],
-        'kode_terhubung' => $daftarKodeTerhubung,
-        'fields' => $decoded['fields'] ?? [],
-        'table_fields' => $decoded['table_fields'] ?? [],
-        'blocks' => $decoded['blocks'] ?? [],
-    ]);
+    'template' => [
+        'id' => (int) $tpl['id'],
+        'nama' => $tpl['nama'],
+        'deskripsi' => $tpl['deskripsi'],
+        'format' => $tpl['format'],
+        'drive_file_id' => $tpl['drive_file_id'],   // ⬅ tambahkan ini
+        'drive_link' => $tpl['drive_link'],          // ⬅ tambahkan ini
+    ],
+    'kode_terhubung' => $daftarKodeTerhubung,
+    'fields' => $decoded['fields'] ?? [],
+    'table_fields' => $decoded['table_fields'] ?? [],
+    'blocks' => $decoded['blocks'] ?? [],
+]);
     exit;
 }
 
@@ -608,40 +609,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'upload_
     try {
         $pdo->beginTransaction();
 
-        $filePathAsli = uploadTemplateFile($_FILES['file_template']);
-        $format = pathinfo($filePathAsli, PATHINFO_EXTENSION) === 'docx' ? 'word_pdf' : 'pdf_only';
+        $fileUpload = $_FILES['file_template'];
+        $ext = strtolower(pathinfo($fileUpload['name'], PATHINFO_EXTENSION));
+        if (!in_array($ext, ['docx', 'pdf'], true)) {
+            throw new RuntimeException("Format file tidak didukung. Hanya .docx atau .pdf.");
+        }
+        if ($fileUpload['error'] !== UPLOAD_ERR_OK) {
+            throw new RuntimeException("Terjadi kesalahan saat upload file.");
+        }
+        $format = $ext === 'docx' ? 'word_pdf' : 'pdf_only';
 
         $namaTemplateInput = trim($_POST['nama_template'] ?? '');
-        $ekstensiFile = pathinfo($filePathAsli, PATHINFO_EXTENSION);
         $slugNamaTemplate = slugifyNamaTemplate($namaTemplateInput);
-
-        $direktoriRelatif = dirname($filePathAsli);
-        $namaFileBaru = $slugNamaTemplate . '.' . $ekstensiFile;
-        $urutan = 1;
-        while (is_file(BASE_PATH . '/' . $direktoriRelatif . '/' . $namaFileBaru)) {
-            $urutan++;
-            $namaFileBaru = $slugNamaTemplate . '-' . $urutan . '.' . $ekstensiFile;
-        }
-
-        $filePathBaru = ($direktoriRelatif === '.' ? '' : $direktoriRelatif . '/') . $namaFileBaru;
-        $filePath = rename(BASE_PATH . '/' . $filePathAsli, BASE_PATH . '/' . $filePathBaru)
-            ? $filePathBaru
-            : $filePathAsli;
+        $namaFileDrive = $slugNamaTemplate . '.' . $ext;
 
         $hasilScan = ['fields' => [], 'table_fields' => [], 'blocks' => []];
-        $fieldsJson = null;
         if ($format === 'word_pdf') {
-            $hasilScan = scanPlaceholdersFromDocx(BASE_PATH . '/' . $filePath);
-            $fieldsJson = json_encode(buildFieldsWithDefaultLabels($hasilScan), JSON_UNESCAPED_UNICODE);
+            $hasilScan = scanPlaceholdersFromDocx($fileUpload['tmp_name']);
+        }
+        $fieldsJson = json_encode(buildFieldsWithDefaultLabels($hasilScan), JSON_UNESCAPED_UNICODE);
+
+        $hasilDriveTemplate = arp_upload_ke_drive(
+            $fileUpload['tmp_name'],
+            $namaFileDrive,
+            $ext === 'docx'
+            ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            : 'application/pdf',
+            0,
+            'Template_Surat'
+        );
+        if (!$hasilDriveTemplate || empty($hasilDriveTemplate['link'])) {
+            throw new RuntimeException("Gagal mengunggah template ke Google Drive: " . arp_drive_last_error());
         }
 
         $deskripsiTemplateInput = trim($_POST['deskripsi'] ?? '');
 
-        $stmt = $pdo->prepare("INSERT INTO template_master (nama, deskripsi, file_path, format, fields_json, diupload_oleh) VALUES (?, ?, ?, ?, ?, ?)");
+        $stmt = $pdo->prepare("INSERT INTO template_master (nama, deskripsi, file_path, drive_file_id, drive_link, format, fields_json, diupload_oleh) VALUES (?, ?, NULL, ?, ?, ?, ?, ?)");
         $stmt->execute([
             $namaTemplateInput,
             $deskripsiTemplateInput !== '' ? $deskripsiTemplateInput : null,
-            $filePath,
+            $hasilDriveTemplate['file_id'],
+            $hasilDriveTemplate['link'],
             $format,
             $fieldsJson,
             $current_user_id
@@ -695,7 +703,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'upload_
         }
         $pesanField = $ringkasanField ? implode(' | ', $ringkasanField) : 'Tidak ada placeholder ${...} yang terdeteksi.';
 
-        $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Template berhasil diupload dan langsung dihubungkan ke kode surat. ' . $pesanField];
+        $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Template berhasil diupload ke Google Drive dan langsung dihubungkan ke kode surat. ' . $pesanField];
     } catch (Throwable $e) {
         if ($pdo->inTransaction())
             $pdo->rollBack();
@@ -731,9 +739,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'hapus_t
 
         catatAudit($pdo, 'Surat', 'Hapus Template', "Menghapus template \"{$tpl['nama']}\" (#{$templateId})", $tpl, null);
 
-        $fullPath = BASE_PATH . '/' . $tpl['file_path'];
-        if (is_file($fullPath)) {
-            @unlink($fullPath);
+        if (!empty($tpl['drive_file_id'])) {
+            arp_hapus_file_drive($tpl['drive_file_id']);
         }
 
         $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Template "' . $tpl['nama'] . '" beserta file & koneksinya berhasil dihapus.'];
@@ -773,51 +780,63 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'edit_te
         $mappingBaru = $_POST['field_baru'] ?? [];
         $mappingLabel = $_POST['field_label'] ?? [];
 
-        if ($tpl['format'] === 'word_pdf' && is_file(BASE_PATH . '/' . $tpl['file_path'])) {
-            $fullPath = BASE_PATH . '/' . $tpl['file_path'];
-            $penggantianPlaceholder = [];
-            foreach ($mappingLama as $i => $namaLama) {
-                $namaLama = trim((string) $namaLama);
-                $namaBaru = trim((string) ($mappingBaru[$i] ?? ''));
-                if ($namaLama === '' || $namaBaru === '' || $namaLama === $namaBaru) {
-                    continue;
+        if ($tpl['format'] === 'word_pdf' && !empty($tpl['drive_file_id'])) {
+            arp_dengan_template_sementara($tpl['drive_file_id'], function ($fullPath, $mimeType) use ($pdo, $templateId, $mappingLama, $mappingBaru, $mappingLabel, $tpl) {
+                $penggantianPlaceholder = [];
+                foreach ($mappingLama as $i => $namaLama) {
+                    $namaLama = trim((string) $namaLama);
+                    $namaBaru = trim((string) ($mappingBaru[$i] ?? ''));
+                    if ($namaLama === '' || $namaBaru === '' || $namaLama === $namaBaru) {
+                        continue;
+                    }
+                    if (!preg_match('/^[a-zA-Z0-9_]+$/', $namaBaru)) {
+                        throw new RuntimeException("Nama field \"{$namaBaru}\" tidak valid. Hanya boleh huruf, angka, dan underscore (_), tanpa spasi.");
+                    }
+                    $penggantianPlaceholder[$namaLama] = $namaBaru;
                 }
-                if (!preg_match('/^[a-zA-Z0-9_]+$/', $namaBaru)) {
-                    throw new RuntimeException("Nama field \"{$namaBaru}\" tidak valid. Hanya boleh huruf, angka, dan underscore (_), tanpa spasi.");
-                }
-                $penggantianPlaceholder[$namaLama] = $namaBaru;
-            }
 
-            if (!empty($penggantianPlaceholder)) {
-                renamePlaceholdersInDocx($fullPath, $penggantianPlaceholder);
-            }
-
-            $hasilScanBaru = scanPlaceholdersFromDocx($fullPath);
-            $fieldsBaruDenganLabel = buildFieldsWithDefaultLabels($hasilScanBaru);
-
-            $petaLabelBaru = [];
-            foreach ($mappingBaru as $i => $namaBaru) {
-                $namaBaru = trim((string) $namaBaru);
-                $labelBaru = trim((string) ($mappingLabel[$i] ?? ''));
-                if ($namaBaru !== '' && $labelBaru !== '') {
-                    $petaLabelBaru[$namaBaru] = $labelBaru;
+                if (!empty($penggantianPlaceholder)) {
+                    renamePlaceholdersInDocx($fullPath, $penggantianPlaceholder);
                 }
-            }
-            foreach ($fieldsBaruDenganLabel['fields'] as &$f) {
-                if (isset($petaLabelBaru[$f['field']])) {
-                    $f['label'] = $petaLabelBaru[$f['field']];
-                }
-            }
-            unset($f);
-            foreach ($fieldsBaruDenganLabel['table_fields'] as &$f) {
-                if (isset($petaLabelBaru[$f['field']])) {
-                    $f['label'] = $petaLabelBaru[$f['field']];
-                }
-            }
-            unset($f);
 
-            $pdo->prepare("UPDATE template_master SET fields_json = ? WHERE id = ?")
-                ->execute([json_encode($fieldsBaruDenganLabel, JSON_UNESCAPED_UNICODE), $templateId]);
+                $hasilScanBaru = scanPlaceholdersFromDocx($fullPath);
+                $fieldsBaruDenganLabel = buildFieldsWithDefaultLabels($hasilScanBaru);
+
+                $petaLabelBaru = [];
+                foreach ($mappingBaru as $i => $namaBaru) {
+                    $namaBaru = trim((string) $namaBaru);
+                    $labelBaru = trim((string) ($mappingLabel[$i] ?? ''));
+                    if ($namaBaru !== '' && $labelBaru !== '') {
+                        $petaLabelBaru[$namaBaru] = $labelBaru;
+                    }
+                }
+                foreach ($fieldsBaruDenganLabel['fields'] as &$f) {
+                    if (isset($petaLabelBaru[$f['field']])) {
+                        $f['label'] = $petaLabelBaru[$f['field']];
+                    }
+                }
+                unset($f);
+                foreach ($fieldsBaruDenganLabel['table_fields'] as &$f) {
+                    if (isset($petaLabelBaru[$f['field']])) {
+                        $f['label'] = $petaLabelBaru[$f['field']];
+                    }
+                }
+                unset($f);
+
+                $pdo->prepare("UPDATE template_master SET fields_json = ? WHERE id = ?")
+                    ->execute([json_encode($fieldsBaruDenganLabel, JSON_UNESCAPED_UNICODE), $templateId]);
+
+                if (!empty($penggantianPlaceholder)) {
+                    $berhasil = arp_timpa_konten_drive(
+                        $tpl['drive_file_id'],
+                        $fullPath,
+                        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                    );
+                    if (!$berhasil) {
+                        throw new RuntimeException(arp_drive_last_error());
+                    }
+                }
+            });
         }
 
         $kodeTemplateIds = $_POST['kode_template_id'] ?? [];
@@ -880,7 +899,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
         $kodeIdPost = (int) ($_POST['kode_id'] ?? 0);
         $templateIdPost = (int) ($_POST['template_id'] ?? 0);
         try {
-            $stmt = $pdo->prepare("SELECT k.*, t.id AS template_id, t.file_path, t.format
+            $stmt = $pdo->prepare("SELECT k.*, t.id AS template_id, t.drive_file_id, t.format
                                     FROM kode_surat k
                                     JOIN kode_template kt ON kt.kode_id = k.id AND kt.template_id = ?
                                     JOIN template_master t ON t.id = kt.template_id
@@ -888,11 +907,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
             $stmt->execute([$templateIdPost, $kodeIdPost]);
             $kode = $stmt->fetch();
 
-            if (!$kode || !$kode['file_path']) {
-                throw new RuntimeException("Kombinasi jenis surat & template ini tidak/belum terhubung.");
-            }
-            if (!is_file(BASE_PATH . '/' . $kode['file_path'])) {
-                throw new RuntimeException("File template master tidak ditemukan di storage. Silakan hubungi Admin untuk mengupload ulang template ini.");
+            if (!$kode || !$kode['drive_file_id']) {
+                throw new RuntimeException("Kombinasi jenis surat & template ini tidak/belum terhubung ke Google Drive.");
             }
             if ($kode['format'] !== 'word_pdf') {
                 throw new RuntimeException("Template ini bukan file Word (.docx), tidak bisa digenerate otomatis lewat form ini.");
@@ -903,7 +919,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
             // Kalau template pakai ${no_surat} (format khusus JD+kode/bulan/tahun),
             // pakai format itu SEBAGAI nomor surat -- jangan generate nomor ARP
             // biasa juga, supaya tidak ada dua sistem penomoran berjalan sekaligus.
-            $adaNoSuratKhususPost = in_array('no_surat', scanAutoFieldsFromDocx(BASE_PATH . '/' . $kode['file_path']), true);
+            $adaNoSuratKhususPost = arp_dengan_template_sementara($kode['drive_file_id'], function ($p) {
+                return in_array('no_surat', scanAutoFieldsFromDocx($p), true);
+            });
 
             // Kalau surat ini dibuat dari Invoice (Kuitansi otomatis), nomor urutnya
             // WAJIB mengikuti nomor urut invoice sumbernya -- bukan memakai counter
@@ -1022,7 +1040,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
             ];
 
 
-            $fileHasilRelatif = generateSuratDocx(BASE_PATH . '/' . $kode['file_path'], $dataForm, $items, $nomorSurat, $blocksData, $kode['nama'], null, $ringkasanDisertakan);
+            $fileHasilRelatif = arp_dengan_template_sementara($kode['drive_file_id'], function ($pathTemplateLokal) use ($dataForm, $items, $nomorSurat, $blocksData, $kode, $ringkasanDisertakan) {
+                return generateSuratDocx($pathTemplateLokal, $dataForm, $items, $nomorSurat, $blocksData, $kode['nama'], null, $ringkasanDisertakan);
+            });
 
             // Baca perihal SEBELUM upload, karena file lokal akan dihapus setelahnya.
             $perihalDariWord = extractPerihalFromDocxText(BASE_PATH . '/' . $fileHasilRelatif);
@@ -1453,7 +1473,7 @@ $fields_tabel = [];
 $fields_blok = [];
 $fields_invoice = [];
 if ($active_tab === 'tabPanelBuatSurat' && $kodeIdTerpilih && $templateIdTerpilih) {
-    $stmt = $pdo->prepare("SELECT k.*, t.id AS template_id, t.nama AS nama_template, t.file_path, t.format, t.fields_json
+    $stmt = $pdo->prepare("SELECT k.*, t.id AS template_id, t.nama AS nama_template, t.drive_file_id, t.drive_link, t.format, t.fields_json
                             FROM kode_surat k
                             JOIN kode_template kt ON kt.kode_id = k.id AND kt.template_id = ?
                             JOIN template_master t ON t.id = kt.template_id
@@ -1477,10 +1497,10 @@ if ($active_tab === 'tabPanelBuatSurat' && $kodeIdTerpilih && $templateIdTerpili
     }
 }
 
-$file_template_hilang = $kodeTerpilih && !is_file(BASE_PATH . '/' . $kodeTerpilih['file_path']);
+$file_template_hilang = $kodeTerpilih && empty($kodeTerpilih['drive_file_id']);
 
 $auto_fields_template = ($kodeTerpilih && !$file_template_hilang && $kodeTerpilih['format'] === 'word_pdf')
-    ? scanAutoFieldsFromDocx(BASE_PATH . '/' . $kodeTerpilih['file_path'])
+    ? arp_dengan_template_sementara($kodeTerpilih['drive_file_id'], fn($p) => scanAutoFieldsFromDocx($p))
     : [];
 $ada_total = in_array('total', $auto_fields_template, true);
 $ada_ppn = in_array('ppn', $auto_fields_template, true);
@@ -1638,8 +1658,8 @@ include "../includes/topbar.php";
     <div class="arp-tab-group">
         <div class="arp-tab-nav">
             <button type="button" class="arp-tab-btn<?= $active_tab === 'tabPanelSurat' ? ' active' : '' ?>"
-                data-tab-target="tabPanelSurat" onclick="switchTab('tabPanelSurat', this)">
-                <i class="bi bi-envelope-paper me-1"></i> Surat
+                data-tab-target="tabPanelSuratKeluar" onclick="switchTab('tabPanelSuratKeluar', this)">
+                <i class="bi bi-send-check me-1"></i> Surat Keluar
             </button>
             <button type="button" class="arp-tab-btn<?= $active_tab === 'tabPanelSuratMasuk' ? ' active' : '' ?>"
                 data-tab-target="tabPanelSuratMasuk" onclick="switchTab('tabPanelSuratMasuk', this)">
@@ -3279,7 +3299,7 @@ include "../includes/topbar.php";
                             <?php endif; ?>
                             <?php $no = 1; ?>
                             <?php foreach ($daftar_template as $t): ?>
-                                <?php $fileTemplateAda = is_file(BASE_PATH . '/' . $t['file_path']); ?>
+                                <?php $fileTemplateAda = !empty($t['drive_file_id']); ?>
                                 <tr>
                                     <td><?= $no++; ?></td>
                                     <td>
@@ -3299,11 +3319,10 @@ include "../includes/topbar.php";
                                     <td><?= date('d-m-Y', strtotime($t['created_at'])) ?></td>
                                     <td><?= $t['format'] === 'word_pdf' ? 'Word' : 'PDF' ?></td>
                                     <td>
-                                        <?php if ($fileTemplateAda): ?>
+                                        <?php if (!empty($t['drive_file_id'])): ?>
                                             <span class="badge-success">Aktif</span>
                                         <?php else: ?>
-                                            <span class="badge-danger"
-                                                title="File fisik tidak ditemukan di storage">Hilang</span>
+                                            <span class="badge-danger" title="Belum tersimpan di Drive">Hilang</span>
                                         <?php endif; ?>
                                     </td>
                                     <td class="col-aksi" style="text-align:center;">
@@ -3313,10 +3332,13 @@ include "../includes/topbar.php";
                                                 onclick="bukaModalEditTemplate(<?= (int) $t['id'] ?>)">
                                                 <i class="bi bi-pencil-square"></i>
                                             </button>
-                                            <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
-                                                href="../<?= e($t['file_path']) ?>" download title="Unduh">
-                                                <i class="bi bi-download"></i>
-                                            </a>
+                                            <?php if (!empty($t['drive_file_id'])): ?>
+                                                <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
+                                                    href="https://docs.google.com/document/d/<?= e($t['drive_file_id']) ?>/edit"
+                                                    target="_blank" title="Lihat &amp; Edit Word di Drive">
+                                                    <i class="bi bi-file-earmark-word"></i>
+                                                </a>
+                                            <?php endif; ?>
                                             <form method="POST" action="surat.php" class="d-inline"
                                                 onsubmit="return confirm('Hapus template &quot;<?= e(addslashes($t['nama'])) ?>&quot;? Tindakan ini tidak bisa dibatalkan.');">
                                                 <input type="hidden" name="aksi" value="hapus_template">
@@ -3403,8 +3425,7 @@ include "../includes/topbar.php";
         <div class="arp-modal-header">
             <div>
                 <h5 class="fw-bold mb-0">Edit Template</h5>
-                <small class="text-muted">Ubah nama template, kode surat, jenis surat, deskripsi, dan nama field
-                    placeholder <code>${...}</code> di dalam file Word.</small>
+                <small class="text-muted">Ubah nama template, kode surat, jenis surat, dan deskripsi</small>
             </div>
             <button class="arp-modal-close" onclick="closeModal('modalEditTemplate')">&times;</button>
         </div>
@@ -3417,6 +3438,20 @@ include "../includes/topbar.php";
             <form method="POST" action="surat.php" id="formEditTemplate" style="display:none;">
                 <input type="hidden" name="aksi" value="edit_template">
                 <input type="hidden" name="template_id" id="editTplId" value="">
+
+                <div id="editTplBukaWordWrapper" class="mb-3" style="display:none;">
+                    <a href="#" id="editTplBukaWordLink" target="_blank" class="btn-secondary-custom"
+                        style="display:inline-flex; align-items:center; gap:6px; text-decoration:none;">
+                        <i class="bi bi-file-earmark-word"></i> Lihat &amp; Edit Word di Drive
+                    </a>
+                    <small class="text-secondary text-xs d-block mt-1">
+                        Membuka file asli langsung di Google Docs (mode Word). Perubahan yang Anda simpan di sana
+                        <b>otomatis tersimpan balik</b> ke file yang sama. Untuk mengganti nama field
+                        <code>${...}</code>,
+                        gunakan tabel di bawah lalu klik "Simpan Perubahan".
+                    </small>
+                </div>
+
                 <div class="mb-3">
                     <label class="form-label fw-semibold mb-2">Nama Template *</label>
                     <input type="text" name="nama_template" id="editTplNama" class="form-control-custom" required>
@@ -3430,29 +3465,7 @@ include "../includes/topbar.php";
                 <div id="editTplKodeList" class="mb-3"></div>
                 <p class="text-secondary text-xs mb-3">Mengubah kode/nama di sini akan berlaku untuk SEMUA template
                     lain yang memakai kombinasi kode ini juga (jika ada).</p>
-                <hr>
-                <label class="form-label fw-semibold mb-2 d-block">
-                    Field Placeholder di Dalam Template
-                    <span class="text-secondary fw-normal">(ubah nama field &amp; label tampilan form)</span>
-                </label>
-                <div class="table-responsive-custom mb-2">
-                    <table class="table-custom" id="editTplFieldTable">
-                        <thead>
-                            <tr>
-                                <th>Nama Field Saat Ini</th>
-                                <th>Nama Field Baru</th>
-                                <th>Label di Form</th>
-                            </tr>
-                        </thead>
-                        <tbody id="editTplFieldBody"></tbody>
-                    </table>
-                </div>
-                <p class="text-secondary text-xs mb-3">
-                    Contoh: ubah <code>nama_perusahaan_tujuan</code> jadi <code>nama_perusahaan</code> — sistem akan
-                    otomatis mengganti semua <code>${nama_perusahaan_tujuan}</code> di dalam file Word menjadi
-                    <code>${nama_perusahaan}</code>. Nama field baru hanya boleh huruf, angka, dan underscore
-                    (<code>_</code>), tanpa spasi.
-                </p>
+                
                 <div class="d-flex justify-content-end gap-2 mt-4">
                     <button type="button" class="btn-secondary-custom"
                         onclick="closeModal('modalEditTemplate')">Batal</button>
@@ -3792,6 +3805,15 @@ include "../includes/topbar.php";
                 document.getElementById('editTplNama').value = data.template.nama || '';
                 document.getElementById('editTplDeskripsi').value = data.template.deskripsi || '';
 
+                var wrapperBukaWord = document.getElementById('editTplBukaWordWrapper');
+                var linkBukaWord = document.getElementById('editTplBukaWordLink');
+                if (data.template.drive_file_id) {
+                    linkBukaWord.href = 'https://docs.google.com/document/d/' + data.template.drive_file_id + '/edit';
+                    wrapperBukaWord.style.display = 'block';
+                } else {
+                    wrapperBukaWord.style.display = 'none';
+                }
+
                 var kodeListEl = document.getElementById('editTplKodeList');
                 kodeListEl.innerHTML = '';
                 if (!data.kode_terhubung || data.kode_terhubung.length === 0) {
@@ -3817,34 +3839,7 @@ include "../includes/topbar.php";
                     });
                 }
 
-                var fieldBody = document.getElementById('editTplFieldBody');
-                fieldBody.innerHTML = '';
-                var semuaField = [];
-                (data.fields || []).forEach(function (f) { semuaField.push({ field: f.field, label: f.label, tipe: 'Field' }); });
-                (data.table_fields || []).forEach(function (f) { semuaField.push({ field: f.field, label: f.label, tipe: 'Tabel (item_' + f.field + ')' }); });
-                Object.keys(data.blocks || {}).forEach(function (namaBlok) {
-                    (data.blocks[namaBlok] || []).forEach(function (f) {
-                        semuaField.push({ field: f.field, label: f.label, tipe: 'Blok: ' + namaBlok });
-                    });
-                });
-
-                if (semuaField.length === 0) {
-                    fieldBody.innerHTML = '<tr><td colspan="3" class="text-center text-secondary text-xs py-3">Tidak ada placeholder terdeteksi di template ini.</td></tr>';
-                } else {
-                    semuaField.forEach(function (f) {
-                        var tr = document.createElement('tr');
-                        tr.innerHTML =
-                            '<td>' +
-                            '<code>${' + escapeHtmlText(f.field) + '}</code>' +
-                            '<br><small class="text-secondary">' + escapeHtmlText(f.tipe) + '</small>' +
-                            '<input type="hidden" name="field_lama[]" value="' + escapeHtmlAttr(f.field) + '">' +
-                            '</td>' +
-                            '<td><input type="text" name="field_baru[]" class="form-control-custom field-baru-input" value="' + escapeHtmlAttr(f.field) + '"></td>' +
-                            '<td><input type="text" name="field_label[]" class="form-control-custom field-label-input" value="' + escapeHtmlAttr(f.label) + '" data-label-manual="0"></td>';
-                        fieldBody.appendChild(tr);
-                    });
-                    pasangAutoLabelListener();
-                }
+                
                 formEl.style.display = 'block';
             })
             .catch(function () {

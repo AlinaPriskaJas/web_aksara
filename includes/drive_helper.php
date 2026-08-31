@@ -348,3 +348,106 @@ function arp_hapus_file_drive(string $fileId): bool
     $data = json_decode((string) $response, true);
     return !empty($data['success']);
 }
+
+
+/**
+ * Unduh sebuah file Drive (berdasarkan file_id) ke file sementara lokal.
+ * WAJIB dihapus lagi oleh pemanggil setelah selesai dipakai.
+ */
+function arp_unduh_dari_drive(string $fileId): ?array
+{
+    $config_path = __DIR__ . '/../config/drive_config.php';
+    if (!file_exists($config_path)) {
+        arp_drive_set_last_error('config/drive_config.php belum dibuat.');
+        return null;
+    }
+    $config = require $config_path;
+    if (empty($config['webapp_url']) || empty($config['secret_token'])) {
+        arp_drive_set_last_error('Konfigurasi Drive belum lengkap.');
+        return null;
+    }
+
+    $ch = curl_init($config['webapp_url']);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 60);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query([
+        'token' => $config['secret_token'],
+        'action' => 'download',
+        'file_id' => $fileId,
+    ]));
+    $response = curl_exec($ch);
+    $curl_error = curl_error($ch);
+    curl_close($ch);
+
+    if ($curl_error) {
+        arp_drive_set_last_error('Koneksi gagal saat mengunduh template: ' . $curl_error);
+        return null;
+    }
+
+    $data = json_decode((string) $response, true);
+    if (!$data || empty($data['success'])) {
+        arp_drive_set_last_error('Gagal mengunduh template dari Drive: ' . ($data['message'] ?? substr((string) $response, 0, 300)));
+        return null;
+    }
+
+    $ext = strtolower(pathinfo($data['filename'] ?? 'file.docx', PATHINFO_EXTENSION)) ?: 'docx';
+    $pathSementara = tempnam(sys_get_temp_dir(), 'arp_tpl_') . '.' . $ext;
+    file_put_contents($pathSementara, base64_decode($data['filedata']));
+
+    return [
+        'path' => $pathSementara,
+        'mime_type' => $data['mimetype'] ?? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'filename' => $data['filename'] ?? basename($pathSementara),
+    ];
+}
+
+/**
+ * Timpa isi file Drive yang sudah ada (file_id & link tidak berubah).
+ */
+function arp_timpa_konten_drive(string $fileId, string $pathFileLokalBaru, string $mimeType): bool
+{
+    $config_path = __DIR__ . '/../config/drive_config.php';
+    if (!file_exists($config_path)) {
+        arp_drive_set_last_error('config/drive_config.php belum dibuat.');
+        return false;
+    }
+    $config = require $config_path;
+    if (empty($config['webapp_url']) || empty($config['secret_token'])) {
+        arp_drive_set_last_error('Konfigurasi Drive belum lengkap.');
+        return false;
+    }
+    if (!is_file($pathFileLokalBaru)) {
+        arp_drive_set_last_error('File hasil edit tidak ditemukan di server.');
+        return false;
+    }
+
+    $ch = curl_init($config['webapp_url']);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 60);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query([
+        'token' => $config['secret_token'],
+        'action' => 'update_content',
+        'file_id' => $fileId,
+        'filename' => basename($pathFileLokalBaru),
+        'mimetype' => $mimeType,
+        'filedata' => base64_encode(file_get_contents($pathFileLokalBaru)),
+    ]));
+    $response = curl_exec($ch);
+    $curl_error = curl_error($ch);
+    curl_close($ch);
+
+    if ($curl_error) {
+        arp_drive_set_last_error('Koneksi gagal saat menyimpan perubahan template: ' . $curl_error);
+        return false;
+    }
+    $data = json_decode((string) $response, true);
+    if (!$data || empty($data['success'])) {
+        arp_drive_set_last_error('Gagal menyimpan perubahan template ke Drive: ' . ($data['message'] ?? substr((string) $response, 0, 300)));
+        return false;
+    }
+    return true;
+}

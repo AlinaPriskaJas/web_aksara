@@ -14,6 +14,30 @@ if (!defined('SURAT_MASUK_DIR')) {
     define('SURAT_MASUK_DIR', __DIR__ . '/../storage/surat_masuk/');
 }
 
+
+/**
+ * Ambil salinan lokal SEMENTARA dari template yang tersimpan di Drive,
+ * jalankan $callback($pathLokal, $mimeType), lalu file sementara otomatis
+ * dihapus -- apa pun hasilnya (sukses/exception).
+ *
+ * @throws RuntimeException kalau gagal mengunduh dari Drive
+ */
+function arp_dengan_template_sementara(string $driveFileId, callable $callback)
+{
+    $unduhan = arp_unduh_dari_drive($driveFileId);
+    if (!$unduhan) {
+        throw new RuntimeException('Gagal mengambil template dari Google Drive: ' . arp_drive_last_error());
+    }
+    try {
+        return $callback($unduhan['path'], $unduhan['mime_type']);
+    } finally {
+        if (is_file($unduhan['path'])) {
+            @unlink($unduhan['path']);
+        }
+    }
+}
+
+
 // ==========================================
 // RESOLVE NOMOR SURAT: bagian ANGKA URUT saja yang bisa diisi manual
 // oleh user (mis. "015"); bagian kode jenis / "ARP" / bulan romawi /
@@ -1560,10 +1584,10 @@ function uploadFileKeStorage(array $file, string $direktoriTujuanAbsolut, string
 // ==========================================
 // UPLOAD FILE TEMPLATE MASTER (.docx / .pdf) -> storage/templates/
 // ==========================================
-function uploadTemplateFile(array $file): string
+/* function uploadTemplateFile(array $file): string
 {
     return uploadFileKeStorage($file, TEMPLATE_DIR, 'storage/templates/', ['docx', 'pdf']);
-}
+} */
 
 // ==========================================
 // UPLOAD LAMPIRAN SURAT MASUK -> storage/surat_masuk/
@@ -1959,41 +1983,31 @@ function muatFieldsTemplateLive(PDO $pdo, array $kodeRow): array
         'invoice_fields' => $decodedLama['invoice_fields'] ?? [],
     ];
 
-    if (empty($kodeRow['file_path']) || ($kodeRow['format'] ?? '') !== 'word_pdf') {
+    if (empty($kodeRow['drive_file_id']) || ($kodeRow['format'] ?? '') !== 'word_pdf') {
         return $fallback;
     }
 
-    $fullPath = BASE_PATH . '/' . $kodeRow['file_path'];
-    if (!is_file($fullPath)) {
+    try {
+        return arp_dengan_template_sementara($kodeRow['drive_file_id'], function ($fullPath) use ($pdo, $kodeRow, $decodedLama) {
+            $hasilScanBaru = scanPlaceholdersFromDocx($fullPath);
+            $digabung = mergeFieldsPreservingLabels($hasilScanBaru, $decodedLama);
+            $digabung['blocks'] = buildFieldsWithDefaultLabels($hasilScanBaru)['blocks'];
+
+            $jsonBaru = json_encode($digabung, JSON_UNESCAPED_UNICODE);
+            if (!empty($kodeRow['template_id']) && $jsonBaru !== ($kodeRow['fields_json'] ?? null)) {
+                try {
+                    $pdo->prepare("UPDATE template_master SET fields_json = ? WHERE id = ?")
+                        ->execute([$jsonBaru, (int) $kodeRow['template_id']]);
+                } catch (\Throwable $e) {
+                }
+            }
+
+            return $digabung;
+        });
+    } catch (\Throwable $e) {
+        // Drive lagi bermasalah -- pakai cache lama, jangan bikin halaman error total.
         return $fallback;
     }
-
-    // Scan langsung dari file fisik saat ini (bukan dari cache DB).
-    // PENTING: $hasilScanBaru['fields'] & ['table_fields'] di sini masih
-    // berupa array NAMA FIELD POLOS (string), BUKAN array ['field'=>,'label'=>].
-    // mergeFieldsPreservingLabels() butuh bentuk polos ini karena dipakai
-    // sebagai key saat mencocokkan dengan label lama.
-    $hasilScanBaru = scanPlaceholdersFromDocx($fullPath);
-
-    $digabung = mergeFieldsPreservingLabels($hasilScanBaru, $decodedLama);
-
-    // Blok tidak ditangani oleh mergeFieldsPreservingLabels, jadi labelnya
-    // dibangun terpisah lewat buildFieldsWithDefaultLabels() (blok selalu
-    // ikut hasil scan terbaru, tidak mempertahankan label lama).
-    $digabung['blocks'] = buildFieldsWithDefaultLabels($hasilScanBaru)['blocks'];
-
-    // Tulis balik ke DB kalau memang berubah, supaya cache tetap sinkron.
-    $jsonBaru = json_encode($digabung, JSON_UNESCAPED_UNICODE);
-    if (!empty($kodeRow['template_id']) && $jsonBaru !== ($kodeRow['fields_json'] ?? null)) {
-        try {
-            $pdo->prepare("UPDATE template_master SET fields_json = ? WHERE id = ?")
-                ->execute([$jsonBaru, (int) $kodeRow['template_id']]);
-        } catch (\Throwable $e) {
-            // Kalau gagal update, abaikan -- form tetap pakai hasil scan live ini.
-        }
-    }
-
-    return $digabung;
 }
 
 // ==========================================

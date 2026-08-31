@@ -117,7 +117,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
         $kodeIdPost = (int) ($_POST['kode_id'] ?? 0);
         $templateIdPost = (int) ($_POST['template_id'] ?? 0);
         try {
-            $stmtK = $pdo->prepare("SELECT k.*, t.id AS template_id, t.file_path, t.format
+            $stmtK = $pdo->prepare("SELECT k.*, t.id AS template_id, t.drive_file_id, t.format
                                     FROM kode_surat k
                                     JOIN kode_template kt ON kt.kode_id = k.id AND kt.template_id = ?
                                     JOIN template_master t ON t.id = kt.template_id
@@ -125,18 +125,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
             $stmtK->execute([$templateIdPost, $kodeIdPost]);
             $kode = $stmtK->fetch();
 
-            if (!$kode || !$kode['file_path']) {
-                throw new RuntimeException("Kombinasi jenis surat & template ini tidak/belum terhubung.");
-            }
-            if (!is_file(BASE_PATH . '/' . $kode['file_path'])) {
-                throw new RuntimeException("File template master tidak ditemukan di storage.");
+            if (!$kode || !$kode['drive_file_id']) {
+                throw new RuntimeException("Kombinasi jenis surat & template ini tidak/belum terhubung ke Google Drive.");
             }
             if ($kode['format'] !== 'word_pdf') {
                 throw new RuntimeException("Template ini bukan file Word (.docx), tidak bisa digenerate otomatis lewat form ini.");
             }
 
             $tandaiRevisiBaru = isset($_POST['tandai_revisi']) || $statusDitolakSaatDibuka;
-            $adaNoSuratKhususPost = in_array('no_surat', scanAutoFieldsFromDocx(BASE_PATH . '/' . $kode['file_path']), true);
+            $adaNoSuratKhususPost = arp_dengan_template_sementara($kode['drive_file_id'], function ($p) {
+                return in_array('no_surat', scanAutoFieldsFromDocx($p), true);
+            });
             $ikutiNomorInvoice = isset($_POST['ikuti_nomor_invoice']);
             $tujuanManual = trim($_POST['tujuan_manual'] ?? '');      // ⬅ TAMBAHKAN
             $perihalManual = trim($_POST['perihal_manual'] ?? '');    // ⬅ TAMBAHKAN
@@ -262,17 +261,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
                 'sisa_pelunasan' => isset($_POST['sertakan_sisa_pelunasan']),
             ];
 
-            $fileHasilBaruLokal = generateSuratDocx(
-                BASE_PATH . '/' . $kode['file_path'],
-                $dataForm,
-                $items,
-                $nomorBaru,
-                $blocksData,
-                $kode['nama'],
-                $tujuanManual !== '' ? $tujuanManual : null,
-                $ringkasanDisertakan,
-                $revisiKeDipakai
-            );
+            $fileHasilBaruLokal = arp_dengan_template_sementara($kode['drive_file_id'], function ($pathTemplateLokal) use (
+                $dataForm, $items, $nomorBaru, $blocksData, $kode, $tujuanManual, $ringkasanDisertakan, $revisiKeDipakai
+            ) {
+                return generateSuratDocx(
+                    $pathTemplateLokal,
+                    $dataForm,
+                    $items,
+                    $nomorBaru,
+                    $blocksData,
+                    $kode['nama'],
+                    $tujuanManual !== '' ? $tujuanManual : null,
+                    $ringkasanDisertakan,
+                    $revisiKeDipakai
+                );
+            });
 
             $perihalDariWord = extractPerihalFromDocxText(BASE_PATH . '/' . $fileHasilBaruLokal);
 
@@ -459,7 +462,7 @@ $fields_tabel = [];
 $fields_blok = [];
 $fields_invoice = [];
 if ($kodeIdTerpilih && $templateIdTerpilih) {
-    $stmtF = $pdo->prepare("SELECT k.*, t.id AS template_id, t.nama AS nama_template, t.file_path, t.format, t.fields_json
+    $stmtF = $pdo->prepare("SELECT k.*, t.id AS template_id, t.nama AS nama_template, t.drive_file_id, t.drive_link, t.format, t.fields_json
                             FROM kode_surat k
                             JOIN kode_template kt ON kt.kode_id = k.id AND kt.template_id = ?
                             JOIN template_master t ON t.id = kt.template_id
@@ -483,10 +486,10 @@ if ($kodeIdTerpilih && $templateIdTerpilih) {
     }
 }
 
-$file_template_hilang = $kodeTerpilih && !is_file(BASE_PATH . '/' . $kodeTerpilih['file_path']);
+$file_template_hilang = $kodeTerpilih && empty($kodeTerpilih['drive_file_id']);
 
 $auto_fields_template = ($kodeTerpilih && !$file_template_hilang && $kodeTerpilih['format'] === 'word_pdf')
-    ? scanAutoFieldsFromDocx(BASE_PATH . '/' . $kodeTerpilih['file_path'])
+    ? arp_dengan_template_sementara($kodeTerpilih['drive_file_id'], fn($p) => scanAutoFieldsFromDocx($p))
     : [];
 $ada_total = in_array('total', $auto_fields_template, true);
 $ada_ppn = in_array('ppn', $auto_fields_template, true);
