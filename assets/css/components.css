@@ -286,6 +286,25 @@
   color: #c0392b;
 }
 
+/* ==========================================================================
+   Box info statis (TIDAK auto-hide) — dipakai untuk box "Pilih Invoice
+   Sumber" di form Buat Surat Kuitansi. Sengaja TIDAK memakai class
+   .alert-success-custom supaya tidak ikut ter-auto-hide 3 detik oleh
+   script.js (yang mentarget class itu untuk flash message).
+   ========================================================================== */
+.arp-static-info-box {
+  padding: 16px 20px;
+  border-radius: var(--radius);
+  margin-bottom: var(--margin);
+  border: 1px solid rgba(46, 204, 113, 0.2);
+  background-color: rgba(46, 204, 113, 0.1);
+  color: #27ae60;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 0.9rem;
+}
+
 /* Custom Tables */
 .table-responsive-custom {
   width: 100%;

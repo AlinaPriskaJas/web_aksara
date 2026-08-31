@@ -137,6 +137,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
 
             $tandaiRevisiBaru = isset($_POST['tandai_revisi']) || $statusDitolakSaatDibuka;
             $adaNoSuratKhususPost = in_array('no_surat', scanAutoFieldsFromDocx(BASE_PATH . '/' . $kode['file_path']), true);
+            $ikutiNomorInvoice = isset($_POST['ikuti_nomor_invoice']);
+            $tujuanManual = trim($_POST['tujuan_manual'] ?? '');      // ⬅ TAMBAHKAN
+            $perihalManual = trim($_POST['perihal_manual'] ?? '');    // ⬅ TAMBAHKAN
 
             if ($tandaiRevisiBaru) {
                 // REVISI: nomor surat WAJIB tetap sama persis dengan surat asli/family-nya,
@@ -229,12 +232,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
                 }
             }
 
-            // Perihal & Tujuan sekarang PRIORITAS diambil dari input manual di form
-            // edit (perihal_manual / tujuan_manual). Kalau dikosongkan, baru fallback
-            // ke hasil scan otomatis dari Word / data dinamis seperti sebelumnya.
-            $perihalManual = trim($_POST['perihal_manual'] ?? '');
-            $tujuanManual = trim($_POST['tujuan_manual'] ?? '');
-
+            // ==========================================
+            // FIELD ${invoice_...} DARI INVOICE SUMBER -- generik, di-refresh
+            // setiap kali surat ini disimpan/direvisi. Tidak menimpa field
+            // milik surat itu sendiri.
+            // ==========================================
+            $invoiceSumberId = (int) ($_POST['invoice_sumber_id'] ?? 0);
+            $dataInvoiceSumber = null;
+            if ($invoiceSumberId > 0) {
+                $dataInvoiceSumber = muatDataInvoiceUntukKuitansi($pdo, $invoiceSumberId);
+                if (!$dataInvoiceSumber) {
+                    throw new RuntimeException("Invoice sumber tidak ditemukan / tidak valid.");
+                }
+                $fieldInvoice = mapFieldInvoiceKeTemplate($dataInvoiceSumber);
+                $dataForm = array_merge($dataForm, $fieldInvoice);
+                $dataFormMentah = array_merge($dataFormMentah, $fieldInvoice);
+                $dataFormMentah['invoice_sumber_id'] = $invoiceSumberId;
+                $dataFormMentah['invoice_sumber_nomor'] = $dataInvoiceSumber['nomor_invoice'];
+                $dataFormMentah['ikuti_nomor_invoice'] = $ikutiNomorInvoice ? '1' : '0';
+            }
 
             $ringkasanDisertakan = [
                 'ppn' => isset($_POST['sertakan_ppn']),
@@ -242,8 +258,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
                 'diskon' => isset($_POST['sertakan_diskon']),
                 'grand_total' => isset($_POST['sertakan_grand_total']),
                 'dp' => isset($_POST['sertakan_dp']),
-                'total_bayar' => isset($_POST['sertakan_total_bayar']),   // ⬅ BARU
-                'sisa_pelunasan' => isset($_POST['sertakan_sisa_pelunasan']),   // ⬅ BARU
+                'total_bayar' => isset($_POST['sertakan_total_bayar']),
+                'sisa_pelunasan' => isset($_POST['sertakan_sisa_pelunasan']),
             ];
 
             $fileHasilBaruLokal = generateSuratDocx(
@@ -287,6 +303,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
                 ? $perihalManual
                 : ($perihalDariWord
                     ?? $dataForm['perihal']
+                    ?? ($dataInvoiceSumber['perihal_invoice'] ?? null)
                     ?? ($kode['nama'] ?? '-'));
 
             $tujuanSimpan = $tujuanManual !== ''
@@ -440,6 +457,7 @@ $kodeTerpilih = null;
 $fields_dinamis = [];
 $fields_tabel = [];
 $fields_blok = [];
+$fields_invoice = [];
 if ($kodeIdTerpilih && $templateIdTerpilih) {
     $stmtF = $pdo->prepare("SELECT k.*, t.id AS template_id, t.nama AS nama_template, t.file_path, t.format, t.fields_json
                             FROM kode_surat k
@@ -454,6 +472,7 @@ if ($kodeIdTerpilih && $templateIdTerpilih) {
         $fields_dinamis = $hasilFields['fields'];
         $fields_tabel = $hasilFields['table_fields'];
         $fields_blok = $hasilFields['blocks'];
+        $fields_invoice = $hasilFields['invoice_fields'] ?? [];
 
         if (defined('FIELD_OTOMATIS_SISTEM')) {
             $fields_dinamis = array_values(array_filter(
@@ -789,6 +808,184 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
                             </small>
                         </div>
                     </div>
+
+                    <?php
+                    $butuhInvoiceSumber = !empty($fields_invoice);
+                    // Prioritaskan invoice yang baru dikirim lewat POST (mis. saat "Update Preview")
+// dibanding data lama tersimpan, supaya pilihan tidak balik ke versi lama.
+                    $invoiceSumberIdTersimpan = (int) ($_POST['invoice_sumber_id'] ?? ($isiDataAsli['invoice_sumber_id'] ?? 0));
+                    $ikutiNomorInvoiceChecked = $isPostEditSurat
+                        ? isset($_POST['ikuti_nomor_invoice'])
+                        : (bool) ($isiDataAsli['ikuti_nomor_invoice'] ?? false);
+                    ?>
+
+                    <?php if ($butuhInvoiceSumber): ?>
+                        <div class="arp-static-info-box text-xs mb-3" style="position:relative;">
+                            <i class="bi bi-link-45deg"></i>
+                            <div style="width:100%;">
+                                <label class="form-label fw-semibold mb-2 d-block">Pilih Invoice Sumber *</label>
+                                <input type="text" class="form-control-custom" id="cari-invoice-sumber" autocomplete="off"
+                                    placeholder="Ketik nomor surat atau nama tujuan invoice..." required
+                                    <?= $invoiceSumberIdTersimpan > 0 ? 'readonly' : '' ?>>
+                                <input type="hidden" name="invoice_sumber_id" id="input-invoice-sumber-id"
+                                    value="<?= (int) $invoiceSumberIdTersimpan ?>">
+                                <?php if (!$ada_no_surat_khusus): ?>
+                                    <label class="d-flex align-items-center gap-2 mt-2 text-xs fw-semibold" style="cursor:pointer;">
+                                        <input type="checkbox" name="ikuti_nomor_invoice" id="checkbox-ikuti-nomor-invoice"
+                                            value="1" <?= $ikutiNomorInvoiceChecked ? 'checked' : '' ?>>
+                                        Nomor surat ini mengikuti nomor urut invoice sumber
+                                    </label>
+                                <?php endif; ?>
+                                <small class="text-secondary text-xs d-block mt-2">
+                                    Field <code>${invoice_...}</code> di template (nomor, tanggal, nama perusahaan,
+                                    grand total, total bayar, terbilang, dst) akan otomatis di-refresh dari invoice
+                                    yang dipilih di sini saat perubahan disimpan.
+                                    <?= $invoiceSumberIdTersimpan > 0 ? ' Invoice sumber sudah terkunci dan tidak dapat diubah.' : '' ?>
+                                </small>
+                                <div class="text-xs fw-semibold mt-2" id="info-grand-total-kuitansi"></div>
+                            </div>
+                        </div>
+                        <script>
+                            (function () {
+                                var inputCari = document.getElementById('cari-invoice-sumber');
+                                var hiddenId = document.getElementById('input-invoice-sumber-id');
+                                var infoTotal = document.getElementById('info-grand-total-kuitansi');
+                                var idTersimpan = <?= json_encode($invoiceSumberIdTersimpan) ?>;
+                                if (!inputCari) return;
+
+                                var daftarInvoice = [];
+                                var boxSaran = null;
+                                var timerCariInvoice = null;
+
+                                function escapeHtmlInv(str) {
+                                    return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                                }
+
+                                function tutupSaranInvoice() {
+                                    if (boxSaran) { boxSaran.remove(); boxSaran = null; }
+                                }
+
+                                function posisikanBoxInvoice(box) {
+                                    var rect = inputCari.getBoundingClientRect();
+                                    box.style.left = (rect.left + window.scrollX) + 'px';
+                                    box.style.top = (rect.bottom + window.scrollY + 4) + 'px';
+                                    box.style.width = rect.width + 'px';
+                                }
+
+                                function tampilkanInfoInvoice(data) {
+                                    if (data.error) { alert(data.error); return; }
+                                    if (infoTotal) {
+                                        infoTotal.textContent = 'Dari invoice ' + data.nomor_invoice
+                                            + ' — Tanggal: ' + (data.tanggal_invoice || '-')
+                                            + ' — Grand Total: ' + data.grand_total_format
+                                            + ' — Total Bayar: ' + data.total_bayar_format
+                                            + ' — Terbilang: ' + data.terbilang;
+                                    }
+                                }
+
+                                function pilihInvoice(inv) {
+                                    hiddenId.value = inv.id;
+                                    inputCari.value = inv.nomor + ' — ' + (inv.tujuan || '-');
+                                    inputCari.dataset.justPicked = '1';
+                                    tutupSaranInvoice();
+
+                                    fetch('surat.php?ajax=data_invoice_kuitansi&invoice_id=' + encodeURIComponent(inv.id))
+                                        .then(function (res) { return res.json(); })
+                                        .then(tampilkanInfoInvoice);
+                                }
+
+                                function tampilkanSaranInvoice(daftar) {
+                                    tutupSaranInvoice();
+                                    var box = document.createElement('div');
+                                    box.className = 'arp-autocomplete-box';
+                                    box.style.cssText = 'position:absolute; z-index:2000; background:#fff;' +
+                                        'border:1px solid var(--border-color,#e2e8f0); border-radius:8px;' +
+                                        'box-shadow:0 8px 20px rgba(0,0,0,0.12);' +
+                                        'max-height:220px; overflow-y:auto; font-size:0.85rem;';
+                                    document.body.appendChild(box);
+                                    posisikanBoxInvoice(box);
+                                    boxSaran = box;
+
+                                    if (!daftar.length) {
+                                        box.innerHTML = '<div style="padding:10px 14px; color:var(--text-secondary,#64748b);">Tidak ada invoice cocok ditemukan.</div>';
+                                        return;
+                                    }
+
+                                    daftar.forEach(function (inv) {
+                                        var item = document.createElement('div');
+                                        item.style.cssText = 'padding:10px 14px; cursor:pointer; border-bottom:1px solid #f1f5f9;';
+                                        item.innerHTML = '<div style="font-weight:600; color:var(--text-primary,#1e293b); font-family:monospace;">' +
+                                            escapeHtmlInv(inv.nomor) + '</div>' +
+                                            '<div style="color:var(--text-secondary,#64748b); font-size:0.78rem;">' +
+                                            escapeHtmlInv(inv.tujuan || '-') + ' &middot; ' + escapeHtmlInv(inv.status) + '</div>';
+                                        item.addEventListener('mouseenter', function () { item.style.background = '#f8fafc'; });
+                                        item.addEventListener('mouseleave', function () { item.style.background = '#fff'; });
+                                        item.addEventListener('mousedown', function (e) {
+                                            e.preventDefault();
+                                            pilihInvoice(inv);
+                                            inputCari.blur();
+                                        });
+                                        box.appendChild(item);
+                                    });
+                                }
+
+                                function cariInvoiceLokal(kata) {
+                                    kata = kata.trim().toLowerCase();
+                                    if (kata === '') return daftarInvoice;
+                                    return daftarInvoice.filter(function (inv) {
+                                        return (inv.nomor || '').toLowerCase().indexOf(kata) !== -1 ||
+                                            (inv.tujuan || '').toLowerCase().indexOf(kata) !== -1 ||
+                                            (inv.perihal || '').toLowerCase().indexOf(kata) !== -1;
+                                    });
+                                }
+
+                                fetch('surat.php?ajax=daftar_invoice')
+                                    .then(function (res) { return res.json(); })
+                                    .then(function (daftar) {
+                                        daftarInvoice = daftar || [];
+                                        if (idTersimpan) {
+                                            var inv = daftarInvoice.find(function (x) { return parseInt(x.id, 10) === idTersimpan; });
+                                            if (inv) {
+                                                inputCari.value = inv.nomor + ' — ' + (inv.tujuan || '-');
+                                                inputCari.dataset.justPicked = '1';
+                                            }
+                                            fetch('surat.php?ajax=data_invoice_kuitansi&invoice_id=' + idTersimpan)
+                                                .then(function (res) { return res.json(); })
+                                                .then(tampilkanInfoInvoice);
+                                        }
+                                    });
+
+                                inputCari.addEventListener('input', function () {
+                                    hiddenId.value = '';
+                                    if (infoTotal) infoTotal.textContent = '';
+                                    if (inputCari.dataset.justPicked === '1') {
+                                        inputCari.dataset.justPicked = '0';
+                                        tutupSaranInvoice();
+                                        return;
+                                    }
+                                    clearTimeout(timerCariInvoice);
+
+                                    var kataKunci = inputCari.value.trim();
+                                    if (kataKunci === '') {
+                                        tutupSaranInvoice();
+                                        return;
+                                    }
+
+                                    timerCariInvoice = setTimeout(function () {
+                                        tampilkanSaranInvoice(cariInvoiceLokal(kataKunci));
+                                    }, 200);
+                                });
+
+                                inputCari.addEventListener('blur', function () {
+                                    setTimeout(tutupSaranInvoice, 150);
+                                });
+
+                                window.addEventListener('scroll', function () {
+                                    if (boxSaran) posisikanBoxInvoice(boxSaran);
+                                }, true);
+                            })();
+                        </script>
+                    <?php endif; ?>
 
 
 

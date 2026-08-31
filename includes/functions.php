@@ -338,6 +338,25 @@ const KOLOM_SUBTOTAL = 'item_sub_total';    // subtotal per baris, dihitung otom
 // - total_alat : untuk tabel item bertipe kuantitas saja (tanpa harga), cth "13 Unit"
 const FIELD_OTOMATIS_SISTEM = ['nomor', 'nomor_surat', 'no_surat', 'total', 'ppn', 'pph_23', 'diskon', 'diskon_persen', 'total_bayar', 'terbilang', 'total_alat', 'grand_total', 'down_payment', 'down_payment_persen', 'sisa_pelunasan'];
 
+const PREFIX_INVOICE = 'invoice_';
+
+function mapFieldInvoiceKeTemplate(array $dataInvoice): array
+{
+    return [
+        'invoice_nomor' => $dataInvoice['nomor_invoice'] ?? '-',
+        'invoice_tanggal' => !empty($dataInvoice['tanggal_invoice'])
+            ? formatTanggalIndonesia($dataInvoice['tanggal_invoice'])
+            : '-',
+        'invoice_perihal' => $dataInvoice['perihal_invoice'] ?? '-',
+        'invoice_nama_perusahaan' => $dataInvoice['nama_perusahaan'] ?? '-',
+        'invoice_item_deskripsi' => $dataInvoice['item_deskripsi'] ?? '-',
+        'invoice_nomor_pesanan' => $dataInvoice['nomor_pesanan'] ?? '-',
+        'invoice_grand_total' => $dataInvoice['grand_total_format'] ?? formatRupiah(0),
+        'invoice_total_bayar' => $dataInvoice['total_bayar_format'] ?? formatRupiah(0),
+        'invoice_terbilang' => $dataInvoice['terbilang'] ?? (terbilang(0) . ' Rupiah'),
+    ];
+}
+
 // ==========================================
 // PENANDA BLOK LIST BERULANG (BUKAN tabel Word), cth di dalam .docx:
 // ${blok_pemeriksa}
@@ -348,6 +367,231 @@ const FIELD_OTOMATIS_SISTEM = ['nomor', 'nomor_surat', 'no_surat', 'total', 'ppn
 // dari item_... + cloneRow -- blok ini pakai cloneBlock()).
 // ==========================================
 const PREFIX_BLOK = 'blok_';
+
+
+// ==========================================
+// HITUNG RINGKASAN TOTAL (Total, Diskon, PPN, PPH23, Grand Total, DP,
+// Total Bayar, Sisa Pelunasan, Terbilang) DARI SATU SET ITEMS.
+// Rumus sama persis dengan yang dipakai generateSuratDocx(), tapi
+// dibungkus jadi fungsi terpisah supaya bisa dipakai ULANG di luar proses
+// generate docx -- misalnya untuk menghitung ulang Grand Total & Terbilang
+// sebuah INVOICE yang sudah tersimpan (dipakai saat membuat Kuitansi
+// otomatis dari invoice tsb).
+// ==========================================
+function hitungRingkasanTotalSurat(array $items, array $ringkasanDisertakan = [], $diskonPersenInput = 0, $dpPersenInput = 0): array
+{
+    $sertakanPpn = $ringkasanDisertakan['ppn'] ?? true;
+    $sertakanPph23 = $ringkasanDisertakan['pph_23'] ?? true;
+    $sertakanDiskon = $ringkasanDisertakan['diskon'] ?? true;
+    $sertakanDp = $ringkasanDisertakan['dp'] ?? true;
+    $sertakanSisaPelunasan = $ringkasanDisertakan['sisa_pelunasan'] ?? true;
+
+    $totalSemuaBaris = 0.0;
+    $adaSubtotalOtomatis = false;
+
+    foreach ($items as $item) {
+        $qty = null;
+        $harga = null;
+        $adaKolomQty = false;
+        foreach ($item as $namaKolom => $nilai) {
+            if (preg_match('/qty|jumlah/i', (string) $namaKolom)) {
+                $adaKolomQty = true;
+                if ($qty === null) {
+                    $qty = parseAngka($nilai);
+                }
+            }
+            if ($harga === null && preg_match('/harga/i', (string) $namaKolom)) {
+                $harga = parseAngka($nilai);
+            }
+        }
+        $subTotalBaris = null;
+        if ($harga !== null) {
+            if ($qty !== null) {
+                $subTotalBaris = $qty * $harga;
+            } elseif (!$adaKolomQty) {
+                $subTotalBaris = $harga;
+            }
+        }
+        if ($subTotalBaris !== null) {
+            $totalSemuaBaris += $subTotalBaris;
+            $adaSubtotalOtomatis = true;
+        }
+    }
+
+    $hasil = [
+        'ada_subtotal' => $adaSubtotalOtomatis,
+        'total' => 0.0,
+        'diskon_persen' => 0.0,
+        'diskon' => 0.0,
+        'ppn' => 0.0,
+        'pph_23' => 0.0,
+        'grand_total' => 0.0,
+        'down_payment_persen' => 0.0,
+        'down_payment' => 0.0,
+        'total_bayar' => 0.0,
+        'sisa_pelunasan' => 0.0,
+    ];
+
+    if (!$adaSubtotalOtomatis) {
+        return $hasil;
+    }
+
+    $hasil['total'] = $totalSemuaBaris;
+
+    $diskonPersen = $sertakanDiskon ? (float) $diskonPersenInput : 0.0;
+    $diskonNominal = $sertakanDiskon ? round($totalSemuaBaris * ($diskonPersen / 100)) : 0.0;
+    $hasil['diskon_persen'] = $diskonPersen;
+    $hasil['diskon'] = $diskonNominal;
+
+    $dasarPajak = ($sertakanDiskon && $diskonNominal > 0) ? ($totalSemuaBaris - $diskonNominal) : $totalSemuaBaris;
+
+    $ppn = $sertakanPpn ? round($dasarPajak * 0.11) : 0;
+    $pph = $sertakanPph23 ? round($dasarPajak * 0.02) : 0;
+    $hasil['ppn'] = $ppn;
+    $hasil['pph_23'] = $pph;
+
+    $grandTotal = $totalSemuaBaris + $ppn - $pph - $diskonNominal;
+    $hasil['grand_total'] = $grandTotal;
+
+    $dpPersen = $sertakanDp ? (float) $dpPersenInput : 0.0;
+    $dpNominal = $sertakanDp ? round($grandTotal * ($dpPersen / 100)) : 0.0;
+    $hasil['down_payment_persen'] = $dpPersen;
+    $hasil['down_payment'] = $dpNominal;
+
+    $totalBayar = ($sertakanDp && $dpNominal > 0) ? ($grandTotal - $dpNominal) : $grandTotal;
+    $hasil['total_bayar'] = $totalBayar;
+
+    $sisaPelunasan = $grandTotal - $dpNominal;
+    $hasil['sisa_pelunasan'] = $sertakanSisaPelunasan ? $sisaPelunasan : $sisaPelunasan;
+
+    return $hasil;
+}
+
+// ==========================================
+// AMBIL DATA DARI SATU SURAT INVOICE (yang SUDAH tersimpan di tabel surat)
+// UNTUK DIPAKAI SEBAGAI SUMBER OTOMATIS SAAT MEMBUAT KUITANSI.
+// Tidak menyentuh berkas Word invoice sama sekali -- murni membaca ulang
+// isi_data (JSON) yang tersimpan saat invoice itu dibuat/diedit, lalu
+// menghitung ulang Grand Total & Terbilang-nya (nilai hasil hitung TIDAK
+// disimpan mentah di isi_data, hanya input mentahnya saja yang disimpan).
+// ==========================================
+function muatDataInvoiceUntukKuitansi(PDO $pdo, int $invoiceSuratId): ?array
+{
+    $stmt = $pdo->prepare("
+        SELECT s.*, k.nama AS jenis_surat_nama
+        FROM surat s
+        JOIN kode_surat k ON k.id = s.kode_id
+        WHERE s.id = ? AND s.arah = 'Keluar'
+    ");
+    $stmt->execute([$invoiceSuratId]);
+    $invoice = $stmt->fetch();
+    if (!$invoice) {
+        return null;
+    }
+
+    $isiData = json_decode($invoice['isi_data'] ?? '', true) ?: [];
+    $items = $isiData['__items'] ?? [];
+    $ringkasan = $isiData['__ringkasan'] ?? [];
+    $diskonPersenInput = parseAngka($isiData['diskon_input'] ?? '0') ?? 0.0;
+    $dpPersenInput = parseAngka($isiData['dp_input'] ?? '0') ?? 0.0;
+
+    $hitung = hitungRingkasanTotalSurat($items, $ringkasan, $diskonPersenInput, $dpPersenInput);
+
+    // ==========================================
+    // TENTUKAN NILAI FINAL UNTUK KUITANSI, mengikuti centangan di
+    // invoice SUMBER-nya (bukan checkbox kuitansi, karena form Kuitansi
+    // memang tidak menampilkan checkbox ini):
+    //  - "Sertakan Total Bayar" dicentang -> pakai Total Bayar
+    //  - kalau tidak, tapi "Sertakan Grand Total" dicentang -> pakai Grand Total
+    //  - kalau KEDUANYA dicentang -> FOKUS ke Total Bayar
+    //  - kalau tidak ada satupun -> fallback ke Grand Total
+    // Nilai ini dipakai untuk MENGISI ${grand_total} MAUPUN ${total_bayar}
+    // di template Kuitansi, jadi berapa pun nama placeholder yang dipakai
+    // template, hasilnya tetap benar & konsisten.
+    // ==========================================
+    $sertakanTotalBayarInvoice = $ringkasan['total_bayar'] ?? true;
+    $sertakanGrandTotalInvoice = $ringkasan['grand_total'] ?? true;
+
+    $nilaiFinal = $sertakanTotalBayarInvoice
+        ? $hitung['total_bayar']
+        : ($sertakanGrandTotalInvoice ? $hitung['grand_total'] : $hitung['grand_total']);
+
+    // Nama perusahaan: coba beberapa nama field yang lazim dipakai template
+    // invoice, fallback ke kolom 'tujuan' pada baris surat invoice-nya.
+    $namaPerusahaan = '-';
+    foreach (['nama_perusahaan', 'nama_perusahaan_tujuan', 'instansi_tujuan', 'tujuan'] as $kandidat) {
+        if (!empty($isiData[$kandidat])) {
+            $namaPerusahaan = $isiData[$kandidat];
+            break;
+        }
+    }
+    if ($namaPerusahaan === '-' && !empty($invoice['tujuan'])) {
+        $namaPerusahaan = $invoice['tujuan'];
+    }
+
+    $deskripsiList = [];
+    foreach ($items as $item) {
+        $nilaiDeskripsi = null;
+        foreach ($item as $namaKolom => $nilai) {
+            if (preg_match('/deskripsi|uraian|nama/i', (string) $namaKolom)) {
+                $nilaiDeskripsi = $nilai;
+                break;
+            }
+        }
+        if ($nilaiDeskripsi === null && !empty($item)) {
+            $nilaiDeskripsi = reset($item);
+        }
+        $nilaiDeskripsi = trim((string) $nilaiDeskripsi);
+        if ($nilaiDeskripsi !== '') {
+            $deskripsiList[] = $nilaiDeskripsi;
+        }
+    }
+    $itemDeskripsiGabungan = count($deskripsiList) > 1
+        ? implode(', ', $deskripsiList)
+        : ($deskripsiList[0] ?? ($invoice['perihal'] ?? '-'));
+
+    $nomorPesanan = '-';
+    foreach ($isiData as $namaField => $nilai) {
+        if (preg_match('/pesanan/i', (string) $namaField) && trim((string) $nilai) !== '') {
+            $nomorPesanan = $nilai;
+            break;
+        }
+    }
+
+    return [
+        'invoice_id' => (int) $invoice['id'],
+        'nomor_invoice' => $invoice['nomor'],
+        'perihal_invoice' => $invoice['perihal'],
+        'tanggal_invoice' => $invoice['tgl_dibuat'],
+        'nama_perusahaan' => $namaPerusahaan,
+        'item_deskripsi' => $itemDeskripsiGabungan,
+        'nomor_pesanan' => $nomorPesanan,
+        'grand_total' => $nilaiFinal,
+        'grand_total_format' => formatRupiah($nilaiFinal),
+        'total_bayar_format' => formatRupiah($nilaiFinal),               // ⬅ BARU
+        'sumber_nilai' => $sertakanTotalBayarInvoice ? 'total_bayar' : 'grand_total', // ⬅ BARU (opsional, buat info di UI)
+        'terbilang' => terbilang($nilaiFinal) . ' Rupiah',
+        'ada_subtotal' => $hitung['ada_subtotal'],
+    ];
+}
+
+// ==========================================
+// DAFTAR SURAT INVOICE (surat keluar dengan jenis surat mengandung kata
+// "Invoice") -- dipakai untuk dropdown "Pilih Invoice Sumber" saat
+// membuat Kuitansi.
+// ==========================================
+function daftarSuratInvoice(PDO $pdo): array
+{
+    $stmt = $pdo->query("
+        SELECT s.id, s.nomor, s.perihal, s.tujuan, s.tgl_dibuat, s.status
+        FROM surat s
+        JOIN kode_surat k ON k.id = s.kode_id
+        WHERE s.arah = 'Keluar' AND k.nama LIKE '%Invoice%'
+        ORDER BY s.tgl_dibuat DESC, s.id DESC
+    ");
+    return $stmt->fetchAll();
+}
+
 
 // ==========================================
 // GENERATE FILE SURAT (.docx) DARI TEMPLATE MASTER
@@ -752,7 +996,8 @@ function generateSuratDocx(string $templatePath, array $dataForm, array $items, 
     // -----------------------------------------------------
     // 3) FIELD BIASA (termasuk nomor surat & hasil hitung di atas)
     // -----------------------------------------------------
-    $fields = array_merge($dataForm, ['nomor' => $nomorSurat, 'nomor_surat' => $nomorSurat]);
+    $nomorUntukTampil = $dataForm['nomor'] ?? $nomorSurat;
+    $fields = array_merge($dataForm, ['nomor' => $nomorUntukTampil, 'nomor_surat' => $nomorUntukTampil]);
     foreach ($fields as $key => $value) {
         $namaMacroDipakai = cariNamaMacroAsli($teksPolosTemplateAsli, $key) ?? $key;
         try {
@@ -1345,7 +1590,7 @@ function uploadSuratMasukFile(array $file): string
 // ==========================================
 function scanPlaceholdersFromDocx(string $fullPath): array
 {
-    $kosong = ['fields' => [], 'table_fields' => []];
+    $kosong = ['fields' => [], 'table_fields' => [], 'invoice_fields' => []];
 
     if (!file_exists($fullPath) || pathinfo($fullPath, PATHINFO_EXTENSION) !== 'docx') {
         return $kosong;
@@ -1382,6 +1627,7 @@ function scanPlaceholdersFromDocx(string $fullPath): array
 
     $fields = [];
     $tableFields = [];
+    $invoiceFields = [];
     foreach ($semuaField as $f) {
         if (stripos($f, PREFIX_KOLOM_TABEL) === 0) {
             $tanpaPrefix = substr($f, strlen(PREFIX_KOLOM_TABEL));
@@ -1390,6 +1636,8 @@ function scanPlaceholdersFromDocx(string $fullPath): array
                 continue;
             }
             $tableFields[] = $tanpaPrefix;
+        } elseif (stripos($f, PREFIX_INVOICE) === 0) {
+            $invoiceFields[] = $f;
         } else {
             $fields[] = $f;
         }
@@ -1415,7 +1663,12 @@ function scanPlaceholdersFromDocx(string $fullPath): array
         fn($f) => !in_array($f, $fieldDikecualikanKarenaBlok, true)
     ));
 
-    return ['fields' => $fields, 'table_fields' => array_values(array_unique($tableFields)), 'blocks' => $blocks];
+    return [
+        'fields' => $fields,
+        'table_fields' => array_values(array_unique($tableFields)),
+        'blocks' => $blocks,
+        'invoice_fields' => array_values(array_unique($invoiceFields)),
+    ];
 }
 
 // ==========================================
@@ -1659,6 +1912,7 @@ function buildFieldsWithDefaultLabels(array $hasilScan): array
         'fields' => $buatLabel($hasilScan['fields'] ?? []),
         'table_fields' => $buatLabel($hasilScan['table_fields'] ?? []),
         'blocks' => $blocksLabel,
+        'invoice_fields' => $hasilScan['invoice_fields'] ?? [],
     ];
 }
 
@@ -1691,6 +1945,7 @@ function mergeFieldsPreservingLabels(array $hasilScanBaru, array $fieldsLamaJson
     return [
         'fields' => $gabung($hasilScanBaru['fields'] ?? [], $labelLamaFields),
         'table_fields' => $gabung($hasilScanBaru['table_fields'] ?? [], $labelLamaTabel),
+        'invoice_fields' => $hasilScanBaru['invoice_fields'] ?? [],
     ];
 }
 
@@ -1701,6 +1956,7 @@ function muatFieldsTemplateLive(PDO $pdo, array $kodeRow): array
         'fields' => $decodedLama['fields'] ?? [],
         'table_fields' => $decodedLama['table_fields'] ?? [],
         'blocks' => $decodedLama['blocks'] ?? [],
+        'invoice_fields' => $decodedLama['invoice_fields'] ?? [],
     ];
 
     if (empty($kodeRow['file_path']) || ($kodeRow['format'] ?? '') !== 'word_pdf') {
@@ -1820,9 +2076,12 @@ function urlUnduhLangsungDrive(?string $driveFileId): ?string
 function driveFileIdDariUrl(?string $url): ?string
 {
     $url = trim((string) $url);
-    if ($url === '') return null;
-    if (preg_match('#/d/([a-zA-Z0-9_-]{10,})#', $url, $m)) return $m[1];
-    if (preg_match('#[?&]id=([a-zA-Z0-9_-]{10,})#', $url, $m)) return $m[1];
+    if ($url === '')
+        return null;
+    if (preg_match('#/d/([a-zA-Z0-9_-]{10,})#', $url, $m))
+        return $m[1];
+    if (preg_match('#[?&]id=([a-zA-Z0-9_-]{10,})#', $url, $m))
+        return $m[1];
     return null;
 }
 
@@ -1838,29 +2097,29 @@ function petaHeaderImportKlien(): array
     // tanpa spasi di sekitar "/". Nilai (value) = nama kolom di tabel Data_Klien.
     // Boleh tambah variasi header baru di sini kapan saja tanpa mengubah kode lain.
     return [
-        'NAMA PERUSAHAAN'  => 'nama_perusahaan',
-        'PERUSAHAAN'       => 'nama_perusahaan',
-        'NAMA KLIEN'       => 'nama_perusahaan',
+        'NAMA PERUSAHAAN' => 'nama_perusahaan',
+        'PERUSAHAAN' => 'nama_perusahaan',
+        'NAMA KLIEN' => 'nama_perusahaan',
 
-        'NAMA PIC'         => 'pic_nama',
-        'PIC'              => 'pic_nama',
+        'NAMA PIC' => 'pic_nama',
+        'PIC' => 'pic_nama',
 
-        'JABATAN'          => 'jabatan_pic',
-        'JABATAN PIC'      => 'jabatan_pic',
+        'JABATAN' => 'jabatan_pic',
+        'JABATAN PIC' => 'jabatan_pic',
 
-        'NO HP/WHATSAPP'   => 'pic_whatsapp',
-        'HP/WHATSAPP'      => 'pic_whatsapp',
-        'NO HP'            => 'pic_whatsapp',
-        'WHATSAPP'         => 'pic_whatsapp',
-        'NO WA'            => 'pic_whatsapp',
-        'WA'               => 'pic_whatsapp',
+        'NO HP/WHATSAPP' => 'pic_whatsapp',
+        'HP/WHATSAPP' => 'pic_whatsapp',
+        'NO HP' => 'pic_whatsapp',
+        'WHATSAPP' => 'pic_whatsapp',
+        'NO WA' => 'pic_whatsapp',
+        'WA' => 'pic_whatsapp',
 
-        'EMAIL'            => 'pic_email',
-        'EMAIL PIC'        => 'pic_email',
-        'GMAIL'            => 'pic_email',
+        'EMAIL' => 'pic_email',
+        'EMAIL PIC' => 'pic_email',
+        'GMAIL' => 'pic_email',
 
-        'STATUS CLIENT'    => 'status',
-        'STATUS'           => 'status',
+        'STATUS CLIENT' => 'status',
+        'STATUS' => 'status',
     ];
 }
 
