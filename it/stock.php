@@ -22,8 +22,18 @@ if (($_GET['export'] ?? '') === 'rekap_transaksi_pdf') {
     $idKategoriFilter = intval($_GET['id_kategori'] ?? 0);
 
     $namaBulanIndoExport = [
-        1 => 'Januari', 2 => 'Februari', 3 => 'Maret', 4 => 'April', 5 => 'Mei', 6 => 'Juni',
-        7 => 'Juli', 8 => 'Agustus', 9 => 'September', 10 => 'Oktober', 11 => 'November', 12 => 'Desember',
+        1 => 'Januari',
+        2 => 'Februari',
+        3 => 'Maret',
+        4 => 'April',
+        5 => 'Mei',
+        6 => 'Juni',
+        7 => 'Juli',
+        8 => 'Agustus',
+        9 => 'September',
+        10 => 'Oktober',
+        11 => 'November',
+        12 => 'Desember',
     ];
     [$thnFilter, $blnFilter] = explode('-', $bulanFilter);
     $labelBulanExport = $namaBulanIndoExport[(int) $blnFilter] . ' ' . $thnFilter;
@@ -864,11 +874,13 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
                                     onclick="toggleDropdownKategori()">
                                     <i class="bi bi-grid-3x3-gap-fill"></i>
                                     <span id="labelFilterKategoriAktif">Semua Kategori</span>
-                                    <span class="badge-secondary" id="badgeFilterKategoriAktif"><?= count($semuaItems) ?></span>
+                                    <span class="badge-secondary"
+                                        id="badgeFilterKategoriAktif"><?= count($semuaItems) ?></span>
                                     <i class="bi bi-chevron-down"></i>
                                 </button>
                                 <div class="arp-dropdown-kategori-menu" id="dropdownKategoriMenu">
-                                    <a href="javascript:void(0)" class="arp-dropdown-kategori-item filter-kategori-btn active"
+                                    <a href="javascript:void(0)"
+                                        class="arp-dropdown-kategori-item filter-kategori-btn active"
                                         data-kategori-filter="" data-kategori-label="Semua Kategori"
                                         data-kategori-icon="bi-grid-3x3-gap-fill" onclick="setFilterKategori('', this)">
                                         <i class="bi bi-grid-3x3-gap-fill me-1"></i> Semua Kategori
@@ -882,7 +894,8 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
                                             onclick="setFilterKategori('<?= $kat['id_kategori'] ?>', this)">
                                             <i class="bi <?= stockKategoriIcon($kat['nama_kategori']) ?> me-1"></i>
                                             <?= htmlspecialchars($kat['nama_kategori']) ?>
-                                            <span class="badge-secondary"><?= count($itemsByKategori[$kat['id_kategori']]) ?></span>
+                                            <span
+                                                class="badge-secondary"><?= count($itemsByKategori[$kat['id_kategori']]) ?></span>
                                         </a>
                                     <?php endforeach; ?>
                                 </div>
@@ -932,7 +945,8 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
                                             data-jenis-pakai="<?= htmlspecialchars($it['jenis_pakai'] ?? 'Habis Pakai') ?>">
                                             <td><strong><?= htmlspecialchars($it['kode_barang']) ?></strong></td>
                                             <td><?= htmlspecialchars($it['nama_barang']) ?></td>
-                                            <td><span class="badge-secondary"><?= htmlspecialchars($it['nama_kategori']) ?></span>
+                                            <td><span
+                                                    class="badge-secondary"><?= htmlspecialchars($it['nama_kategori']) ?></span>
                                             </td>
                                             <td>
                                                 <?php if (($it['jenis_pakai'] ?? 'Habis Pakai') === 'Tidak Habis Pakai'): ?>
@@ -946,14 +960,13 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
                                             <td><strong><?= (int) $it['stok_sistem'] ?></strong></td>
                                             <td><?= htmlspecialchars($it['satuan']) ?></td>
                                             <td>
-                                                <button type="button" class="btn-secondary-custom py-1 px-2"
-                                                    onclick='openModalEdit(<?= json_encode([
-                                                        "id" => $it["id"],
-                                                        "nama" => $it["nama_barang"],
-                                                        "satuan" => $it["satuan"],
-                                                        "rak" => $it["lokasi_rak"],
-                                                        "jenis_pakai" => $it["jenis_pakai"] ?? "Habis Pakai",
-                                                    ], JSON_UNESCAPED_UNICODE | JSON_HEX_APOS | JSON_HEX_QUOT) ?>)'>
+                                                <button type="button" class="btn-secondary-custom py-1 px-2" onclick='openModalEdit(<?= json_encode([
+                                                    "id" => $it["id"],
+                                                    "nama" => $it["nama_barang"],
+                                                    "satuan" => $it["satuan"],
+                                                    "rak" => $it["lokasi_rak"],
+                                                    "jenis_pakai" => $it["jenis_pakai"] ?? "Habis Pakai",
+                                                ], JSON_UNESCAPED_UNICODE | JSON_HEX_APOS | JSON_HEX_QUOT) ?>)'>
                                                     <i class="bi bi-pencil-square"></i>
                                                 </button>
                                             </td>
@@ -976,7 +989,8 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
                             <div class="search-box-container">
                                 <i class="bi bi-search"></i>
                                 <input type="text" class="search-box" placeholder="Cari barang masuk..."
-                                    data-table-search="tabelBarangMasuk" onkeyup="handleTableSearch('tabelBarangMasuk')">
+                                    data-table-search="tabelBarangMasuk"
+                                    onkeyup="handleTableSearch('tabelBarangMasuk')">
                             </div>
                             <button class="btn-primary-custom" onclick="openModal('modalBarangMasuk')">
                                 <i class="bi bi-plus-lg"></i> Catat Barang Masuk
@@ -987,6 +1001,7 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
                         <table class="table-custom" id="tabelBarangMasuk">
                             <thead>
                                 <tr>
+                                    <th>No</th>
                                     <th>Tanggal</th>
                                     <th>Kode</th>
                                     <th>Nama Barang</th>
@@ -999,18 +1014,21 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
                             <tbody>
                                 <?php if (count($barangMasukList) === 0): ?>
                                     <tr>
-                                        <td colspan="7" class="text-center py-4 text-muted">Belum ada riwayat barang
+                                        <td colspan="8" class="text-center py-4 text-muted">Belum ada riwayat barang
                                             masuk.</td>
                                     </tr>
                                 <?php else: ?>
-                                    <?php foreach ($barangMasukList as $bm): ?>
+                                    <?php $noMasuk = 1;
+                                    foreach ($barangMasukList as $bm): ?>
                                         <tr>
+                                            <td><?= $noMasuk++ ?></td>
                                             <td><?= date('d-m-Y', strtotime($bm['tanggal'])) ?></td>
                                             <td><?= htmlspecialchars($bm['kode_barang']) ?></td>
                                             <td><strong><?= htmlspecialchars($bm['nama_barang']) ?></strong></td>
-                                            <td><span class="badge-secondary"><?= htmlspecialchars($bm['nama_kategori']) ?></span>
+                                            <td><span
+                                                    class="badge-secondary"><?= htmlspecialchars($bm['nama_kategori']) ?></span>
                                             </td>
-                                            <td><?= (int) $bm['jumlah'] ?> <?= htmlspecialchars($bm['satuan']) ?></td>
+                                            <td><?= (int) $bm['jumlah'] ?>         <?= htmlspecialchars($bm['satuan']) ?></td>
                                             <td><?= htmlspecialchars($bm['keterangan'] ?: '-') ?></td>
                                             <td><?= htmlspecialchars($bm['operator']) ?></td>
                                         </tr>
@@ -1047,6 +1065,7 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
                             <thead>
                                 <tr>
                                     <th>No</th>
+                                    <th>Kode Barang</th>
                                     <th>Nama Barang</th>
                                     <th>Kategori</th>
                                     <th>Tanggal</th>
@@ -1058,7 +1077,7 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
                             <tbody>
                                 <?php if (count($transaksiList) === 0): ?>
                                     <tr>
-                                        <td colspan="7" class="text-center py-4 text-muted">Belum ada transaksi
+                                        <td colspan="8" class="text-center py-4 text-muted">Belum ada transaksi
                                             pemakaian.</td>
                                     </tr>
                                 <?php else: ?>
@@ -1066,11 +1085,13 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
                                     foreach ($transaksiList as $tr): ?>
                                         <tr>
                                             <td><?= $no++ ?></td>
-                                            <td><strong><?= htmlspecialchars($tr['nama_barang']) ?></strong></td>
-                                            <td><span class="badge-secondary"><?= htmlspecialchars($tr['nama_kategori']) ?></span>
+                                            <td><strong><?= htmlspecialchars($tr['kode_barang']) ?></strong></td>
+                                            <td><?= htmlspecialchars($tr['nama_barang']) ?></td>
+                                            <td><span
+                                                    class="badge-secondary"><?= htmlspecialchars($tr['nama_kategori']) ?></span>
                                             </td>
                                             <td><?= date('d-m-Y', strtotime($tr['tanggal'])) ?></td>
-                                            <td><?= (int) $tr['jumlah'] ?> <?= htmlspecialchars($tr['satuan']) ?></td>
+                                            <td><?= (int) $tr['jumlah'] ?>         <?= htmlspecialchars($tr['satuan']) ?></td>
                                             <td><?= htmlspecialchars($tr['pemakai'] ?: '-') ?></td>
                                             <td><?= htmlspecialchars($tr['keterangan'] ?: '-') ?></td>
                                         </tr>
@@ -1087,7 +1108,8 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
             <div class="col-12 arp-tab-panel" id="tabKeuangan" <?= $active_tab === 'tabKeuangan' ? '' : 'style="display:none;"' ?>>
                 <div class="card-box mb-3">
                     <div class="table-toolbar">
-                        <h5 class="table-toolbar-title fw-bold">Rekap Anggaran Gudang per Kategori (<?= $tahunAnggaran ?>)</h5>
+                        <h5 class="table-toolbar-title fw-bold">Rekap Anggaran Gudang per Kategori
+                            (<?= $tahunAnggaran ?>)</h5>
                         <div class="table-toolbar-actions">
                             <a class="btn-primary-custom"
                                 href="stock.php?export=rekap_anggaran_kategori_pdf&tahun_anggaran=<?= $tahunAnggaran ?>"
@@ -1100,7 +1122,8 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
                                     onchange="this.form.submit()">
                                     <?php foreach ($tahunAnggaranTersedia as $thnOpt): ?>
                                         <option value="<?= $thnOpt ?>" <?= $thnOpt === $tahunAnggaran ? 'selected' : '' ?>>
-                                            <?= $thnOpt ?></option>
+                                            <?= $thnOpt ?>
+                                        </option>
                                     <?php endforeach; ?>
                                 </select>
                             </form>
@@ -1161,7 +1184,8 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
                                             </tr>
                                         <?php endforeach; ?>
                                         <tr style="font-weight:700;">
-                                            <td colspan="6" class="text-end">Subtotal <?= htmlspecialchars($catRekap['nama']) ?></td>
+                                            <td colspan="6" class="text-end">Subtotal <?= htmlspecialchars($catRekap['nama']) ?>
+                                            </td>
                                             <td>Rp <?= number_format($catRekap['subtotal'], 0, ',', '.') ?></td>
                                             <td></td>
                                         </tr>
@@ -1174,7 +1198,8 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
 
                 <div class="card-box mb-3">
                     <div class="table-toolbar">
-                        <h5 class="table-toolbar-title fw-bold">Ringkasan per Kategori &amp; TOTAL (<?= $tahunAnggaran ?>)</h5>
+                        <h5 class="table-toolbar-title fw-bold">Ringkasan per Kategori &amp; TOTAL
+                            (<?= $tahunAnggaran ?>)</h5>
                     </div>
                     <div class="table-responsive-custom">
                         <table class="table-custom">
@@ -1237,7 +1262,8 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
                         <div class="upload-dropzone" id="dropzoneImportStok">
                             <div class="upload-dropzone-icon"><i class="bi bi-cloud-arrow-up"></i></div>
                             <div>
-                                <span class="fw-semibold" style="color: var(--primary);">Tarik &amp; lepas file di sini</span>
+                                <span class="fw-semibold" style="color: var(--primary);">Tarik &amp; lepas file di
+                                    sini</span>
                                 atau <span class="fw-semibold text-decoration-underline">Pilih File</span>
                             </div>
                             <span class="fs-7 text-muted">Format: CSV, XLSX</span>
@@ -1264,8 +1290,7 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
     </div>
 
     <!-- Modal: Form Penggunaan Barang (alur: pilih Kategori -> Nama Barang & Kode) -->
-    <div class="arp-modal-overlay" id="modalPemakaianGlobal"
-        onclick="closeModalOutside(event, 'modalPemakaianGlobal')">
+    <div class="arp-modal-overlay" id="modalPemakaianGlobal" onclick="closeModalOutside(event, 'modalPemakaianGlobal')">
         <div class="arp-modal-box" style="max-width:520px;">
             <div class="arp-modal-header">
                 <div>
