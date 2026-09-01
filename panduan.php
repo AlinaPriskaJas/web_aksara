@@ -40,6 +40,12 @@
 
             </p>
 
+            <a href="assets/pdf/panduan-penggunaan-arp-digital.pdf" target="_blank" rel="noopener" class="btn btn-warning btn-lg mt-3">
+
+                📄 Buka Panduan Lengkap (PDF)
+
+            </a>
+
         </div>
 
     </section>
@@ -527,6 +533,12 @@
             <a href="login.php" class="btn btn-success btn-lg">
 
                 Masuk Sekarang
+
+            </a>
+
+            <a href="assets/pdf/panduan-penggunaan-arp-digital.pdf" target="_blank" rel="noopener" class="btn btn-outline-light btn-lg ms-2">
+
+                Unduh Panduan (PDF)
 
             </a>
 
