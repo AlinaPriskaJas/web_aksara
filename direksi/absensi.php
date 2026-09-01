@@ -401,9 +401,6 @@ try {
                     <div id="previewFotoCheckin" class="mt-2" style="display:none;">
                         <img id="imgPreviewCheckin" src=""
                             style="max-width:100%; border-radius:10px; border:1px solid var(--border-color);">
-                        <button type="button" class="btn btn-sm btn-outline-danger mt-2 d-block"
-                            onclick="hapusFotoCheckin()"><i class="bi bi-x-circle me-1"></i>Hapus & Ambil
-                            Ulang</button>
                     </div>
                 </div>
                 <div class="mb-4">
@@ -559,27 +556,114 @@ try {
 
     let streamKameraCheckin = null;
 
+    // Hentikan & lepas semua track kamera yang sedang aktif (kalau ada).
+    function hentikanStreamKameraCheckin() {
+        if (streamKameraCheckin) {
+            streamKameraCheckin.getTracks().forEach(t => t.stop());
+            streamKameraCheckin = null;
+        }
+    }
+
+    function tundaSebentar(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    // Minta 1x stream kamera & pasang ke video. Balikin true kalau video
+    // beneran dapat frame nyata (videoWidth > 0), false kalau kamera "nyala"
+    // (getUserMedia sukses, gak ada error) tapi gambarnya tetap hitam --
+    // ini bug umum di sebagian HP/browser saat kamera fisik baru saja
+    // dilepas dari sesi sebelumnya dan diminta lagi terlalu cepat.
+    async function mulaiStreamKameraCheckin(video) {
+        streamKameraCheckin = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'user' },
+            audio: false
+        });
+        video.srcObject = streamKameraCheckin;
+        try {
+            await video.play();
+        } catch (playErr) {
+            // Diamkan: kalau browser sudah autoplay sendiri, play() di sini
+            // kadang ditolak (AbortError) padahal videonya tetap jalan.
+        }
+        // Kasih waktu sebentar buat video benar-benar mulai decode frame,
+        // baru dicek apakah videoWidth sudah keisi (artinya ada gambar nyata).
+        await tundaSebentar(800);
+        return video.videoWidth > 0;
+    }
+
     async function bukaKameraSelfie() {
         openModal('modalKameraCheckin');
         const video = document.getElementById('videoKameraCheckin');
         const errBox = document.getElementById('errorKameraCheckin');
+        const errText = errBox.querySelector('div');
         errBox.style.display = 'none';
+
+        // Penting: pastikan stream/track LAMA (dari sesi jepret sebelumnya)
+        // sudah dilepas & video.srcObject dikosongkan dulu sebelum minta stream
+        // baru.
+        hentikanStreamKameraCheckin();
+        video.srcObject = null;
+
+        // Kamera cuma bisa diakses di "secure context" (HTTPS atau localhost).
+        // Kalau halaman dibuka lewat http://IP-address, navigator.mediaDevices
+        // akan undefined sehingga kamera tidak akan pernah menyala.
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            errBox.style.display = 'flex';
+            if (errText) {
+                errText.textContent = (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1')
+                    ? 'Kamera diblokir browser karena halaman ini dibuka lewat HTTP, bukan HTTPS. Akses situs lewat HTTPS agar kamera bisa dipakai.'
+                    : 'Kamera tidak didukung di browser ini.';
+            }
+            return;
+        }
+
+        // Beri jeda sebentar dulu supaya kamera fisik benar-benar release
+        // sebelum diminta lagi -- ini bagian penting untuk kasus "kamera
+        // nyala tapi layarnya hitam" saat dibuka ulang.
+        await tundaSebentar(300);
+
         try {
-            streamKameraCheckin = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: 'user' },
-                audio: false
-            });
-            video.srcObject = streamKameraCheckin;
+            let dapatFrame = await mulaiStreamKameraCheckin(video);
+
+            if (!dapatFrame) {
+                // Percobaan pertama gak dapat frame nyata (layar hitam).
+                // Lepas total, kasih jeda lebih lama, lalu coba sekali lagi.
+                hentikanStreamKameraCheckin();
+                video.srcObject = null;
+                await tundaSebentar(600);
+                dapatFrame = await mulaiStreamKameraCheckin(video);
+            }
+
+            if (!dapatFrame) {
+                errBox.style.display = 'flex';
+                if (errText) {
+                    errText.textContent = 'Kamera menyala tapi gambar tidak muncul. Tekan tombol X, tunggu 2-3 detik, lalu tekan kamera lagi.';
+                }
+            }
         } catch (err) {
             errBox.style.display = 'flex';
+            if (errText) {
+                let pesan = 'Tidak dapat mengakses kamera. Pastikan izin kamera diaktifkan pada browser untuk dapat melakukan absensi.';
+                if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                    pesan = 'Izin kamera ditolak. Buka pengaturan situs di browser (ikon gembok di address bar), izinkan akses Kamera, lalu coba lagi.';
+                } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+                    pesan = 'Kamera tidak ditemukan pada perangkat ini.';
+                } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+                    pesan = 'Kamera sedang dipakai aplikasi atau tab lain. Tutup aplikasi/tab lain yang memakai kamera, lalu coba lagi.';
+                } else if (err.name === 'SecurityError') {
+                    pesan = 'Akses kamera diblokir karena halaman tidak diakses lewat HTTPS.';
+                }
+                errText.textContent = pesan;
+            }
         }
     }
 
     function tutupKameraSelfie() {
         closeModal('modalKameraCheckin');
-        if (streamKameraCheckin) {
-            streamKameraCheckin.getTracks().forEach(t => t.stop());
-            streamKameraCheckin = null;
+        hentikanStreamKameraCheckin();
+        const video = document.getElementById('videoKameraCheckin');
+        if (video) {
+            video.srcObject = null;
         }
     }
 
@@ -608,16 +692,6 @@ try {
         document.getElementById('imgPreviewCheckin').src = URL.createObjectURL(file);
         document.getElementById('previewFotoCheckin').style.display = 'block';
         document.getElementById('dropzoneCheckin').style.display = 'none';
-    }
-
-    function hapusFotoCheckin() {
-        document.getElementById('buktiFotoCheckin').value = '';
-        document.getElementById('previewFotoCheckin').style.display = 'none';
-        // Gunakan 'flex' (bukan 'block') karena .upload-dropzone di CSS
-        // memakai display:flex untuk men-tengah-kan icon & teksnya.
-        // Kalau di-set 'block', flex centering-nya hilang dan icon
-        // kamera jadi terlihat "geser" ke kiri.
-        document.getElementById('dropzoneCheckin').style.display = 'flex';
     }
 
     // ================== LOKASI GPS OTOMATIS (Absen Masuk & Pulang) ==================
