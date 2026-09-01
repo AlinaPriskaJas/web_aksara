@@ -130,15 +130,31 @@ $stok_menipis = safe_query($conn, "
 
 // ================== JADWAL PEMERIKSAAN MINGGU INI ==================
 $jadwal_list = safe_query($conn, "
-    SELECT jp.tanggal, jp.jam_mulai, jp.lokasi, dk.nama_perusahaan, sa.nama_lengkap AS nama_ahli
+    SELECT jp.tanggal, jp.jam_mulai, jp.lokasi, jp.status, dk.nama_perusahaan, sa.nama_lengkap AS nama_ahli,
+           jp.tim_support_ids, sa.user_id AS ahli_user_id
     FROM Jadwal_Pemeriksaan jp
     LEFT JOIN Data_Klien dk ON dk.id = jp.klien_id
     LEFT JOIN Sertifikat_Ahli sa ON sa.id = jp.ahli_k3_id
     WHERE jp.tanggal BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)
       AND jp.status IN ('Terjadwal','Reschedule')
     ORDER BY jp.tanggal ASC, jp.jam_mulai ASC
-    LIMIT 5
+    LIMIT 7
 ");
+
+// Tandai jadwal yang melibatkan admin yang sedang login (Lead Expert atau Tim Support)
+foreach ($jadwal_list as &$jl) {
+    $jl['ditugaskan_ke_saya'] = false;
+    if (!empty($jl['ahli_user_id']) && (int) $jl['ahli_user_id'] === (int) $user_id) {
+        $jl['ditugaskan_ke_saya'] = true;
+    }
+    if (!$jl['ditugaskan_ke_saya'] && !empty($jl['tim_support_ids'])) {
+        $tsIds = array_map('trim', explode(',', $jl['tim_support_ids']));
+        if (in_array((string) $user_id, $tsIds, true)) {
+            $jl['ditugaskan_ke_saya'] = true;
+        }
+    }
+}
+unset($jl);
 
 // ================== GRAFIK: PENGAJUAN PEMERIKSAAN PER BULAN (TAHUN BERJALAN) ==================
 $tahun_ini = date('Y');
@@ -420,6 +436,62 @@ include "../includes/topbar.php";
                 </div>
             </div>
 
+            <div class="card-box">
+        <div class="d-flex align-items-center justify-content-between mb-4">
+            <h5 class="mb-0 fw-bold">Jadwal Pemeriksaan 7 Hari Ke Depan</h5>
+            <a href="jadwal.php" class="fs-7 fw-semibold text-decoration-none">Lihat Jadwal &rarr;</a>
+        </div>
+        <div class="table-responsive-custom">
+            <table class="table-custom">
+                <thead>
+                    <tr>
+                        <th>Tanggal</th>
+                        <th>Jam</th>
+                        <th>Perusahaan</th>
+                        <th>Lokasi</th>
+                        <th>Ahli K3</th>
+                        <th>Status</th>
+                        <th style="text-align:center;">Keterlibatan</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if (empty($jadwal_list)): ?>
+                        <tr>
+                            <td colspan="7" class="border-0">
+                                <div class="dash-empty">
+                                    <i class="bi bi-calendar2-week fs-1 text-secondary mb-2 d-block"></i>
+                                    <p class="text-secondary fs-7 mb-0">Belum ada jadwal pemeriksaan minggu ini.</p>
+                                </div>
+                            </td>
+                        </tr>
+                    <?php else: ?>
+                        <?php foreach ($jadwal_list as $j): ?>
+                            <tr>
+                                <td><?= date('d M Y', strtotime($j['tanggal'])) ?></td>
+                                <td><?= substr($j['jam_mulai'], 0, 5) ?></td>
+                                <td><?= htmlspecialchars($j['nama_perusahaan'] ?? '-') ?></td>
+                                <td><?= htmlspecialchars($j['lokasi'] ?: '-') ?></td>
+                                <td><?= htmlspecialchars($j['nama_ahli'] ?? '-') ?></td>
+                                <td>
+                                    <span class="<?= $j['status'] === 'Reschedule' ? 'badge-warning' : 'badge-info' ?>">
+                                        <?= htmlspecialchars($j['status']) ?>
+                                    </span>
+                                </td>
+                                <td style="text-align:center;">
+                                    <?php if ($j['ditugaskan_ke_saya']): ?>
+                                        <span class="badge-info">Saya</span>
+                                    <?php else: ?>
+                                        <span class="text-muted fs-7">-</span>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
         </div>
 
         <!-- KOLOM KANAN -->
@@ -506,67 +578,45 @@ include "../includes/topbar.php";
     </div>
 
     <!-- Grafik + Approval per Jenis + Jadwal Minggu Ini -->
-    <div class="row g-4">
-        <div class="col-lg-5 col-12">
-            <div class="card-box h-100">
-                <h5 class="fw-bold mb-3">Tren Pengajuan Pemeriksaan (<?= $tahun_ini ?>)</h5>
-                <div style="height: 260px;">
-                    <canvas id="chartPengajuan"></canvas>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-lg-4 col-12">
-            <div class="card-box h-100 d-flex flex-column">
-                <h5 class="fw-bold mb-3">Antrian Approval per Jenis</h5>
-                <?php if (empty($approval_jenis)): ?>
-                    <div class="dash-empty flex-grow-1">
-                        <i class="bi bi-check2-circle fs-1 text-success mb-2 d-block"></i>
-                        <p class="text-secondary fs-7 mb-0">Tidak ada approval yang menunggu.</p>
-                    </div>
-                <?php else: ?>
-                    <div class="flex-grow-1">
-                        <?php foreach ($approval_jenis as $aj): ?>
-                            <?php $persen = round(((int) $aj['jumlah'] / $approval_jenis_total) * 100); ?>
-                            <div class="mb-3">
-                                <div class="d-flex justify-content-between mb-1">
-                                    <span class="fs-7 fw-semibold"><?= htmlspecialchars($aj['jenis_pengajuan']) ?></span>
-                                    <span class="fs-7 fw-bold"><?= (int) $aj['jumlah'] ?></span>
-                                </div>
-                                <div class="progress" style="height: 6px; border-radius: 4px;">
-                                    <div class="progress-bar bg-warning" role="progressbar" style="width: <?= $persen ?>%"></div>
-                                </div>
-                            </div>
-                        <?php endforeach; ?>
-                    </div>
-                <?php endif; ?>
-                <a href="approval.php" class="fs-7 fw-semibold text-decoration-none d-inline-block mt-2">Buka Approval Center &rarr;</a>
-            </div>
-        </div>
-
-        <div class="col-lg-3 col-12">
-            <div class="card-box h-100 d-flex flex-column">
-                <h5 class="fw-bold mb-3">Jadwal 7 Hari Ke Depan</h5>
-                <?php if (empty($jadwal_list)): ?>
-                    <div class="dash-empty flex-grow-1">
-                        <i class="bi bi-calendar2-week fs-1 text-secondary mb-2 d-block"></i>
-                        <p class="text-secondary fs-7 mb-0">Belum ada jadwal pemeriksaan minggu ini.</p>
-                    </div>
-                <?php else: ?>
-                    <ul class="list-unstyled mb-0 flex-grow-1">
-                        <?php foreach ($jadwal_list as $j): ?>
-                            <li class="mb-3">
-                                <div class="fs-7 fw-bold mb-0"><?= date('d M', strtotime($j['tanggal'])) ?> · <?= substr($j['jam_mulai'], 0, 5) ?></div>
-                                <div class="fs-7 text-muted"><?= htmlspecialchars($j['nama_perusahaan'] ?? '-') ?></div>
-                                <div class="fs-7 text-muted">Ahli: <?= htmlspecialchars($j['nama_ahli'] ?? '-') ?></div>
-                            </li>
-                        <?php endforeach; ?>
-                    </ul>
-                <?php endif; ?>
-                <a href="jadwal.php" class="fs-7 fw-semibold text-decoration-none">Lihat Jadwal &rarr;</a>
+    <!-- Grafik + Approval per Jenis -->
+<div class="row g-4">
+    <div class="col-lg-7 col-12">
+        <div class="card-box h-100">
+            <h5 class="fw-bold mb-3">Tren Pengajuan Pemeriksaan (<?= $tahun_ini ?>)</h5>
+            <div style="height: 260px;">
+                <canvas id="chartPengajuan"></canvas>
             </div>
         </div>
     </div>
+
+    <div class="col-lg-5 col-12">
+        <div class="card-box h-100 d-flex flex-column">
+            <h5 class="fw-bold mb-3">Antrian Approval per Jenis</h5>
+            <?php if (empty($approval_jenis)): ?>
+                <div class="dash-empty flex-grow-1">
+                    <i class="bi bi-check2-circle fs-1 text-success mb-2 d-block"></i>
+                    <p class="text-secondary fs-7 mb-0">Tidak ada approval yang menunggu.</p>
+                </div>
+            <?php else: ?>
+                <div class="flex-grow-1">
+                    <?php foreach ($approval_jenis as $aj): ?>
+                        <?php $persen = round(((int) $aj['jumlah'] / $approval_jenis_total) * 100); ?>
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between mb-1">
+                                <span class="fs-7 fw-semibold"><?= htmlspecialchars($aj['jenis_pengajuan']) ?></span>
+                                <span class="fs-7 fw-bold"><?= (int) $aj['jumlah'] ?></span>
+                            </div>
+                            <div class="progress" style="height: 6px; border-radius: 4px;">
+                                <div class="progress-bar bg-warning" role="progressbar" style="width: <?= $persen ?>%"></div>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+            <a href="approval.php" class="fs-7 fw-semibold text-decoration-none d-inline-block mt-2">Buka Approval Center &rarr;</a>
+        </div>
+    </div>
+</div>
 
     <!-- Aksi Cepat -->
     <div class="row g-4 mt-1">

@@ -171,6 +171,40 @@ try {
     $suratKeluarBulan = $conn->query("SELECT COUNT(*) FROM Surat WHERE arah = 'Keluar' AND MONTH(tgl_dibuat) = MONTH(CURDATE()) AND YEAR(tgl_dibuat) = YEAR(CURDATE())")->fetchColumn() ?: 0;
 } catch (PDOException $e) {
 }
+
+// ================== JADWAL PEMERIKSAAN 7 HARI (IT: lihat semua, tandai jika ditugaskan) ==================
+$jadwalMingguIT = [];
+try {
+    $stmtJadwalIT = $conn->prepare("
+        SELECT jp.tanggal, jp.jam_mulai, jp.lokasi, jp.status, dk.nama_perusahaan, sa.nama_lengkap AS nama_ahli,
+               jp.tim_support_ids, sa.user_id AS ahli_user_id
+        FROM Jadwal_Pemeriksaan jp
+        LEFT JOIN Data_Klien dk ON dk.id = jp.klien_id
+        LEFT JOIN Sertifikat_Ahli sa ON sa.id = jp.ahli_k3_id
+        WHERE jp.tanggal BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)
+          AND jp.status IN ('Terjadwal','Reschedule')
+        ORDER BY jp.tanggal ASC, jp.jam_mulai ASC
+        LIMIT 7
+    ");
+    $stmtJadwalIT->execute();
+    $jadwalMingguIT = $stmtJadwalIT->fetchAll();
+} catch (PDOException $e) {
+    $jadwalMingguIT = [];
+}
+
+foreach ($jadwalMingguIT as &$jit) {
+    $jit['ditugaskan_ke_saya'] = false;
+    if (!empty($jit['ahli_user_id']) && (int) $jit['ahli_user_id'] === (int) $_SESSION['user_id']) {
+        $jit['ditugaskan_ke_saya'] = true;
+    }
+    if (!$jit['ditugaskan_ke_saya'] && !empty($jit['tim_support_ids'])) {
+        $tsIds = array_map('trim', explode(',', $jit['tim_support_ids']));
+        if (in_array((string) $_SESSION['user_id'], $tsIds, true)) {
+            $jit['ditugaskan_ke_saya'] = true;
+        }
+    }
+}
+unset($jit);
 ?>
 
 <main class="main-content">
@@ -326,6 +360,60 @@ try {
                 <div class="mt-3 text-end">
                     <a href="audit.php" class="btn btn-outline-secondary btn-sm">Lihat Semua Log <i
                             class="bi bi-arrow-right"></i></a>
+                </div>
+            </div>
+
+            <!-- Jadwal Pemeriksaan Minggu Ini (card baru, gaya tabel lebar) -->
+            <div class="card-box mt-4">
+                <div class="d-flex align-items-center justify-content-between mb-4">
+                    <h5 class="mb-0 fw-bold">Jadwal Pemeriksaan Minggu Ini</h5>
+                    <span class="fs-7 text-secondary">7 hari ke depan</span>
+                </div>
+                <div class="table-responsive-custom">
+                    <table class="table-custom">
+                        <thead>
+                            <tr>
+                                <th>Tanggal</th>
+                                <th>Jam</th>
+                                <th>Perusahaan</th>
+                                <th>Lokasi</th>
+                                <th>Ahli K3</th>
+                                <th>Status</th>
+                                <th style="text-align:center;">Keterlibatan</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if (empty($jadwalMingguIT)): ?>
+                                <tr>
+                                    <td colspan="7" class="text-center py-3 text-muted">Belum ada jadwal pemeriksaan
+                                        minggu ini.</td>
+                                </tr>
+                            <?php else: ?>
+                                <?php foreach ($jadwalMingguIT as $jit): ?>
+                                    <tr>
+                                        <td><?= date('d M Y', strtotime($jit['tanggal'])) ?></td>
+                                        <td><?= substr($jit['jam_mulai'], 0, 5) ?></td>
+                                        <td><?= htmlspecialchars($jit['nama_perusahaan'] ?? '-') ?></td>
+                                        <td><?= htmlspecialchars($jit['lokasi'] ?: '-') ?></td>
+                                        <td><?= htmlspecialchars($jit['nama_ahli'] ?? '-') ?></td>
+                                        <td>
+                                            <span
+                                                class="<?= $jit['status'] === 'Reschedule' ? 'badge-warning' : 'badge-info' ?>">
+                                                <?= htmlspecialchars($jit['status']) ?>
+                                            </span>
+                                        </td>
+                                        <td style="text-align:center;">
+                                            <?php if ($jit['ditugaskan_ke_saya']): ?>
+                                                <span class="badge-info">Saya</span>
+                                            <?php else: ?>
+                                                <span class="text-muted fs-7">-</span>
+                                            <?php endif; ?>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
                 </div>
             </div>
 

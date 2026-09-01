@@ -64,6 +64,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 $unit_diinspeksi = implode(', ', $kategori_label);
 
+                // Bersihkan dulu tag [Tim Support: ...] LAMA yang mungkin ikut terbawa dari textarea
+// (karena saat edit, JS memuat catatan lama -- termasuk tag ini -- ke dalam form)
+                $catatan = trim($catatan);
+                $catatan = preg_replace('/\n?\[Tim Support:.*?\]/is', '', $catatan);
+                $catatan = trim($catatan);
+
                 // Ambil nama tim support terpilih, simpan sebagai baris terstruktur di catatan
                 $tim_label = [];
                 if (!empty($tim_support_ids)) {

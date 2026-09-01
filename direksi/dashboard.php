@@ -12,7 +12,7 @@ require_once "../config/koneksi.php";
 
 $page_title = "Dashboard Direksi";
 
-$user_id   = $_SESSION['user_id'];
+$user_id = $_SESSION['user_id'];
 $user_name = $_SESSION['nama_lengkap'];
 
 // Jam untuk sapaan (pagi/siang/sore/malam)
@@ -51,16 +51,16 @@ function safe_query(PDO $conn, string $sql, array $params = []): array
 }
 
 // ================== STAT CARDS ==================
-$total_klien       = safe_count($conn, "SELECT COUNT(*) FROM Data_Klien WHERE status = 'Aktif'");
-$sertifikat_aktif  = safe_count($conn, "SELECT COUNT(*) FROM v_sertifikat_ahli_status WHERE status_realtime = 'Aktif'");
+$total_klien = safe_count($conn, "SELECT COUNT(*) FROM Data_Klien WHERE status = 'Aktif'");
+$sertifikat_aktif = safe_count($conn, "SELECT COUNT(*) FROM v_sertifikat_ahli_status WHERE status_realtime = 'Aktif'");
 $menunggu_approval = safe_count($conn, "SELECT COUNT(*) FROM Approval WHERE status = 'Menunggu'");
-$audit_inspeksi    = safe_count($conn, "SELECT COUNT(*) FROM Jadwal_Pemeriksaan WHERE status IN ('Terjadwal','Berlangsung')");
+$audit_inspeksi = safe_count($conn, "SELECT COUNT(*) FROM Jadwal_Pemeriksaan WHERE status IN ('Terjadwal','Berlangsung')");
 
 // ================== RINGKASAN OPERASIONAL ==================
 $total_pemeriksaan = safe_count($conn, "SELECT COUNT(*) FROM Suket_K3");
-$laporan_dibuat     = safe_count($conn, "SELECT COUNT(*) FROM Suket_K3 WHERE file_sertifikat_pdf IS NOT NULL AND file_sertifikat_pdf <> ''");
-$total_rekomendasi  = safe_count($conn, "SELECT COUNT(*) FROM Suket_K3 WHERE rekomendasi_teknis IS NOT NULL AND rekomendasi_teknis <> ''");
-$temuan_audit       = safe_count($conn, "SELECT COUNT(*) FROM Laporan_Insiden");
+$laporan_dibuat = safe_count($conn, "SELECT COUNT(*) FROM Suket_K3 WHERE file_sertifikat_pdf IS NOT NULL AND file_sertifikat_pdf <> ''");
+$total_rekomendasi = safe_count($conn, "SELECT COUNT(*) FROM Suket_K3 WHERE rekomendasi_teknis IS NOT NULL AND rekomendasi_teknis <> ''");
+$temuan_audit = safe_count($conn, "SELECT COUNT(*) FROM Laporan_Insiden");
 
 // ================== AKTIVITAS TERBARU (Audit_Log) ==================
 $aktivitas_terbaru = safe_query($conn, "
@@ -84,7 +84,7 @@ $kpi_rows = safe_query($conn, "
 foreach ($kpi_rows as $row) {
     $kpi_per_bulan[(int) $row['bln']] = (int) $row['jumlah'];
 }
-$kpi_labels = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+$kpi_labels = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 $kpi_values = array_values($kpi_per_bulan);
 
 // ================== STATUS APPROVAL (donut) ==================
@@ -115,6 +115,18 @@ foreach ($cuti_rows as $row) {
     }
 }
 
+// ================== JADWAL PEMERIKSAAN MINGGU INI (Direksi: lihat semua) ==================
+$jadwal_direksi = safe_query($conn, "
+    SELECT jp.tanggal, jp.jam_mulai, jp.lokasi, jp.status, dk.nama_perusahaan, sa.nama_lengkap AS nama_ahli
+    FROM Jadwal_Pemeriksaan jp
+    LEFT JOIN Data_Klien dk ON dk.id = jp.klien_id
+    LEFT JOIN Sertifikat_Ahli sa ON sa.id = jp.ahli_k3_id
+    WHERE jp.tanggal BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)
+      AND jp.status IN ('Terjadwal','Reschedule','Berlangsung')
+    ORDER BY jp.tanggal ASC, jp.jam_mulai ASC
+    LIMIT 7
+");
+
 include "../includes/header.php";
 include "../includes/sidebar.php";
 include "../includes/topbar.php";
@@ -123,15 +135,15 @@ include "../includes/topbar.php";
 <main class="main-content">
 
     <!-- Greeting -->
-        <div class="mb-4">
-            <h4 class="fw-bold mb-1">
-                <?= htmlspecialchars($sapaan) ?>,
-                <?= htmlspecialchars($user_name) ?>
-            </h4>
-            <p class="text-secondary mb-0">
-                Ringkasan kondisi perusahaan secara real time
-            </p>
-        </div>
+    <div class="mb-4">
+        <h4 class="fw-bold mb-1">
+            <?= htmlspecialchars($sapaan) ?>,
+            <?= htmlspecialchars($user_name) ?>
+        </h4>
+        <p class="text-secondary mb-0">
+            Ringkasan kondisi perusahaan secara real time
+        </p>
+    </div>
 
     <!-- Stat Cards Section -->
     <div class="row g-4 mb-4">
@@ -184,10 +196,10 @@ include "../includes/topbar.php";
         </div>
     </div>
 
-    <!-- Ringkasan Operasional + Grafik KPI (kiri) & Aktivitas Terbaru (kanan) -->
+      <!-- Ringkasan Operasional + Grafik KPI + Jadwal (kiri) & Aktivitas Terbaru (kanan) -->
     <div class="row g-4 mb-4">
         <div class="col-lg-8 col-12">
-            <div class="d-flex flex-column gap-4 h-100">
+            <div class="d-flex flex-column gap-4">
                 <div class="card-box">
                     <h5 class="fw-bold mb-4">Ringkasan Operasional</h5>
                     <div class="row g-3 text-center">
@@ -214,17 +226,66 @@ include "../includes/topbar.php";
                     </div>
                 </div>
 
-                <div class="card-box flex-grow-1">
+                <div class="card-box">
                     <h5 class="fw-bold mb-3">Grafik KPI Utama</h5>
                     <div style="position:relative; height:220px;">
                         <canvas id="chartKpiUtama"></canvas>
+                    </div>
+                </div>
+
+                <!-- Jadwal Pemeriksaan 7 Hari Ke Depan (langsung card-box, tanpa row/col pembungkus lagi) -->
+                <div class="card-box">
+                    <div class="d-flex align-items-center justify-content-between mb-4">
+                        <h5 class="mb-0 fw-bold">Jadwal Pemeriksaan 7 Hari Ke Depan</h5>
+                        <a href="jadwal.php" class="fs-7 fw-semibold text-decoration-none">Lihat semua &rarr;</a>
+                    </div>
+                    <div class="table-responsive-custom">
+                        <table class="table-custom">
+                            <thead>
+                                <tr>
+                                    <th>Tanggal</th>
+                                    <th>Jam</th>
+                                    <th>Perusahaan</th>
+                                    <th>Lokasi</th>
+                                    <th>Ahli K3</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php if (empty($jadwal_direksi)): ?>
+                                    <tr>
+                                        <td colspan="6" class="text-center py-3 text-muted">Belum ada jadwal pemeriksaan minggu ini.</td>
+                                    </tr>
+                                <?php else: ?>
+                                    <?php foreach ($jadwal_direksi as $jd): ?>
+                                        <tr>
+                                            <td><?= date('d M Y', strtotime($jd['tanggal'])) ?></td>
+                                            <td><?= substr($jd['jam_mulai'], 0, 5) ?></td>
+                                            <td><?= htmlspecialchars($jd['nama_perusahaan'] ?? '-') ?></td>
+                                            <td><?= htmlspecialchars($jd['lokasi'] ?: '-') ?></td>
+                                            <td><?= htmlspecialchars($jd['nama_ahli'] ?? '-') ?></td>
+                                            <td>
+                                                <?php
+                                                $badgeStatus = match ($jd['status']) {
+                                                    'Reschedule' => 'badge-warning',
+                                                    'Berlangsung' => 'badge-success',
+                                                    default => 'badge-info',
+                                                };
+                                                ?>
+                                                <span class="<?= $badgeStatus ?>"><?= htmlspecialchars($jd['status']) ?></span>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
         </div>
 
         <div class="col-lg-4 col-12">
-            <div class="card-box h-100">
+            <div class="card-box">
                 <h5 class="fw-bold mb-3">Aktivitas Terbaru</h5>
                 <?php if (empty($aktivitas_terbaru)): ?>
                     <p class="text-secondary fs-7 mb-0">Belum ada aktivitas tercatat.</p>
@@ -251,6 +312,7 @@ include "../includes/topbar.php";
         </div>
     </div>
 
+
     <!-- Status Approval + Pengajuan Cuti -->
     <div class="row g-4">
         <div class="col-lg-6 col-12">
@@ -262,23 +324,27 @@ include "../includes/topbar.php";
                     </div>
                     <ul class="list-unstyled mb-0 fs-7">
                         <li class="d-flex align-items-center gap-2 mb-2">
-                            <span class="d-inline-block rounded-circle" style="width:10px;height:10px;background:var(--success);"></span>
+                            <span class="d-inline-block rounded-circle"
+                                style="width:10px;height:10px;background:var(--success);"></span>
                             Disetujui
                             <span class="fw-bold ms-auto"><?= $approval_summary['Disetujui'] ?></span>
                         </li>
                         <li class="d-flex align-items-center gap-2 mb-2">
-                            <span class="d-inline-block rounded-circle" style="width:10px;height:10px;background:var(--warning);"></span>
+                            <span class="d-inline-block rounded-circle"
+                                style="width:10px;height:10px;background:var(--warning);"></span>
                             Menunggu
                             <span class="fw-bold ms-auto"><?= $approval_summary['Menunggu'] ?></span>
                         </li>
                         <li class="d-flex align-items-center gap-2">
-                            <span class="d-inline-block rounded-circle" style="width:10px;height:10px;background:var(--danger);"></span>
+                            <span class="d-inline-block rounded-circle"
+                                style="width:10px;height:10px;background:var(--danger);"></span>
                             Ditolak
                             <span class="fw-bold ms-auto"><?= $approval_summary['Ditolak'] ?></span>
                         </li>
                     </ul>
                 </div>
-                <a href="approval.php" class="fs-7 fw-semibold text-decoration-none d-inline-block mt-3">Lihat di Approval Center &rarr;</a>
+                <a href="approval.php" class="fs-7 fw-semibold text-decoration-none d-inline-block mt-3">Lihat di
+                    Approval Center &rarr;</a>
             </div>
         </div>
 
@@ -306,59 +372,59 @@ include "../includes/topbar.php";
 <!-- Chart.js CDN (khusus halaman ini) -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script>
-document.addEventListener('DOMContentLoaded', function () {
-    // Grafik KPI Utama (Bar)
-    const kpiCtx = document.getElementById('chartKpiUtama');
-    if (kpiCtx) {
-        new Chart(kpiCtx, {
-            type: 'bar',
-            data: {
-                labels: <?= json_encode($kpi_labels) ?>,
-                datasets: [{
-                    label: 'Pemeriksaan Selesai',
-                    data: <?= json_encode($kpi_values) ?>,
-                    backgroundColor: '#2ecc71',
-                    borderRadius: 4,
-                    maxBarThickness: 28
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
-                scales: {
-                    y: { beginAtZero: true, ticks: { precision: 0 } }
+    document.addEventListener('DOMContentLoaded', function () {
+        // Grafik KPI Utama (Bar)
+        const kpiCtx = document.getElementById('chartKpiUtama');
+        if (kpiCtx) {
+            new Chart(kpiCtx, {
+                type: 'bar',
+                data: {
+                    labels: <?= json_encode($kpi_labels) ?>,
+                    datasets: [{
+                        label: 'Pemeriksaan Selesai',
+                        data: <?= json_encode($kpi_values) ?>,
+                        backgroundColor: '#2ecc71',
+                        borderRadius: 4,
+                        maxBarThickness: 28
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, ticks: { precision: 0 } }
+                    }
                 }
-            }
-        });
-    }
+            });
+        }
 
-    // Status Approval (Donut)
-    const approvalCtx = document.getElementById('chartStatusApproval');
-    if (approvalCtx) {
-        new Chart(approvalCtx, {
-            type: 'doughnut',
-            data: {
-                labels: ['Disetujui', 'Menunggu', 'Ditolak'],
-                datasets: [{
-                    data: [
-                        <?= $approval_summary['Disetujui'] ?>,
-                        <?= $approval_summary['Menunggu'] ?>,
-                        <?= $approval_summary['Ditolak'] ?>
-                    ],
-                    backgroundColor: ['#2ecc71', '#f1c40f', '#e74c3c'],
-                    borderWidth: 0
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                cutout: '70%',
-                plugins: { legend: { display: false } }
-            }
-        });
-    }
-});
+        // Status Approval (Donut)
+        const approvalCtx = document.getElementById('chartStatusApproval');
+        if (approvalCtx) {
+            new Chart(approvalCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Disetujui', 'Menunggu', 'Ditolak'],
+                    datasets: [{
+                        data: [
+                            <?= $approval_summary['Disetujui'] ?>,
+                            <?= $approval_summary['Menunggu'] ?>,
+                            <?= $approval_summary['Ditolak'] ?>
+                        ],
+                        backgroundColor: ['#2ecc71', '#f1c40f', '#e74c3c'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '70%',
+                    plugins: { legend: { display: false } }
+                }
+            });
+        }
+    });
 </script>
 
 <?php

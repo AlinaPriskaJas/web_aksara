@@ -291,7 +291,7 @@ include "../includes/topbar.php";
                                 placeholder="Contoh: 08123456789"
                                 value="<?= htmlspecialchars($data_klien['pic_whatsapp'] ?? '') ?>">
                         </div>
-                        <div class="col-12">
+                        <div class="col-md-6 col-12">
                             <label class="form-label fw-semibold fs-7 mb-2">Email PIC <span class="text-danger">*</span></label>
                             <input type="email" class="form-control-custom" name="pic_email" required
                                 placeholder="email@perusahaan.com"
