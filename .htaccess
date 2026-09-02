@@ -1,0 +1,20 @@
+RewriteEngine On
+
+# ------------------------------------------------------------------
+# 1) Jika ada yang mengetik/klik URL dengan akhiran .php,
+#    otomatis dialihkan ke versi tanpa .php (rapi & bagus utk SEO).
+#    Hanya berlaku untuk request GET, supaya form yang mengirim
+#    data lewat POST (misalnya form login) TIDAK terganggu.
+# ------------------------------------------------------------------
+RewriteCond %{REQUEST_METHOD} GET
+RewriteCond %{THE_REQUEST} ^[A-Z]{3,9}\ /(.+)\.php[\s?] [NC]
+RewriteRule ^ /%1 [R=301,L]
+
+# ------------------------------------------------------------------
+# 2) Saat browser minta URL tanpa .php, server tetap mencari
+#    file .php yang sesuai secara internal (tidak terlihat user).
+#    Berlaku untuk semua folder: admin/, client/, direksi/, it/, ahlik3/, dll.
+# ------------------------------------------------------------------
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME}\.php -f
+RewriteRule ^(.*)$ $1.php [L,QSA]
