@@ -360,7 +360,7 @@ const KOLOM_SUBTOTAL = 'item_sub_total';    // subtotal per baris, dihitung otom
 // selalu konsisten format "Rp. 1.234.567").
 // - total/ppn/pph_23/total_bayar/terbilang : untuk tabel item bertipe uang (qty x harga)
 // - total_alat : untuk tabel item bertipe kuantitas saja (tanpa harga), cth "13 Unit"
-const FIELD_OTOMATIS_SISTEM = ['nomor', 'nomor_surat', 'no_surat', 'total', 'ppn', 'pph_23', 'diskon', 'diskon_persen', 'total_bayar', 'terbilang', 'total_alat', 'grand_total', 'down_payment', 'down_payment_persen', 'sisa_pelunasan'];
+const FIELD_OTOMATIS_SISTEM = ['nomor', 'nomor_surat', 'no_surat', 'total', 'ppn', 'pph_23', 'diskon', 'diskon_persen', 'total_bayar', 'terbilang', 'total_alat', 'grand_total', 'down_payment', 'down_payment_persen', 'sisa_pelunasan','ttd_direksi'];
 
 const PREFIX_INVOICE = 'invoice_';
 
@@ -2269,4 +2269,258 @@ function bacaBarisXlsx(string $path): array
         }
     }
     return $rows;
+}
+
+// ==========================================
+// TEMPEL TANDA TANGAN DIGITAL (TTD) DIREKSI KE FILE SURAT YANG SUDAH ADA DI DRIVE
+//
+// Dipanggil dari direksi/approval.php SESUDAH surat berstatus "Disetujui".
+// Bukan bikin surat baru -- file docx yang SUDAH diunggah ke Drive saat surat
+// dibuat (lihat admin/surat.php, kolom surat.drive_file_id) diunduh sementara,
+// macro gambar ${ttd_direksi} di dalamnya diganti dengan gambar tanda tangan
+// direksi (Users.ttd_digital), lalu file itu TIMPA balik ke Drive dengan
+// file_id yang SAMA (arp_timpa_konten_drive) supaya link yang sudah dipakai
+// di mana-mana (email, notifikasi, tabel surat) tetap valid dan langsung
+// menampilkan versi bertanda tangan.
+//
+// PENTING (best-effort, TIDAK PERNAH melempar exception): dipanggil SESUDAH
+// transaksi approval di-commit, sama seperti pola arp_generate_dan_unggah_surat_cuti()
+// di includes/cuti_surat_helper.php. Kalau gagal (mis. direksi belum upload
+// ttd, atau macro ${ttd_direksi} belum ada di template surat itu), approval
+// TETAP sah -- hanya saja suratnya belum otomatis bertanda tangan. Pesan
+// kegagalan bisa diambil lewat arp_drive_last_error().
+//
+// SYARAT SUPAYA BERHASIL:
+// 1) Kolom Users.ttd_digital & Users.jabatan_ttd sudah ada (lihat migrations/
+//    2026_xx_xx_add_ttd_digital.sql) dan direksi sudah upload tanda tangan
+//    lewat direksi/profile.php.
+// 2) Template Word surat itu (di Google Drive) punya macro GAMBAR bernama
+//    persis ${ttd_direksi} di kolom tanda tangan -- ditulis sebagai teks
+//    biasa (BUKAN di dalam gambar/kotak yang sudah ada), satu potongan utuh
+//    (tidak boleh sebagian hurufnya beda format dari yang lain, karena Word
+//    akan memecahnya jadi beberapa "run" terpisah dan PhpWord jadi tidak
+//    mengenalinya sebagai satu macro). Cara paling aman: ketik dulu di
+//    Notepad, copy, lalu tempel ke Google Docs/Word pakai "Paste without
+//    formatting" (Ctrl+Shift+V).
+// ==========================================
+// ==========================================
+// BENERIN BUG: KONVERSI GAMBAR VML -> DRAWINGML DI FILE .DOCX
+//
+// PhpWord\TemplateProcessor::setImageValue() (dipanggil di
+// arp_tempel_ttd_ke_surat() di bawah) menyisipkan gambar TTD pakai template
+// XML lama bawaan library:
+//   <w:pict><v:shape type="#_x0000_t75" style="width:...;height:..."
+//     stroked="f" filled="f"><v:imagedata r:id="rIdX" o:title=""/></v:shape>
+//   </w:pict>
+// Ini format VML. Microsoft Word masih membacanya (demi kompatibilitas
+// mundur ke Word lama), tapi Google Docs/Drive TIDAK bisa me-render VML --
+// jadi gambar TTD-nya hilang/kosong kalau surat dibuka lewat Drive/Docs,
+// padahal terlihat normal kalau file yang sama dibuka di Microsoft Word.
+//
+// Fungsi ini dipanggil SETELAH $processor->saveAs(): membuka lagi file
+// .docx yang baru disimpan itu sebagai ZIP, mencari blok VML dengan
+// fingerprint PERSIS seperti di atas (jadi tidak akan salah mengganti
+// gambar/shape lain yang mungkin sudah ada di template), lalu menggantinya
+// jadi <w:drawing> (DrawingML, format modern) yang tetap menunjuk ke
+// relationship gambar (r:id/r:embed) YANG SAMA. Tidak perlu mengubah
+// word/_rels/document.xml.rels sama sekali karena baik VML maupun
+// DrawingML sama-sama cuma referensi ke relationship gambar biasa.
+//
+// @return int jumlah blok VML yang berhasil dikonversi (0 = tidak ada
+//             gambar VML ditemukan; bukan berarti error).
+// ==========================================
+function arp_ganti_vml_ttd_ke_drawingml(string $pathDocx): int
+{
+    $zip = new ZipArchive();
+    if ($zip->open($pathDocx) !== true) {
+        throw new RuntimeException("Tidak bisa membuka $pathDocx sebagai ZIP untuk konversi VML->DrawingML.");
+    }
+
+    // Bagian docx yang mungkin memuat macro gambar: body utama surat, plus
+    // header/footer jaga-jaga kalau template menaruh macro TTD di sana.
+    $namaBagian = [];
+    for ($i = 0; $i < $zip->numFiles; $i++) {
+        $nama = $zip->getNameIndex($i);
+        if ($nama === 'word/document.xml' || preg_match('#^word/(header|footer)\d*\.xml$#', (string) $nama)) {
+            $namaBagian[] = $nama;
+        }
+    }
+
+    // Fingerprint blok VML yang PERSIS dibuat PhpWord TemplateProcessor::setImageValue().
+    $polaVml = '/<w:pict><v:shape type="#_x0000_t75" style="width:([0-9.]+)px;height:([0-9.]+)px" stroked="f" filled="f"><v:imagedata r:id="(rId\d+)" o:title=""\/><\/v:shape><\/w:pict>/';
+
+    $totalDikonversi = 0;
+    $docPrId = 900000; // basis id besar & unik supaya tidak bentrok id docPr bawaan template
+
+    foreach ($namaBagian as $nama) {
+        $xml = $zip->getFromName($nama);
+        if ($xml === false || strpos($xml, '<w:pict>') === false) {
+            continue;
+        }
+
+        $jumlahDiBagianIni = 0;
+        $xmlBaru = preg_replace_callback($polaVml, function ($m) use (&$docPrId) {
+            $lebarPx = (float) $m[1];
+            $tinggiPx = (float) $m[2];
+            $rid = $m[3];
+
+            // px (96 dpi, satuan yang dipakai PhpWord) -> EMU (satuan resmi
+            // DrawingML). 1px = 9525 EMU.
+            $cx = (int) round($lebarPx * 9525);
+            $cy = (int) round($tinggiPx * 9525);
+            $docPrId++;
+
+            return '<w:drawing>'
+                . '<wp:inline xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" distT="0" distB="0" distL="0" distR="0">'
+                . '<wp:extent cx="' . $cx . '" cy="' . $cy . '"/>'
+                . '<wp:effectExtent l="0" t="0" r="0" b="0"/>'
+                . '<wp:docPr id="' . $docPrId . '" name="TandaTangan' . $docPrId . '"/>'
+                . '<wp:cNvGraphicFramePr>'
+                . '<a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/>'
+                . '</wp:cNvGraphicFramePr>'
+                . '<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'
+                . '<a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">'
+                . '<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">'
+                . '<pic:nvPicPr>'
+                . '<pic:cNvPr id="' . $docPrId . '" name="TandaTangan' . $docPrId . '"/>'
+                . '<pic:cNvPicPr/>'
+                . '</pic:nvPicPr>'
+                . '<pic:blipFill>'
+                . '<a:blip r:embed="' . $rid . '" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/>'
+                . '<a:stretch><a:fillRect/></a:stretch>'
+                . '</pic:blipFill>'
+                . '<pic:spPr>'
+                . '<a:xfrm><a:off x="0" y="0"/><a:ext cx="' . $cx . '" cy="' . $cy . '"/></a:xfrm>'
+                . '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>'
+                . '</pic:spPr>'
+                . '</pic:pic>'
+                . '</a:graphicData>'
+                . '</a:graphic>'
+                . '</wp:inline>'
+                . '</w:drawing>';
+        }, $xml, -1, $jumlahDiBagianIni);
+
+        if ($jumlahDiBagianIni > 0 && $xmlBaru !== null) {
+            $zip->deleteName($nama);
+            $zip->addFromString($nama, $xmlBaru);
+            $totalDikonversi += $jumlahDiBagianIni;
+        }
+    }
+
+    $zip->close();
+
+    return $totalDikonversi;
+}
+
+function arp_tempel_ttd_ke_surat(PDO $conn, int $surat_id, int $direksi_id): bool
+{
+    try {
+        $stmtSurat = $conn->prepare("SELECT drive_file_id FROM surat WHERE id = :id");
+        $stmtSurat->execute([':id' => $surat_id]);
+        $driveFileId = $stmtSurat->fetchColumn();
+
+        if (!$driveFileId) {
+            arp_drive_set_last_error("Surat #{$surat_id} tidak memiliki drive_file_id (belum tersimpan di Drive).");
+            return false;
+        }
+
+        $stmtUser = $conn->prepare("SELECT nama_lengkap, ttd_digital, jabatan_ttd FROM Users WHERE id = :id");
+        $stmtUser->execute([':id' => $direksi_id]);
+        $direksi = $stmtUser->fetch();
+
+        if (!$direksi || empty($direksi['ttd_digital'])) {
+            arp_drive_set_last_error("Direksi belum mengunggah tanda tangan digital (menu Profil > Tanda Tangan Digital).");
+            return false;
+        }
+
+        $pathTtdLokal = realpath(__DIR__ . '/../' . ltrim($direksi['ttd_digital'], '/'));
+        if (!$pathTtdLokal || !is_file($pathTtdLokal)) {
+            arp_drive_set_last_error("File tanda tangan digital direksi tidak ditemukan di server: " . $direksi['ttd_digital']);
+            return false;
+        }
+
+        // Unduh docx surat yang SUDAH ADA di Drive, tempel gambar TTD ke
+        // macro ${ttd_direksi}, simpan ke path sementara BARU (bukan lewat
+        // arp_dengan_template_sementara langsung, karena fungsi itu otomatis
+        // menghapus file sementaranya sendiri sebelum sempat kita unggah balik).
+        $pathHasilSementara = arp_dengan_template_sementara($driveFileId, function ($pathLokal) use ($pathTtdLokal, $direksi) {
+            $processor = new TemplateProcessor($pathLokal);
+
+            // Kalau macro ${ttd_direksi} tidak ada di template surat ini,
+            // PhpWord tidak melempar error (macro yang tidak ditemukan
+            // memang dilewati begitu saja oleh setImageValue) -- jadi tidak
+            // perlu try/catch khusus di sini seperti setValue().
+            $processor->setImageValue('ttd_direksi', [
+                'path' => $pathTtdLokal,
+                'width' => 130,
+                'height' => 65,
+                'ratio' => true,
+            ]);
+
+            // Opsional: kalau direksi mengisi jabatan khusus untuk TTD (mis.
+            // "Direktur Utama"), timpa juga macro teks ${jabatan_penandatangan}
+            // kalau ada, supaya konsisten dengan siapa yang benar-benar approve.
+            if (!empty($direksi['jabatan_ttd'])) {
+                try {
+                    $processor->setValue('jabatan_penandatangan', htmlspecialchars((string) $direksi['jabatan_ttd'], ENT_QUOTES));
+                } catch (\Throwable $e) {
+                    // macro tidak ada di template ini, lewati saja
+                }
+            }
+            try {
+                $processor->setValue('nama_penandatangan', htmlspecialchars((string) $direksi['nama_lengkap'], ENT_QUOTES));
+            } catch (\Throwable $e) {
+                // macro tidak ada di template ini, lewati saja
+            }
+
+            $pathSementara = rtrim(sys_get_temp_dir(), '/\\') . DIRECTORY_SEPARATOR . 'surat_ttd_' . uniqid() . '.docx';
+            $processor->saveAs($pathSementara);
+
+            // PERBAIKAN BUG: PhpWord::setImageValue() SELALU menyisipkan gambar
+            // pakai format lama VML (<w:pict>). Microsoft Word masih baca VML
+            // (demi kompatibilitas mundur), tapi Google Docs/Drive TIDAK bisa
+            // me-render VML sama sekali -- makanya kalau surat yang sudah
+            // "ditempel" TTD ini dibuka lewat Drive/Google Docs, macro
+            // ${ttd_direksi} malah hilang jadi ruang kosong (nama & jabatan
+            // tetap muncul karena itu teks biasa, bukan gambar). Kalau file
+            // yang sama diunduh lalu dibuka di Microsoft Word asli, gambarnya
+            // muncul normal -- itu sebabnya bug ini gampang lolos waktu testing
+            // manual pakai Word tapi baru ketahuan pas dibuka lewat web/Drive.
+            // Fungsi di bawah membuka lagi file .docx yang barusan disimpan,
+            // lalu mengganti blok VML itu jadi DrawingML (format modern yang
+            // didukung Word MAUPUN Google Docs), tanpa perlu mengubah relasi
+            // gambar yang sudah dibuat PhpWord.
+            try {
+                arp_ganti_vml_ttd_ke_drawingml($pathSementara);
+            } catch (\Throwable $e) {
+                // Best-effort: kalau konversi gagal, biarkan file versi VML
+                // tetap tersimpan (masih benar kalau dibuka di Microsoft Word,
+                // cuma tidak tampil kalau dibuka lewat Google Docs/Drive).
+                error_log('Gagal konversi TTD VML->DrawingML: ' . $e->getMessage());
+            }
+
+            return $pathSementara;
+        });
+
+        $berhasil = arp_timpa_konten_drive(
+            $driveFileId,
+            $pathHasilSementara,
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        );
+
+        if (is_file($pathHasilSementara)) {
+            @unlink($pathHasilSementara);
+        }
+
+        if (!$berhasil) {
+            arp_drive_set_last_error('Gagal menimpa file surat di Drive dengan versi bertanda tangan: ' . arp_drive_last_error());
+            return false;
+        }
+
+        return true;
+    } catch (\Throwable $e) {
+        error_log('Gagal menempelkan TTD ke Surat #' . $surat_id . ': ' . $e->getMessage());
+        arp_drive_set_last_error($e->getMessage());
+        return false;
+    }
 }

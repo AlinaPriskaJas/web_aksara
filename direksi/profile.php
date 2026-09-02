@@ -87,6 +87,72 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
         }
+    } elseif ($action === 'upload_ttd') {
+        if (!isset($_FILES['ttd_digital']) || $_FILES['ttd_digital']['error'] !== UPLOAD_ERR_OK) {
+            $error_msg = "Gagal mengunggah tanda tangan. Silakan coba lagi.";
+        } else {
+            $file = $_FILES['ttd_digital'];
+            $allowed_ext = ['png']; // PNG transparan disarankan supaya latar surat tidak tertutup kotak putih
+            $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+            $max_size = 1 * 1024 * 1024; // 1MB
+
+            if (!in_array($ext, $allowed_ext)) {
+                $error_msg = "Format tanda tangan harus PNG (idealnya latar transparan).";
+            } elseif ($file['size'] > $max_size) {
+                $error_msg = "Ukuran file tanda tangan maksimal 1MB.";
+            } else {
+                $upload_dir = "../uploads/ttd/";
+                if (!is_dir($upload_dir)) {
+                    mkdir($upload_dir, 0755, true);
+                }
+                $filename = $current_user_id . "_" . time() . "." . $ext;
+                $target_path = $upload_dir . $filename;
+
+                if (move_uploaded_file($file['tmp_name'], $target_path)) {
+                    if (!empty($user['ttd_digital']) && is_file("../" . $user['ttd_digital'])) {
+                        @unlink("../" . $user['ttd_digital']);
+                    }
+                    $db_path = "uploads/ttd/" . $filename;
+                    try {
+                        $upd = $conn->prepare("UPDATE Users SET ttd_digital = :ttd WHERE id = :id");
+                        $upd->execute(['ttd' => $db_path, 'id' => $current_user_id]);
+                        $success_msg = "Tanda tangan digital berhasil disimpan! Surat yang Anda setujui mulai sekarang akan otomatis bertanda tangan.";
+                        $stmt->execute(['id' => $current_user_id]);
+                        $user = $stmt->fetch();
+                    } catch (PDOException $e) {
+                        $error_msg = "Gagal menyimpan tanda tangan ke database. Pastikan kolom Users.ttd_digital sudah dibuat (lihat migrations/2026_xx_xx_add_ttd_digital.sql).";
+                    }
+                } else {
+                    $error_msg = "Gagal menyimpan file tanda tangan di server.";
+                }
+            }
+        }
+    } elseif ($action === 'hapus_ttd') {
+        if (!empty($user['ttd_digital'])) {
+            if (is_file("../" . $user['ttd_digital'])) {
+                @unlink("../" . $user['ttd_digital']);
+            }
+            try {
+                $upd = $conn->prepare("UPDATE Users SET ttd_digital = NULL WHERE id = :id");
+                $upd->execute(['id' => $current_user_id]);
+                $success_msg = "Tanda tangan digital dihapus.";
+                $stmt->execute(['id' => $current_user_id]);
+                $user = $stmt->fetch();
+            } catch (PDOException $e) {
+                $error_msg = "Gagal menghapus tanda tangan digital.";
+            }
+        }
+    } elseif ($action === 'simpan_jabatan_ttd') {
+        $jabatan_ttd = trim($_POST['jabatan_ttd'] ?? '');
+        try {
+            $upd = $conn->prepare("UPDATE Users SET jabatan_ttd = :jabatan WHERE id = :id");
+            $upd->execute(['jabatan' => $jabatan_ttd !== '' ? $jabatan_ttd : null, 'id' => $current_user_id]);
+            $success_msg = "Jabatan pada tanda tangan berhasil disimpan.";
+            $stmt->execute(['id' => $current_user_id]);
+            $user = $stmt->fetch();
+        } catch (PDOException $e) {
+            $error_msg = "Gagal menyimpan jabatan. Pastikan kolom Users.jabatan_ttd sudah dibuat.";
+        }
     } elseif ($action === 'hapus_foto') {
         if (!empty($user['foto_profil'])) {
             if (is_file("../" . $user['foto_profil'])) {
@@ -214,6 +280,53 @@ include "../includes/topbar.php";
                     <span><?= $user['last_login'] ? date('d-m-Y H:i', strtotime($user['last_login'])) . ' WIB' : '-' ?></span>
                 </div>
 
+            </div>
+
+            <!-- Kartu Tanda Tangan Digital: dipakai otomatis untuk membubuhkan
+                 TTD ke surat begitu Anda menekan "Setujui" di Approval Center. -->
+            <div class="card-box mt-4">
+                <h6 class="fw-bold mb-1"><i class="bi bi-pen me-1"></i> Tanda Tangan Digital</h6>
+                <p class="text-muted" style="font-size:0.8rem;">
+                    Gambar ini otomatis ditempelkan ke surat begitu Anda menyetujuinya di
+                    <b>Approval Center</b>. Gunakan PNG latar transparan supaya rapi di atas kop surat.
+                </p>
+
+                <?php if (!empty($user['ttd_digital']) && is_file('../' . $user['ttd_digital'])): ?>
+                    <div class="p-3 rounded-3 text-center mb-3"
+                        style="background: var(--bg-glass); border: 1px solid var(--border-color);">
+                        <img src="../<?= htmlspecialchars($user['ttd_digital']) ?>" alt="Tanda tangan"
+                            style="max-height:80px; max-width:100%;">
+                    </div>
+                <?php else: ?>
+                    <div class="alert alert-warning-custom" style="font-size:0.8rem;">
+                        <i class="bi bi-exclamation-triangle-fill"></i>
+                        Anda belum mengunggah tanda tangan digital. Surat yang Anda setujui
+                        belum akan otomatis bertanda tangan sebelum ini diisi.
+                    </div>
+                <?php endif; ?>
+
+                <form method="POST" action="profile.php" enctype="multipart/form-data" class="d-flex gap-2 mb-3">
+                    <input type="hidden" name="action" value="upload_ttd">
+                    <input type="file" name="ttd_digital" accept=".png" class="form-control-custom" required>
+                    <button type="submit" class="btn-primary-custom" style="white-space:nowrap;">
+                        <i class="bi bi-upload"></i> Unggah
+                    </button>
+                </form>
+
+                <?php if (!empty($user['ttd_digital'])): ?>
+                    <form method="POST" action="profile.php" class="mb-3"
+                        onsubmit="return confirm('Hapus tanda tangan digital?');">
+                        <input type="hidden" name="action" value="hapus_ttd">
+                        <button type="submit" class="avatar-remove-link">Hapus Tanda Tangan</button>
+                    </form>
+                <?php endif; ?>
+
+                <form method="POST" action="profile.php" class="d-flex gap-2">
+                    <input type="hidden" name="action" value="simpan_jabatan_ttd">
+                    <input type="text" name="jabatan_ttd" class="form-control-custom" placeholder="Jabatan pada TTD (mis. Direktur Utama)"
+                        value="<?= htmlspecialchars($user['jabatan_ttd'] ?? '') ?>">
+                    <button type="submit" class="btn-secondary-custom" style="white-space:nowrap;">Simpan</button>
+                </form>
             </div>
         </div>
 

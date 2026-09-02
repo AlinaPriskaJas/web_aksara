@@ -3,6 +3,7 @@
 session_start();
 require_once "../config/koneksi.php";
 require_once "../includes/drive_helper.php";
+require_once "../includes/functions.php";
 require_once "../includes/cuti_surat_helper.php";
 
 // Guard: halaman ini khusus role direksi. Kalau belum login / bukan direksi,
@@ -297,6 +298,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['proses_approval_surat
 
             $conn->commit();
 
+            // ===================================================================
+            // TEMPEL TANDA TANGAN DIGITAL DIREKSI ke file surat (di Drive) begitu
+            // statusnya "Disetujui". Dijalankan SESUDAH commit (bukan bagian dari
+            // transaksi) karena ini panggilan jaringan ke Drive -- kalau lambat/
+            // gagal, keputusan approval yang sudah dicatat tidak boleh ikut batal.
+            // Lihat arp_tempel_ttd_ke_surat() di includes/functions.php untuk
+            // syarat lengkap (macro ${ttd_direksi} di template & Users.ttd_digital).
+            // ===================================================================
+            $peringatanTtd = null;
+            if ($status_surat_baru === 'Disetujui') {
+                $ttdBerhasil = arp_tempel_ttd_ke_surat($conn, $surat_id, $direksi_id);
+                if (!$ttdBerhasil) {
+                    $pesanGagalTtd = arp_drive_last_error();
+                    error_log('Gagal menempelkan TTD ke Surat #' . $surat_id . ': ' . $pesanGagalTtd);
+                    $peringatanTtd = " Namun, tanda tangan digital belum otomatis tertempel ({$pesanGagalTtd}).";
+                }
+            }
+
             kirimNotifikasi(
                 $conn,
                 (int) $rowSurat['dibuat_oleh'],
@@ -334,7 +353,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['proses_approval_surat
             );
             $flash = [
                 'type' => 'success',
-                'message' => $decision === 'approve' ? 'Surat berhasil disetujui.' : 'Surat berhasil ditolak.',
+                'message' => ($decision === 'approve' ? 'Surat berhasil disetujui.' : 'Surat berhasil ditolak.')
+                    . ($peringatanTtd ?? ''),
             ];
         } catch (Exception $e) {
             $conn->rollBack();
