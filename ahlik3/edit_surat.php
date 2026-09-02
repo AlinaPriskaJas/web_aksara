@@ -1,5 +1,5 @@
 <?php
-// ahli/edit_surat.php — Edit surat keluar yang sudah pernah dibuat.
+// ahliK3/edit_surat.php — Edit surat keluar yang sudah pernah dibuat.
 // Memanfaatkan ulang proses generate surat yang sudah ada (generateSuratDocx dkk
 // di includes/functions.php) -- TIDAK membuat baris/nomor surat baru, hanya
 // meng-update record & meng-generate ulang berkas .docx-nya.
@@ -8,7 +8,7 @@ require_once "../config/koneksi.php";
 if (session_status() === PHP_SESSION_NONE)
     session_start();
 
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'ahli_k3') {
+if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'ahli_K3') {
     header("Location: ../login.php");
     exit;
 }
@@ -2064,3 +2064,4 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
 
 
 <?php include "../includes/footer.php"; ?>
+
