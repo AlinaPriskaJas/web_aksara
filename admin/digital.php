@@ -1,5 +1,5 @@
 <?php
-// admin/print.php
+// admin/digital.php -- Digital Sign / Arsip Dokumen Digital
 session_start();
 
 // Auth guard: pastikan sudah login dan role-nya memang admin
@@ -9,10 +9,12 @@ if (empty($_SESSION['login']) || ($_SESSION['role'] ?? '') !== 'admin') {
 }
 
 require_once "../config/koneksi.php";
+require_once "../includes/dokumen_helper.php";
 
-$page_title = "Print Center - Cetak Dokumen Perusahaan";
+$page_title = "Digital Sign - Arsip Dokumen Perusahaan";
+$ROLE_AKTIF = 'admin'; // dipakai untuk membangun link balik ke halaman asal dokumen
 
-// Kategori sama persis dengan admin/digital.php agar konsisten dengan sumber data (Dokumen_Digital)
+// Kategori ENUM Dokumen_Digital.kategori
 const KATEGORI_DOKUMEN = ['Suket K3', 'Sertifikat Ahli', 'Legal Perusahaan', 'Kontrak Klien', 'Laporan', 'Lainnya'];
 const EXT_PRATINJAU = ['pdf', 'jpg', 'jpeg', 'png']; // format yang bisa dipratinjau & dicetak langsung via browser
 
@@ -25,26 +27,27 @@ if (!in_array($kategori_filter, KATEGORI_DOKUMEN, true)) {
     $kategori_filter = 'Semua';
 }
 
-// Grup cetak: Dokumen, Laporan, Sertifikat, Surat & Legal
-$grup_map = [
-    'Dokumen'       => ['Suket K3', 'Lainnya'],
-    'Laporan'       => ['Laporan'],
-    'Sertifikat'    => ['Sertifikat Ahli'],
-    'Surat & Legal' => ['Legal Perusahaan', 'Kontrak Klien'],
-];
-if (!array_key_exists($grup_filter, $grup_map)) {
-    $grup_filter = 'Semua';
+// ================== TAB DINAMIS BERDASARKAN DOKUMEN YANG BENAR-BENAR MASUK ==================
+// Tab di halaman ini TIDAK di-hardcode lagi. Setiap kali modul baru (Surat, Sertifikat
+// Ahli, Suket K3, dst) mengarsipkan dokumen lewat arp_arsipkan_dokumen(), nilai
+// modul_sumber-nya otomatis dideteksi di sini dan langsung tampil sebagai tab baru.
+$modul_tersedia = [];
+try {
+    $stmtModul = $conn->query("SELECT DISTINCT modul_sumber FROM Dokumen_Digital WHERE modul_sumber IS NOT NULL AND modul_sumber <> ''");
+    $modul_tersedia = $stmtModul->fetchAll(PDO::FETCH_COLUMN);
+} catch (PDOException $e) {
+    $modul_tersedia = [];
 }
 
-function kategori_ke_grup(string $kategori): string
-{
-    global $grup_map;
-    foreach ($grup_map as $grup => $daftar) {
-        if (in_array($kategori, $daftar, true)) {
-            return $grup;
-        }
-    }
-    return 'Dokumen';
+$grup_map = []; // 'Label Tab' => modul_sumber asli di DB
+foreach ($modul_tersedia as $modulSumber) {
+    $info = arp_info_modul_dokumen($modulSumber);
+    $grup_map[$info['label']] = $modulSumber;
+}
+ksort($grup_map);
+
+if (!array_key_exists($grup_filter, $grup_map)) {
+    $grup_filter = 'Semua';
 }
 
 // ================== STATISTIK ==================
@@ -91,13 +94,8 @@ try {
         $params[':kategori'] = $kategori_filter;
     }
     if ($grup_filter !== 'Semua' && isset($grup_map[$grup_filter])) {
-        $placeholders = [];
-        foreach ($grup_map[$grup_filter] as $idx => $kat) {
-            $key = ':grup' . $idx;
-            $placeholders[] = $key;
-            $params[$key] = $kat;
-        }
-        $sql .= " AND dd.kategori IN (" . implode(',', $placeholders) . ") ";
+        $sql .= " AND dd.modul_sumber = :modul_sumber ";
+        $params[':modul_sumber'] = $grup_map[$grup_filter];
     }
     $sql .= " ORDER BY dd.created_at DESC";
 
@@ -151,6 +149,13 @@ function bisa_pratinjau(string $path): bool
 {
     $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
     return in_array($ext, EXT_PRATINJAU, true);
+}
+
+// File dari modul Surat/Sertifikat dkk sekarang berupa link Google Drive
+// (bukan cuma path lokal), jadi jangan selalu ditempeli '../'.
+function href_dokumen(string $path): string
+{
+    return (stripos($path, 'http') === 0) ? $path : '../' . $path;
 }
 
 include "../includes/header.php";
@@ -209,18 +214,19 @@ include "../includes/topbar.php";
             </div>
         </div>
 
-        <!-- Tab Grup Cetak -->
+        <!-- Tab Sumber Dokumen (otomatis mengikuti dokumen yang benar-benar masuk arsip) -->
         <div class="d-flex flex-wrap gap-2 mb-4">
             <?php
             $grup_list = array_merge(['Semua'], array_keys($grup_map));
             foreach ($grup_list as $g):
                 $active = $grup_filter === $g;
                 $urlParams = array_filter(['q' => $q, 'kategori' => $kategori_filter !== 'Semua' ? $kategori_filter : null, 'grup' => $g !== 'Semua' ? $g : null]);
+                $iconGrup = $g === 'Semua' ? 'bi-grid-fill' : (arp_info_modul_dokumen($grup_map[$g])['icon'] ?? 'bi-file-earmark-fill');
                 ?>
-                <a href="print.php?<?= htmlspecialchars(http_build_query($urlParams)) ?>"
+                <a href="digital.php?<?= htmlspecialchars(http_build_query($urlParams)) ?>"
                    class="<?= $active ? 'btn-primary-custom' : 'btn-secondary-custom' ?>"
-                   style="height:36px; padding:0 16px; font-size:0.85rem; display:inline-flex; align-items:center;">
-                    <?= htmlspecialchars($g) ?>
+                   style="height:36px; padding:0 16px; font-size:0.85rem; display:inline-flex; align-items:center; gap:6px;">
+                    <i class="bi <?= $iconGrup ?>"></i> <?= htmlspecialchars($g) ?>
                 </a>
             <?php endforeach; ?>
         </div>
@@ -253,6 +259,7 @@ include "../includes/topbar.php";
                         <th>No</th>
                         <th>Dokumen</th>
                         <th>Kategori</th>
+                        <th>Sumber</th>
                         <th>Klien Terkait</th>
                         <th>Format</th>
                         <th>Tgl. Unggah</th>
@@ -262,11 +269,16 @@ include "../includes/topbar.php";
                 <tbody>
                     <?php if (empty($daftar_dokumen)): ?>
                         <tr>
-                            <td colspan="7" class="text-center text-muted py-4">Belum ada dokumen yang cocok dengan filter ini.</td>
+                            <td colspan="8" class="text-center text-muted py-4">Belum ada dokumen yang cocok dengan filter ini.</td>
                         </tr>
                     <?php else: ?>
                         <?php foreach ($daftar_dokumen as $i => $d): ?>
-                            <?php $ext = strtoupper(pathinfo($d['file_path'], PATHINFO_EXTENSION)); ?>
+                            <?php
+                                $ext = strtoupper(pathinfo($d['file_path'], PATHINFO_EXTENSION));
+                                $infoModul = arp_info_modul_dokumen($d['modul_sumber']);
+                                $linkAsal = arp_link_sumber_dokumen($d['modul_sumber'], $d['ref_id'] ? (int) $d['ref_id'] : null, $ROLE_AKTIF);
+                                $hrefDok = href_dokumen($d['file_path']);
+                            ?>
                             <tr>
                                 <td><?= $i + 1 ?></td>
                                 <td>
@@ -274,11 +286,16 @@ include "../includes/topbar.php";
                                         <i class="bi <?= icon_file_ext($d['file_path']) ?> fs-5" style="color: var(--primary);"></i>
                                         <div>
                                             <div class="fw-semibold"><?= htmlspecialchars($d['nama_dokumen']) ?></div>
-                                            <div class="fs-7 text-muted"><?= htmlspecialchars($d['modul_sumber'] ?? '-') ?></div>
                                         </div>
                                     </div>
                                 </td>
                                 <td><span class="<?= badge_class_kategori($d['kategori']) ?>"><?= htmlspecialchars($d['kategori']) ?></span></td>
+                                <td>
+                                    <span class="fs-7 d-inline-flex align-items-center gap-1">
+                                        <i class="bi <?= htmlspecialchars($infoModul['icon']) ?>"></i>
+                                        <?= htmlspecialchars($infoModul['label']) ?>
+                                    </span>
+                                </td>
                                 <td>
                                     <?php if (!empty($d['nama_perusahaan'])): ?>
                                         <?= htmlspecialchars($d['nama_perusahaan']) ?>
@@ -291,22 +308,22 @@ include "../includes/topbar.php";
                                 <td><?= htmlspecialchars(date('d M Y', strtotime($d['created_at']))) ?></td>
                                 <td style="text-align: center;">
                                     <div class="d-flex gap-2 justify-content-center">
-                                        <a href="../<?= htmlspecialchars($d['file_path']) ?>" target="_blank" class="btn-secondary-custom" style="height:32px; padding:0 10px; font-size:0.8rem;" title="Lihat">
+                                        <a href="<?= htmlspecialchars($hrefDok) ?>" target="_blank" class="btn-secondary-custom" style="height:32px; padding:0 10px; font-size:0.8rem;" title="Lihat">
                                             <i class="bi bi-eye"></i>
                                         </a>
                                         <button type="button" class="btn-primary-custom" style="height:32px; padding:0 10px; font-size:0.8rem;" title="Cetak"
                                             onclick='openPrintModal(<?= json_encode([
                                                 "nama_dokumen" => $d["nama_dokumen"],
                                                 "kategori" => $d["kategori"],
-                                                "file_path" => $d["file_path"],
+                                                "file_path" => $hrefDok,
                                                 "bisa_pratinjau" => bisa_pratinjau($d["file_path"]),
                                             ]) ?>)'>
                                             <i class="bi bi-printer"></i>
                                         </button>
-                                        <a href="../<?= htmlspecialchars($d['file_path']) ?>" download class="btn-secondary-custom" style="height:32px; padding:0 10px; font-size:0.8rem;" title="Unduh">
+                                        <a href="<?= htmlspecialchars($hrefDok) ?>" download class="btn-secondary-custom" style="height:32px; padding:0 10px; font-size:0.8rem;" title="Unduh">
                                             <i class="bi bi-download"></i>
                                         </a>
-                                    </div>
+                                        
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -356,7 +373,7 @@ include "../includes/topbar.php";
 function openPrintModal(data) {
     document.getElementById('printNamaDokumen').textContent = data.nama_dokumen || 'Cetak Dokumen';
     document.getElementById('printKategoriDokumen').textContent = data.kategori || '-';
-    document.getElementById('printDownloadLink').href = '../' + data.file_path;
+    document.getElementById('printDownloadLink').href = data.file_path;
 
     const frame = document.getElementById('printFrame');
     const wrapper = document.getElementById('printPreviewWrapper');
@@ -364,7 +381,7 @@ function openPrintModal(data) {
     const printBtn = document.getElementById('printNowBtn');
 
     if (data.bisa_pratinjau) {
-        frame.src = '../' + data.file_path;
+        frame.src = data.file_path;
         wrapper.style.display = 'block';
         fallback.style.display = 'none';
         printBtn.style.display = 'inline-flex';

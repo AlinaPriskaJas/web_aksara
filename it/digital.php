@@ -2,6 +2,7 @@
 // it/digital.php
 require_once "../config/koneksi.php";
 require_once "../includes/drive_helper.php";
+require_once "../includes/dokumen_helper.php";
 
 if (session_status() === PHP_SESSION_NONE)
     session_start();
@@ -11,10 +12,18 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'it') {
     exit;
 }
 
-$page_title = "Dokumen Digital Perusahaan";
+$page_title = "Digital Sign - Dokumen Digital Perusahaan";
+$ROLE_AKTIF = 'it'; // dipakai untuk membangun link balik ke halaman asal dokumen
 include "../includes/header.php";
 include "../includes/sidebar.php";
 include "../includes/topbar.php";
+
+// File dari modul Surat/Sertifikat dkk sekarang berupa link Google Drive
+// (bukan cuma path lokal), jadi jangan selalu ditempeli '../'.
+function href_dokumen(string $path): string
+{
+    return (stripos($path, 'http') === 0) ? $path : '../' . $path;
+}
 
 $current_user_id = $_SESSION['user_id'];
 $success_msg = "";
@@ -71,15 +80,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+// Tab sumber dokumen (otomatis mengikuti dokumen yang benar-benar masuk arsip)
+$modul_tersedia = [];
+try {
+    $stmtModul = $conn->query("SELECT DISTINCT modul_sumber FROM Dokumen_Digital WHERE modul_sumber IS NOT NULL AND modul_sumber <> ''");
+    $modul_tersedia = $stmtModul->fetchAll(PDO::FETCH_COLUMN);
+} catch (PDOException $e) {
+    $modul_tersedia = [];
+}
+$grup_map = []; // 'Label Tab' => modul_sumber asli di DB
+foreach ($modul_tersedia as $modulSumber) {
+    $info = arp_info_modul_dokumen($modulSumber);
+    $grup_map[$info['label']] = $modulSumber;
+}
+ksort($grup_map);
+
+$filter_grup = isset($_GET['grup']) ? trim($_GET['grup']) : '';
+if (!array_key_exists($filter_grup, $grup_map)) {
+    $filter_grup = '';
+}
+
 // Filter
 $filter_kategori = isset($_GET['kategori']) ? trim($_GET['kategori']) : '';
 $sql = "SELECT d.*, u.nama_lengkap, k.nama_perusahaan FROM Dokumen_Digital d 
         JOIN Users u ON d.diupload_oleh = u.id 
-        LEFT JOIN Data_Klien k ON d.klien_id = k.id";
+        LEFT JOIN Data_Klien k ON d.klien_id = k.id
+        WHERE 1=1";
 $params = [];
 if (!empty($filter_kategori)) {
-    $sql .= " WHERE d.kategori = :kategori";
+    $sql .= " AND d.kategori = :kategori";
     $params['kategori'] = $filter_kategori;
+}
+if ($filter_grup !== '') {
+    $sql .= " AND d.modul_sumber = :modul_sumber";
+    $params['modul_sumber'] = $grup_map[$filter_grup];
 }
 $sql .= " ORDER BY d.created_at DESC";
 
@@ -92,6 +126,15 @@ try {
 }
 
 $totalDok = $conn->query("SELECT COUNT(*) FROM Dokumen_Digital")->fetchColumn() ?: 0;
+
+// Total per jenis dokumen, dipakai untuk card ringkasan di atas.
+$totalSurat = $conn->query("
+    SELECT COUNT(*) FROM Dokumen_Digital
+    WHERE modul_sumber IN ('Surat Keluar', 'Surat Masuk', 'Surat')
+")->fetchColumn() ?: 0;
+$totalSuket = $conn->query("SELECT COUNT(*) FROM Dokumen_Digital WHERE kategori = 'Suket K3'")->fetchColumn() ?: 0;
+$totalLaporan = $conn->query("SELECT COUNT(*) FROM Dokumen_Digital WHERE kategori = 'Laporan'")->fetchColumn() ?: 0;
+
 $klienList = $conn->query("SELECT id, nama_perusahaan FROM Data_Klien ORDER BY nama_perusahaan ASC")->fetchAll();
 ?>
 
@@ -110,7 +153,7 @@ $klienList = $conn->query("SELECT id, nama_perusahaan FROM Data_Klien ORDER BY n
     <?php endif; ?>
 
     <div class="row g-4 mb-4">
-        <div class="col-12">
+        <div class="col-xl-3 col-md-6 col-12">
             <div class="stat-card">
                 <div class="stat-card-info">
                     <span class="stat-card-title">Total Dokumen Tersimpan</span>
@@ -119,13 +162,65 @@ $klienList = $conn->query("SELECT id, nama_perusahaan FROM Data_Klien ORDER BY n
                 <div class="stat-card-icon"><i class="bi bi-hdd-network-fill"></i></div>
             </div>
         </div>
+        <div class="col-xl-3 col-md-6 col-12">
+            <div class="stat-card">
+                <div class="stat-card-info">
+                    <span class="stat-card-title">Total Surat</span>
+                    <span class="stat-card-value"><?= $totalSurat ?></span>
+                </div>
+                <div class="stat-card-icon warning"><i class="bi bi-envelope-fill"></i></div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 col-12">
+            <div class="stat-card">
+                <div class="stat-card-info">
+                    <span class="stat-card-title">Total Suket K3</span>
+                    <span class="stat-card-value"><?= $totalSuket ?></span>
+                </div>
+                <div class="stat-card-icon success"><i class="bi bi-file-earmark-medical"></i></div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 col-12">
+            <div class="stat-card">
+                <div class="stat-card-info">
+                    <span class="stat-card-title">Total Laporan</span>
+                    <span class="stat-card-value"><?= $totalLaporan ?></span>
+                </div>
+                <div class="stat-card-icon"><i class="bi bi-clipboard-data-fill"></i></div>
+            </div>
+        </div>
     </div>
 
     <div class="card-box">
+        <!-- Tab Sumber Dokumen (otomatis mengikuti dokumen yang benar-benar masuk arsip) -->
+        <div class="d-flex flex-wrap gap-2 mb-3">
+            <?php
+            $tabUrlParams = array_filter(['kategori' => $filter_kategori ?: null]);
+            $semuaActive = $filter_grup === '';
+            ?>
+            <a href="digital.php?<?= htmlspecialchars(http_build_query($tabUrlParams)) ?>"
+               class="<?= $semuaActive ? 'btn-primary-custom' : 'btn-secondary-custom' ?>"
+               style="height:36px; padding:0 16px; font-size:0.85rem; display:inline-flex; align-items:center; gap:6px;">
+                <i class="bi bi-grid-fill"></i> Semua
+            </a>
+            <?php foreach ($grup_map as $labelTab => $modulSumberAsli):
+                $active = $filter_grup === $labelTab;
+                $iconGrup = arp_info_modul_dokumen($modulSumberAsli)['icon'];
+                $paramsTab = array_merge($tabUrlParams, ['grup' => $labelTab]);
+                ?>
+                <a href="digital.php?<?= htmlspecialchars(http_build_query($paramsTab)) ?>"
+                   class="<?= $active ? 'btn-primary-custom' : 'btn-secondary-custom' ?>"
+                   style="height:36px; padding:0 16px; font-size:0.85rem; display:inline-flex; align-items:center; gap:6px;">
+                    <i class="bi <?= htmlspecialchars($iconGrup) ?>"></i> <?= htmlspecialchars($labelTab) ?>
+                </a>
+            <?php endforeach; ?>
+        </div>
+
         <div class="table-toolbar">
             <h5 class="table-toolbar-title fw-bold">Repository Dokumen Perusahaan</h5>
             <div class="table-toolbar-actions">
                 <form method="GET" action="digital.php">
+                    <input type="hidden" name="grup" value="<?= htmlspecialchars($filter_grup) ?>">
                     <select name="kategori" class="select-custom" onchange="this.form.submit()" style="min-width:180px;">
                         <option value="">Semua Kategori</option>
                         <?php foreach ($kategori_list as $k): ?>
@@ -152,6 +247,7 @@ $klienList = $conn->query("SELECT id, nama_perusahaan FROM Data_Klien ORDER BY n
                     <tr>
                         <th>Nama Dokumen</th>
                         <th>Kategori</th>
+                        <th>Sumber</th>
                         <th>Klien Terkait</th>
                         <th>Visibilitas</th>
                         <th>Diunggah Oleh</th>
@@ -162,17 +258,27 @@ $klienList = $conn->query("SELECT id, nama_perusahaan FROM Data_Klien ORDER BY n
                 <tbody>
                     <?php if (count($dokumen) === 0): ?>
                         <tr>
-                            <td colspan="7" class="text-center py-4 text-muted">
+                            <td colspan="8" class="text-center py-4 text-muted">
                                 <i class="bi bi-folder-x d-block mb-2" style="font-size:2rem;"></i>
                                 Belum ada dokumen tersimpan.
                             </td>
                         </tr>
                     <?php else: ?>
                         <?php foreach ($dokumen as $d): ?>
-                            <?php $hrefDok = str_starts_with($d['file_path'], 'http') ? $d['file_path'] : '../' . $d['file_path']; ?>
+                            <?php
+                                $hrefDok = href_dokumen($d['file_path']);
+                                $infoModul = arp_info_modul_dokumen($d['modul_sumber']);
+                                $linkAsal = arp_link_sumber_dokumen($d['modul_sumber'], $d['ref_id'] ? (int) $d['ref_id'] : null, $ROLE_AKTIF);
+                            ?>
                             <tr>
                                 <td class="fw-bold"><?= htmlspecialchars($d['nama_dokumen']) ?></td>
                                 <td><span class="badge-warning"><?= htmlspecialchars($d['kategori']) ?></span></td>
+                                <td>
+                                    <span class="fs-7 d-inline-flex align-items-center gap-1">
+                                        <i class="bi <?= htmlspecialchars($infoModul['icon']) ?>"></i>
+                                        <?= htmlspecialchars($infoModul['label']) ?>
+                                    </span>
+                                </td>
                                 <td><?= $d['nama_perusahaan'] ? htmlspecialchars($d['nama_perusahaan']) : '-' ?></td>
                                 <td>
                                     <?php
@@ -188,15 +294,21 @@ $klienList = $conn->query("SELECT id, nama_perusahaan FROM Data_Klien ORDER BY n
                                 <td><?= date('d-m-Y', strtotime($d['created_at'])) ?></td>
                                 <td style="text-align:center;">
                                     <a href="<?= htmlspecialchars($hrefDok) ?>" target="_blank"
-                                        class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;">
+                                        class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;" title="Lihat">
                                         <i class="bi bi-eye-fill"></i>
                                     </a>
+                                    <?php if ($linkAsal): ?>
+                                        <a href="<?= htmlspecialchars($linkAsal) ?>"
+                                            class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;" title="Buka Halaman Asal">
+                                            <i class="bi bi-box-arrow-up-right"></i>
+                                        </a>
+                                    <?php endif; ?>
                                     <form method="POST" action="digital.php" style="display:inline-block;"
                                         onsubmit="return confirm('Yakin ingin menghapus dokumen ini?');">
                                         <input type="hidden" name="action" value="hapus">
                                         <input type="hidden" name="doc_id" value="<?= $d['id'] ?>">
                                         <button type="submit" class="btn-danger-custom"
-                                            style="height:28px; padding:0 8px; font-size:0.75rem;">
+                                            style="height:28px; padding:0 8px; font-size:0.75rem;" title="Hapus">
                                             <i class="bi bi-trash-fill"></i>
                                         </button>
                                     </form>

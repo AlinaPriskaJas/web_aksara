@@ -19,6 +19,7 @@ if (!defined('BASE_PATH')) {
 }
 require_once "../includes/functions.php";
 require_once "../includes/drive_helper.php";
+require_once "../includes/dokumen_helper.php";
 
 $page_title = "Manajemen Surat";
 $current_user_id = $_SESSION['user_id'];
@@ -741,6 +742,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
                 $fileHasilTersimpan,
                 json_encode($isiDataDisimpan, JSON_UNESCAPED_UNICODE),
             ]);
+            $suratIdBaru = (int) $pdo->lastInsertId();
+
+            // Arsipkan ke Dokumen Digital supaya otomatis muncul di halaman Digital Sign.
+            arp_arsipkan_dokumen($pdo, [
+                'nama_dokumen'  => $nomorSurat . ' - ' . $perihalSimpan,
+                'kategori'      => 'Lainnya',
+                'file_path'     => $fileHasilTersimpan,
+                'drive_file_id' => $hasilDriveKeluar['file_id'] ?? null,
+                'drive_link'    => $fileHasilTersimpan,
+                'modul_sumber'  => 'Surat Keluar',
+                'ref_id'        => $suratIdBaru,
+                'visibilitas'   => 'Internal',
+                'diupload_oleh' => $current_user_id,
+            ]);
 
             $pdo->commit();
             catatAudit(
@@ -920,18 +935,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'kirim_s
                         $suratId,
                     ]);
 
-            // Salin berkas surat ke Dokumen Digital agar bisa dilihat/diunduh client
+            // Perbarui arsip Dokumen Digital surat ini jadi visibilitas 'Client' agar
+            // bisa dilihat/diunduh client (baris arsipnya dibuat otomatis saat surat
+            // dibuat, lihat arp_arsipkan_dokumen() di titik "Buat Surat").
             if (!empty($surat['file_hasil'])) {
-                $pdo->prepare("
-                    INSERT INTO Dokumen_Digital (nama_dokumen, kategori, file_path, modul_sumber, ref_id, klien_id, visibilitas, diupload_oleh)
-                    VALUES (?, 'Lainnya', ?, 'Surat', ?, ?, 'Client', ?)
-                ")->execute([
-                            $surat['nomor'] . ' - ' . $surat['perihal'],
-                            $surat['file_hasil'],
-                            $suratId,
-                            $klienTerkirim['klien_id'],
-                            $current_user_id,
-                        ]);
+                arp_arsipkan_dokumen($pdo, [
+                    'nama_dokumen'  => $surat['nomor'] . ' - ' . $surat['perihal'],
+                    'kategori'      => 'Lainnya',
+                    'file_path'     => $surat['file_hasil'],
+                    'modul_sumber'  => 'Surat Keluar',
+                    'ref_id'        => $suratId,
+                    'klien_id'      => $klienTerkirim['klien_id'],
+                    'visibilitas'   => 'Client',
+                    'diupload_oleh' => $current_user_id,
+                ]);
             }
         }
 

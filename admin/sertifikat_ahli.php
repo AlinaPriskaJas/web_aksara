@@ -2,6 +2,7 @@
 // admin /sertifikat_ahli.php
 require_once "../config/koneksi.php";
 require_once "../includes/drive_helper.php";
+require_once "../includes/dokumen_helper.php";
 
 if (session_status() === PHP_SESSION_NONE)
     session_start();
@@ -128,6 +129,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'id' => $edit_id,
                         'uid' => $current_user_id
                     ]);
+
+                    // Arsipkan/perbarui arsip di Dokumen Digital.
+                    if (!empty($file_sertifikat)) {
+                        arp_arsipkan_dokumen($conn, [
+                            'nama_dokumen'  => $nama_lengkap . ' - ' . $nomor_sertifikat,
+                            'kategori'      => 'Sertifikat Ahli',
+                            'file_path'     => $file_sertifikat,
+                            'modul_sumber'  => 'Sertifikat Ahli',
+                            'ref_id'        => $edit_id,
+                            'visibilitas'   => 'Internal',
+                            'diupload_oleh' => $current_user_id,
+                        ]);
+                    }
                     catatAudit(
                         $conn,
                         'Sertifikat Ahli',
@@ -206,6 +220,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'exp' => $tanggal_kedaluwarsa,
                         'file' => $file_sertifikat
                     ]);
+                    $sertifikatIdBaru = (int) $conn->lastInsertId();
+
+                    // Arsipkan ke Dokumen Digital supaya otomatis muncul di halaman Digital Sign.
+                    if (!empty($file_sertifikat)) {
+                        arp_arsipkan_dokumen($conn, [
+                            'nama_dokumen'  => $nama_lengkap . ' - ' . $nomor_sertifikat,
+                            'kategori'      => 'Sertifikat Ahli',
+                            'file_path'     => $file_sertifikat,
+                            'modul_sumber'  => 'Sertifikat Ahli',
+                            'ref_id'        => $sertifikatIdBaru,
+                            'visibilitas'   => 'Internal',
+                            'diupload_oleh' => $current_user_id,
+                        ]);
+                    }
                     catatAudit(
                         $conn,
                         'Sertifikat Ahli',
