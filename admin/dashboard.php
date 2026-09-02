@@ -72,7 +72,7 @@ function badgeClass(?string $status): string
 // ================== STAT CARDS ==================
 $menunggu_approval  = safe_count($conn, "SELECT COUNT(*) FROM Approval WHERE status = 'Menunggu'");
 $verifikasi_baru    = safe_count($conn, "SELECT COUNT(*) FROM Pengajuan_Pemeriksaan WHERE status = 'Menunggu Verifikasi'");
-$sertifikat_perhatian = safe_count($conn, "SELECT COUNT(*) FROM v_sertifikat_ahli_status WHERE status_realtime IN ('Peringatan Awal','Kritis-Expired')");
+$sertifikat_perhatian = safe_count($conn, "SELECT COUNT(*) FROM V_Sertifikat_Ahli_Status WHERE status_realtime IN ('Peringatan Awal','Kritis-Expired')");
 $jadwal_minggu_ini  = safe_count($conn, "
     SELECT COUNT(*) FROM Jadwal_Pemeriksaan
     WHERE tanggal BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)

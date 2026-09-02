@@ -346,7 +346,7 @@ if (($_GET['ajax'] ?? '') === 'export_rekap') {
                COALESCE(rootS.tgl_dibuat, s.tgl_dibuat) AS tgl_surat_asli,
                COALESCE(rootS.nomor, s.nomor) AS nomor_family
         FROM Surat s
-        JOIN kode_surat k ON s.kode_id = k.id
+        JOIN Kode_Surat k ON s.kode_id = k.id
         LEFT JOIN Users u ON s.dibuat_oleh = u.id
         LEFT JOIN Surat rootS ON rootS.id = COALESCE(s.induk_surat_id, s.id)
         {$sqlWhere}
@@ -528,9 +528,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
         $templateIdPost = (int) ($_POST['template_id'] ?? 0);
         try {
                         $stmt = $pdo->prepare("SELECT k.*, t.id AS template_id, t.drive_file_id, t.format
-                                    FROM kode_surat k
-                                    JOIN kode_template kt ON kt.kode_id = k.id AND kt.template_id = ?
-                                    JOIN template_master t ON t.id = kt.template_id
+                                    FROM Kode_Surat k
+                                    JOIN Kode_Template kt ON kt.kode_id = k.id AND kt.template_id = ?
+                                    JOIN Template_Master t ON t.id = kt.template_id
                                     WHERE k.id = ?");
             $stmt->execute([$templateIdPost, $kodeIdPost]);
             $kode = $stmt->fetch();
@@ -1053,7 +1053,7 @@ $daftar_surat = $pdo->query("
               WHERE ap.jenis_pengajuan = 'Surat' AND ap.ref_id = s.id AND ap.status = 'Ditolak'
               ORDER BY ap.tgl_aksi DESC LIMIT 1) AS catatan_ditolak
     FROM Surat s
-    JOIN kode_surat k ON s.kode_id = k.id
+    JOIN Kode_Surat k ON s.kode_id = k.id
     LEFT JOIN Users u ON s.dibuat_oleh = u.id
     LEFT JOIN Surat rootS ON rootS.id = COALESCE(s.induk_surat_id, s.id)
     WHERE s.arah = 'Keluar'
@@ -1066,7 +1066,7 @@ $daftar_surat = $pdo->query("
 $daftar_surat_masuk = $pdo->query("
     SELECT s.*, k.kode AS kode_str, k.nama AS jenis_surat_kode
     FROM Surat s
-    JOIN kode_surat k ON s.kode_id = k.id
+    JOIN Kode_Surat k ON s.kode_id = k.id
     WHERE s.arah = 'Masuk'
     ORDER BY s.tgl_dibuat DESC, s.id DESC
 ")->fetchAll();
@@ -1074,13 +1074,13 @@ $daftar_surat_masuk = $pdo->query("
 // ==========================================
 // [DATA: TAB BUAT SURAT] Daftar kode surat (yang punya minimal 1 template)
 // ==========================================
-$daftar_kode = $pdo->query("SELECT * FROM kode_surat ORDER BY nama")->fetchAll();
+$daftar_kode = $pdo->query("SELECT * FROM Kode_Surat ORDER BY nama")->fetchAll();
 
 $template_per_kode = [];
 $rowsTplPerKode = $pdo->query("SELECT kt.id AS kode_template_id, kt.kode_id, kt.template_id, kt.is_default,
                                        t.nama AS nama_template, t.deskripsi, t.format
-                                FROM kode_template kt
-                                JOIN template_master t ON t.id = kt.template_id
+                                FROM Kode_Template kt
+                                JOIN Template_Master t ON t.id = kt.template_id
                                 ORDER BY kt.is_default DESC, t.nama ASC")->fetchAll();
 foreach ($rowsTplPerKode as $r) {
     $template_per_kode[$r['kode_id']][] = $r;
@@ -1105,9 +1105,9 @@ $fields_blok = [];
 $fields_invoice = [];
 if ($active_tab === 'tabPanelBuatSurat' && $kodeIdTerpilih && $templateIdTerpilih) {
     $stmt = $pdo->prepare("SELECT k.*, t.id AS template_id, t.nama AS nama_template, t.drive_file_id, t.drive_link, t.format, t.fields_json
-                            FROM kode_surat k
-                            JOIN kode_template kt ON kt.kode_id = k.id AND kt.template_id = ?
-                            JOIN template_master t ON t.id = kt.template_id
+                            FROM Kode_Surat k
+                            JOIN Kode_Template kt ON kt.kode_id = k.id AND kt.template_id = ?
+                            JOIN Template_Master t ON t.id = kt.template_id
                             WHERE k.id = ?");
     $stmt->execute([$templateIdTerpilih, $kodeIdTerpilih]);
     $kodeTerpilih = $stmt->fetch();

@@ -42,8 +42,8 @@ if (($_GET['export'] ?? '') === 'rekap_transaksi_pdf') {
             gs.kode_barang, gs.nama_barang, gs.satuan, kbg.nama_kategori
         FROM Mutasi_Stok ms
         JOIN Gudang_Stok gs ON ms.barang_id = gs.id
-        JOIN jenis_barang_gudang jbg ON gs.id_jenis = jbg.id_jenis
-        JOIN kategori_barang_gudang kbg ON jbg.id_kategori = kbg.id_kategori
+        JOIN Jenis_Barang_Gudang jbg ON gs.id_jenis = jbg.id_jenis
+        JOIN Kategori_Barang_Gudang kbg ON jbg.id_kategori = kbg.id_kategori
         WHERE ms.jenis_mutasi = 'Keluar' AND DATE_FORMAT(ms.tanggal, '%Y-%m') = :bulan";
     $paramsExport = ['bulan' => $bulanFilter];
     if ($idKategoriFilter > 0) {
@@ -58,7 +58,7 @@ if (($_GET['export'] ?? '') === 'rekap_transaksi_pdf') {
 
     $namaKategoriLabelExport = 'Semua Kategori';
     if ($idKategoriFilter > 0) {
-        $stmtKatLabel = $conn->prepare("SELECT nama_kategori FROM kategori_barang_gudang WHERE id_kategori = :id");
+        $stmtKatLabel = $conn->prepare("SELECT nama_kategori FROM Kategori_Barang_Gudang WHERE id_kategori = :id");
         $stmtKatLabel->execute(['id' => $idKategoriFilter]);
         $katRowExport = $stmtKatLabel->fetch();
         if ($katRowExport) {
@@ -128,8 +128,8 @@ if (($_GET['export'] ?? '') === 'rekap_tahunan_pdf') {
             SUM(CASE WHEN ms.jenis_mutasi = 'Keluar' THEN ms.jumlah * COALESCE(gs.harga_satuan, 0) ELSE 0 END) AS nilai_keluar
         FROM Mutasi_Stok ms
         JOIN Gudang_Stok gs ON ms.barang_id = gs.id
-        JOIN jenis_barang_gudang jbg ON gs.id_jenis = jbg.id_jenis
-        JOIN kategori_barang_gudang kbg ON jbg.id_kategori = kbg.id_kategori
+        JOIN Jenis_Barang_Gudang jbg ON gs.id_jenis = jbg.id_jenis
+        JOIN Kategori_Barang_Gudang kbg ON jbg.id_kategori = kbg.id_kategori
         WHERE YEAR(ms.tanggal) = :tahun AND ms.jenis_mutasi IN ('Masuk','Keluar')";
     $paramsExportThn = ['tahun' => $tahunFilter];
     if ($idKategoriFilterThn > 0) {
@@ -147,7 +147,7 @@ if (($_GET['export'] ?? '') === 'rekap_tahunan_pdf') {
 
     $namaKategoriLabelThn = 'Semua Kategori';
     if ($idKategoriFilterThn > 0) {
-        $stmtKatLabelThn = $conn->prepare("SELECT nama_kategori FROM kategori_barang_gudang WHERE id_kategori = :id");
+        $stmtKatLabelThn = $conn->prepare("SELECT nama_kategori FROM Kategori_Barang_Gudang WHERE id_kategori = :id");
         $stmtKatLabelThn->execute(['id' => $idKategoriFilterThn]);
         $katRowThn = $stmtKatLabelThn->fetch();
         if ($katRowThn) {
@@ -211,14 +211,14 @@ if (($_GET['export'] ?? '') === 'rekap_anggaran_kategori_pdf') {
         $tahunAnggaranExport = (int) date('Y');
     }
 
-    $kategorisExport = $conn->query("SELECT * FROM kategori_barang_gudang ORDER BY id_kategori ASC")->fetchAll();
+    $kategorisExport = $conn->query("SELECT * FROM Kategori_Barang_Gudang ORDER BY id_kategori ASC")->fetchAll();
 
     $stmtItemsExport = $conn->prepare("
         SELECT gs.id, gs.kode_barang, gs.nama_barang, gs.satuan, gs.harga_satuan, kbg.id_kategori,
             COALESCE(SUM(CASE WHEN ms.jenis_mutasi = 'Masuk' AND YEAR(ms.tanggal) = :tahun THEN ms.jumlah ELSE 0 END), 0) AS vol
         FROM Gudang_Stok gs
-        JOIN jenis_barang_gudang jbg ON gs.id_jenis = jbg.id_jenis
-        JOIN kategori_barang_gudang kbg ON jbg.id_kategori = kbg.id_kategori
+        JOIN Jenis_Barang_Gudang jbg ON gs.id_jenis = jbg.id_jenis
+        JOIN Kategori_Barang_Gudang kbg ON jbg.id_kategori = kbg.id_kategori
         LEFT JOIN Mutasi_Stok ms ON ms.barang_id = gs.id
         GROUP BY gs.id
         ORDER BY kbg.id_kategori ASC,
@@ -327,7 +327,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error_msg = "Pilih kategori dan file (.csv / .xlsx) terlebih dahulu!";
         } else {
             try {
-                $stmtKat = $conn->prepare("SELECT nama_kategori FROM kategori_barang_gudang WHERE id_kategori = :id");
+                $stmtKat = $conn->prepare("SELECT nama_kategori FROM Kategori_Barang_Gudang WHERE id_kategori = :id");
                 $stmtKat->execute(['id' => $id_kategori]);
                 $kat = $stmtKat->fetch();
                 if (!$kat) {
@@ -392,26 +392,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             try {
                 $conn->beginTransaction();
 
-                $stmtCekKat = $conn->prepare("SELECT id_kategori FROM kategori_barang_gudang WHERE nama_kategori = :nama");
+                $stmtCekKat = $conn->prepare("SELECT id_kategori FROM Kategori_Barang_Gudang WHERE nama_kategori = :nama");
                 $stmtCekKat->execute(['nama' => $nama_kategori]);
                 $kat = $stmtCekKat->fetch();
 
                 if ($kat) {
                     $id_kategori = $kat['id_kategori'];
                 } else {
-                    $stmtInsKat = $conn->prepare("INSERT INTO kategori_barang_gudang (nama_kategori) VALUES (:nama)");
+                    $stmtInsKat = $conn->prepare("INSERT INTO Kategori_Barang_Gudang (nama_kategori) VALUES (:nama)");
                     $stmtInsKat->execute(['nama' => $nama_kategori]);
                     $id_kategori = $conn->lastInsertId();
                 }
 
-                $stmtCekJenis = $conn->prepare("SELECT id_jenis FROM jenis_barang_gudang WHERE id_kategori = :id_kategori AND nama_jenis = :nama");
+                $stmtCekJenis = $conn->prepare("SELECT id_jenis FROM Jenis_Barang_Gudang WHERE id_kategori = :id_kategori AND nama_jenis = :nama");
                 $stmtCekJenis->execute(['id_kategori' => $id_kategori, 'nama' => $nama_kategori]);
                 $jenis = $stmtCekJenis->fetch();
 
                 if ($jenis) {
                     $id_jenis = $jenis['id_jenis'];
                 } else {
-                    $stmtInsJenis = $conn->prepare("INSERT INTO jenis_barang_gudang (id_kategori, nama_jenis) VALUES (:id_kategori, :nama)");
+                    $stmtInsJenis = $conn->prepare("INSERT INTO Jenis_Barang_Gudang (id_kategori, nama_jenis) VALUES (:id_kategori, :nama)");
                     $stmtInsJenis->execute(['id_kategori' => $id_kategori, 'nama' => $nama_kategori]);
                     $id_jenis = $conn->lastInsertId();
                 }
@@ -602,7 +602,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // ============================== FETCH DATA ==============================
 
 // Semua kategori (dipakai untuk filter & dropdown, BUKAN tab terpisah lagi — lihat poin 6)
-$kategoris = $conn->query("SELECT * FROM kategori_barang_gudang ORDER BY id_kategori ASC")->fetchAll();
+$kategoris = $conn->query("SELECT * FROM Kategori_Barang_Gudang ORDER BY id_kategori ASC")->fetchAll();
 
 // Semua item gudang DIGABUNG jadi satu list (tab ATK/AAK3/Konsumsi/Kebersihan digabung
 // jadi satu tab "Gudang Barang", filter kategori & jenis pakai dilakukan di JS/tampilan),
@@ -613,8 +613,8 @@ $semuaItems = $conn->query("
             WHERE ms.barang_id = gs.id AND ms.jenis_mutasi = 'Keluar'
             AND ms.tanggal >= COALESCE(gs.tgl_opname_awal, '1970-01-01')) AS pemakaian
     FROM Gudang_Stok gs
-    JOIN jenis_barang_gudang jbg ON gs.id_jenis = jbg.id_jenis
-    JOIN kategori_barang_gudang kbg ON jbg.id_kategori = kbg.id_kategori
+    JOIN Jenis_Barang_Gudang jbg ON gs.id_jenis = jbg.id_jenis
+    JOIN Kategori_Barang_Gudang kbg ON jbg.id_kategori = kbg.id_kategori
     ORDER BY kbg.id_kategori ASC,
              CAST(SUBSTRING_INDEX(gs.kode_barang, '.', 1) AS UNSIGNED) ASC,
              CAST(SUBSTRING_INDEX(gs.kode_barang, '.', -1) AS UNSIGNED) ASC
@@ -633,8 +633,8 @@ foreach ($semuaItems as $it) {
 $semuaBarang = $conn->query("
     SELECT gs.id, gs.kode_barang, gs.nama_barang, gs.satuan, gs.stok_sistem, kbg.nama_kategori
     FROM Gudang_Stok gs
-    JOIN jenis_barang_gudang jbg ON gs.id_jenis = jbg.id_jenis
-    JOIN kategori_barang_gudang kbg ON jbg.id_kategori = kbg.id_kategori
+    JOIN Jenis_Barang_Gudang jbg ON gs.id_jenis = jbg.id_jenis
+    JOIN Kategori_Barang_Gudang kbg ON jbg.id_kategori = kbg.id_kategori
     ORDER BY kbg.id_kategori ASC,
              CAST(SUBSTRING_INDEX(gs.kode_barang, '.', 1) AS UNSIGNED) ASC,
              CAST(SUBSTRING_INDEX(gs.kode_barang, '.', -1) AS UNSIGNED) ASC
@@ -645,8 +645,8 @@ $barangMasukList = $conn->query("
     SELECT ms.*, gs.nama_barang, gs.kode_barang, gs.satuan, kbg.nama_kategori, u.nama_lengkap AS operator
     FROM Mutasi_Stok ms
     JOIN Gudang_Stok gs ON ms.barang_id = gs.id
-    JOIN jenis_barang_gudang jbg ON gs.id_jenis = jbg.id_jenis
-    JOIN kategori_barang_gudang kbg ON jbg.id_kategori = kbg.id_kategori
+    JOIN Jenis_Barang_Gudang jbg ON gs.id_jenis = jbg.id_jenis
+    JOIN Kategori_Barang_Gudang kbg ON jbg.id_kategori = kbg.id_kategori
     JOIN Users u ON ms.dibuat_oleh = u.id
     WHERE ms.jenis_mutasi = 'Masuk'
     ORDER BY ms.tanggal DESC, ms.id DESC LIMIT 200
@@ -657,8 +657,8 @@ $transaksiList = $conn->query("
     SELECT ms.*, gs.nama_barang, gs.kode_barang, gs.satuan, kbg.nama_kategori, u.nama_lengkap AS operator
     FROM Mutasi_Stok ms
     JOIN Gudang_Stok gs ON ms.barang_id = gs.id
-    JOIN jenis_barang_gudang jbg ON gs.id_jenis = jbg.id_jenis
-    JOIN kategori_barang_gudang kbg ON jbg.id_kategori = kbg.id_kategori
+    JOIN Jenis_Barang_Gudang jbg ON gs.id_jenis = jbg.id_jenis
+    JOIN Kategori_Barang_Gudang kbg ON jbg.id_kategori = kbg.id_kategori
     JOIN Users u ON ms.dibuat_oleh = u.id
     WHERE ms.jenis_mutasi = 'Keluar'
     ORDER BY ms.tanggal DESC, ms.id DESC LIMIT 200

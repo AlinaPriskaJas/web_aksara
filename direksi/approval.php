@@ -617,7 +617,7 @@ if ($tab_aktif === 'surat') {
             SELECT s.*, u.nama_lengkap AS nama_pembuat, u.role AS role_pembuat, ks.nama AS nama_jenis_surat
             FROM Surat s
             LEFT JOIN Users u ON s.dibuat_oleh = u.id
-            LEFT JOIN kode_surat ks ON s.kode_id = ks.id
+            LEFT JOIN Kode_Surat ks ON s.kode_id = ks.id
             WHERE s.arah = 'Keluar'
         ";
         $paramsSurat = [];

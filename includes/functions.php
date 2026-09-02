@@ -43,7 +43,7 @@ function arp_dengan_template_sementara(string $driveFileId, callable $callback)
 // oleh user (mis. "015"); bagian kode jenis / "ARP" / bulan romawi /
 // tahun tetap dibuat otomatis persis seperti generateNomorSurat().
 // Kalau angka urut dikosongkan -> full otomatis (counter di
-// kode_surat ikut naik). Kalau diisi manual -> divalidasi angka &
+// Kode_Surat ikut naik). Kalau diisi manual -> divalidasi angka &
 // dicek supaya tidak duplikat, TANPA mengubah counter kode_surat
 // (jadi urutan otomatis berikutnya tidak "meloncat").
 // ==========================================
@@ -59,7 +59,7 @@ function resolveNomorSurat(PDO $pdo, int $kode_id, ?string $noUrutManual = null)
         throw new RuntimeException("Nomor urut surat harus berupa angka (contoh: 015).");
     }
 
-    $stmt = $pdo->prepare("SELECT kode FROM kode_surat WHERE id = ?");
+    $stmt = $pdo->prepare("SELECT kode FROM Kode_Surat WHERE id = ?");
     $stmt->execute([$kode_id]);
     $kode = $stmt->fetchColumn();
     if (!$kode) {
@@ -86,7 +86,7 @@ function generateNomorSurat(PDO $pdo, int $kode_id): string
 {
     $tahun = (int) date('Y');
 
-    $stmt = $pdo->prepare("SELECT kode, counter, tahun_counter FROM kode_surat WHERE id = ? FOR UPDATE");
+    $stmt = $pdo->prepare("SELECT kode, counter, tahun_counter FROM Kode_Surat WHERE id = ? FOR UPDATE");
     $stmt->execute([$kode_id]);
     $row = $stmt->fetch();
 
@@ -96,7 +96,7 @@ function generateNomorSurat(PDO $pdo, int $kode_id): string
 
     $counter = ((int) $row['tahun_counter'] === $tahun) ? $row['counter'] + 1 : 1;
 
-    $update = $pdo->prepare("UPDATE kode_surat SET counter = ?, tahun_counter = ? WHERE id = ?");
+    $update = $pdo->prepare("UPDATE Kode_Surat SET counter = ?, tahun_counter = ? WHERE id = ?");
     $update->execute([$counter, $tahun, $kode_id]);
 
     $bulanRomawi = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'][date('n') - 1];
@@ -108,7 +108,7 @@ function generateNomorSurat(PDO $pdo, int $kode_id): string
 // GENERATE NOMOR AGENDA OTOMATIS (arsip internal, terpisah untuk
 // Surat Masuk & Surat Keluar, reset tiap tahun).
 // Butuh tabel `agenda_counter` (lihat migrasi SQL):
-//   CREATE TABLE agenda_counter (
+//   CREATE TABLE Agenda_Counter (
 //       id INT PRIMARY KEY AUTO_INCREMENT,
 //       tahun INT NOT NULL,
 //       arah ENUM('Masuk','Keluar') NOT NULL,
@@ -127,7 +127,7 @@ function generateNomorAgenda(PDO $pdo, string $arah): string
 
     // Kunci baris counter tahun ini (kalau sudah ada) supaya aman dari race condition
     // ketika dua surat disimpan hampir bersamaan.
-    $stmt = $pdo->prepare("SELECT counter FROM agenda_counter WHERE tahun = ? AND arah = ? FOR UPDATE");
+    $stmt = $pdo->prepare("SELECT counter FROM Agenda_Counter WHERE tahun = ? AND arah = ? FOR UPDATE");
     $stmt->execute([$tahun, $arah]);
     $counterLama = $stmt->fetchColumn();
 
@@ -135,20 +135,20 @@ function generateNomorAgenda(PDO $pdo, string $arah): string
         // Belum ada baris counter untuk tahun & arah ini -> buat baru mulai dari 1
         $counter = 1;
         try {
-            $pdo->prepare("INSERT INTO agenda_counter (tahun, arah, counter) VALUES (?, ?, ?)")
+            $pdo->prepare("INSERT INTO Agenda_Counter (tahun, arah, counter) VALUES (?, ?, ?)")
                 ->execute([$tahun, $arah, $counter]);
         } catch (\Throwable $e) {
             // Kemungkinan baris sudah dibuat oleh proses lain di antara SELECT & INSERT
             // (race condition) -> ambil ulang & increment lewat UPDATE di bawah.
-            $stmtUlang = $pdo->prepare("SELECT counter FROM agenda_counter WHERE tahun = ? AND arah = ? FOR UPDATE");
+            $stmtUlang = $pdo->prepare("SELECT counter FROM Agenda_Counter WHERE tahun = ? AND arah = ? FOR UPDATE");
             $stmtUlang->execute([$tahun, $arah]);
             $counter = (int) $stmtUlang->fetchColumn() + 1;
-            $pdo->prepare("UPDATE agenda_counter SET counter = ? WHERE tahun = ? AND arah = ?")
+            $pdo->prepare("UPDATE Agenda_Counter SET counter = ? WHERE tahun = ? AND arah = ?")
                 ->execute([$counter, $tahun, $arah]);
         }
     } else {
         $counter = (int) $counterLama + 1;
-        $pdo->prepare("UPDATE agenda_counter SET counter = ? WHERE tahun = ? AND arah = ?")
+        $pdo->prepare("UPDATE Agenda_Counter SET counter = ? WHERE tahun = ? AND arah = ?")
             ->execute([$counter, $tahun, $arah]);
     }
 
@@ -504,7 +504,7 @@ function muatDataInvoiceUntukKuitansi(PDO $pdo, int $invoiceSuratId): ?array
     $stmt = $pdo->prepare("
         SELECT s.*, k.nama AS jenis_surat_nama
         FROM Surat s
-        JOIN kode_surat k ON k.id = s.kode_id
+        JOIN Kode_Surat k ON k.id = s.kode_id
         WHERE s.id = ? AND s.arah = 'Keluar'
     ");
     $stmt->execute([$invoiceSuratId]);
@@ -609,7 +609,7 @@ function daftarSuratInvoice(PDO $pdo): array
     $stmt = $pdo->query("
         SELECT s.id, s.nomor, s.perihal, s.tujuan, s.tgl_dibuat, s.status
         FROM Surat s
-        JOIN kode_surat k ON k.id = s.kode_id
+        JOIN Kode_Surat k ON k.id = s.kode_id
         WHERE s.arah = 'Keluar' AND k.nama LIKE '%Invoice%'
         ORDER BY s.tgl_dibuat DESC, s.id DESC
     ");

@@ -258,7 +258,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // Fetch semua sertifikat (bukan hanya milik user login)
 try {
-    $stmt = $conn->query("SELECT * FROM v_sertifikat_ahli_status ORDER BY tanggal_kedaluwarsa ASC");
+    $stmt = $conn->query("SELECT * FROM V_Sertifikat_Ahli_Status ORDER BY tanggal_kedaluwarsa ASC");
     $certs = $stmt->fetchAll();
 } catch (PDOException $e) {
     // Fallback jika view belum ada

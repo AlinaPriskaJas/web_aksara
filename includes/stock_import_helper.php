@@ -55,7 +55,7 @@ if (!function_exists('stockGenerateKodeBarang')) {
     {
         $prefix = stockKodePrefix($namaKategori);
         $stmt = $conn->prepare("SELECT gs.kode_barang FROM Gudang_Stok gs
-            JOIN jenis_barang_gudang jbg ON gs.id_jenis = jbg.id_jenis
+            JOIN Jenis_Barang_Gudang jbg ON gs.id_jenis = jbg.id_jenis
             WHERE jbg.id_kategori = :id_kategori");
         $stmt->execute(['id_kategori' => $id_kategori]);
 
@@ -413,15 +413,15 @@ function processStockImport(PDO $conn, string $tmpPath, string $originalName, in
     $duplikat = 0;
     $errors = [];
 
-    // 1. Pastikan jenis_barang_gudang untuk kategori ini ada (satu jenis umum per kategori,
+    // 1. Pastikan Jenis_Barang_Gudang untuk kategori ini ada (satu jenis umum per kategori,
     //    konsisten dengan alur "Tambah Barang Baru" yang sudah ada di aplikasi)
-    $stmtJenis = $conn->prepare("SELECT id_jenis FROM jenis_barang_gudang WHERE id_kategori = :id_kategori AND nama_jenis = :nama LIMIT 1");
+    $stmtJenis = $conn->prepare("SELECT id_jenis FROM Jenis_Barang_Gudang WHERE id_kategori = :id_kategori AND nama_jenis = :nama LIMIT 1");
     $stmtJenis->execute(['id_kategori' => $id_kategori, 'nama' => $nama_kategori]);
     $jenis = $stmtJenis->fetch();
     if ($jenis) {
         $id_jenis = $jenis['id_jenis'];
     } else {
-        $stmtInsJenis = $conn->prepare("INSERT INTO jenis_barang_gudang (id_kategori, nama_jenis) VALUES (:id_kategori, :nama)");
+        $stmtInsJenis = $conn->prepare("INSERT INTO Jenis_Barang_Gudang (id_kategori, nama_jenis) VALUES (:id_kategori, :nama)");
         $stmtInsJenis->execute(['id_kategori' => $id_kategori, 'nama' => $nama_kategori]);
         $id_jenis = $conn->lastInsertId();
     }
@@ -529,7 +529,7 @@ function processStockImport(PDO $conn, string $tmpPath, string $originalName, in
     }
 
     // catat ke import_log
-    $stmtLog = $conn->prepare("INSERT INTO import_log (nama_file, total_baris, berhasil, gagal, duplikat, detail_error, diupload_oleh)
+    $stmtLog = $conn->prepare("INSERT INTO Import_Log (nama_file, total_baris, berhasil, gagal, duplikat, detail_error, diupload_oleh)
         VALUES (:nama_file, :total, :berhasil, :gagal, :duplikat, :error, :user_id)");
     $stmtLog->execute([
         'nama_file' => $originalName,

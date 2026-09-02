@@ -101,7 +101,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form_action'] ?? '') === '
                 $klien = $stmtKlien->fetch();
 
                 // Pastikan jenis objek yang dipilih valid (hasil autocomplete)
-                $stmtJenis = $conn->prepare("SELECT id_jenis, id_kategori, nama_objek FROM jenis_objek_k3 WHERE id_jenis = :id LIMIT 1");
+                $stmtJenis = $conn->prepare("SELECT id_jenis, id_kategori, nama_objek FROM Jenis_Objek_K3 WHERE id_jenis = :id LIMIT 1");
                 $stmtJenis->execute(['id' => $id_jenis]);
                 $jenisObjek = $stmtJenis->fetch();
 
@@ -187,7 +187,7 @@ if ($ahli_k3_id > 0) {
             FROM Laporan_Pemeriksaan lp
             JOIN Data_Klien dk ON lp.klien_id = dk.id
             JOIN Objek_K3 o ON lp.objek_id = o.id
-            LEFT JOIN jenis_objek_k3 jo ON o.id_jenis = jo.id_jenis
+            LEFT JOIN Jenis_Objek_K3 jo ON o.id_jenis = jo.id_jenis
             WHERE lp.ahli_k3_id = :ahli_id
             ORDER BY lp.created_at DESC
         ");
@@ -209,7 +209,7 @@ try {
 // Data untuk autocomplete: Bidang Objek (kategori_objek_k3)
 $kategori_list = [];
 try {
-    $kategori_list = $conn->query("SELECT id_kategori, nama_kategori FROM kategori_objek_k3 ORDER BY nama_kategori ASC")->fetchAll();
+    $kategori_list = $conn->query("SELECT id_kategori, nama_kategori FROM Kategori_Objek_K3 ORDER BY nama_kategori ASC")->fetchAll();
 } catch (PDOException $e) {
     $kategori_list = [];
 }
@@ -217,7 +217,7 @@ try {
 // Data untuk autocomplete: Unit Objek (jenis_objek_k3), difilter di JS sesuai Bidang Objek yang dipilih
 $jenis_list = [];
 try {
-    $jenis_list = $conn->query("SELECT id_jenis, id_kategori, nama_objek FROM jenis_objek_k3 ORDER BY nama_objek ASC")->fetchAll();
+    $jenis_list = $conn->query("SELECT id_jenis, id_kategori, nama_objek FROM Jenis_Objek_K3 ORDER BY nama_objek ASC")->fetchAll();
 } catch (PDOException $e) {
     $jenis_list = [];
 }

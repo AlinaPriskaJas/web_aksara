@@ -34,7 +34,7 @@ if (($_GET['ajax'] ?? '') === 'cek_kode') {
     // combo_exists = kombinasi kode+nama PERSIS sama sudah ada (akan dipakai ulang, bukan baris baru)
     $hasil = ['kode_exists' => false, 'combo_exists' => false, 'daftar_nama_lain' => []];
     if ($kodeCek !== '') {
-        $stmtSemua = $pdo->prepare("SELECT nama FROM kode_surat WHERE kode = ?");
+        $stmtSemua = $pdo->prepare("SELECT nama FROM Kode_Surat WHERE kode = ?");
         $stmtSemua->execute([$kodeCek]);
         $semuaNama = $stmtSemua->fetchAll(PDO::FETCH_COLUMN);
         if (!empty($semuaNama)) {
@@ -109,7 +109,7 @@ if (($_GET['ajax'] ?? '') === 'get_template') {
     header('Content-Type: application/json');
     $templateId = (int) ($_GET['id'] ?? 0);
 
-    $stmt = $pdo->prepare("SELECT * FROM template_master WHERE id = ?");
+    $stmt = $pdo->prepare("SELECT * FROM Template_Master WHERE id = ?");
     $stmt->execute([$templateId]);
     $tpl = $stmt->fetch();
 
@@ -120,8 +120,8 @@ if (($_GET['ajax'] ?? '') === 'get_template') {
 
     $stmtKode = $pdo->prepare("
         SELECT k.id AS kode_id, k.kode, k.nama AS nama_kode, kt.id AS kode_template_id, kt.is_default
-        FROM kode_template kt
-        JOIN kode_surat k ON k.id = kt.kode_id
+        FROM Kode_Template kt
+        JOIN Kode_Surat k ON k.id = kt.kode_id
         WHERE kt.template_id = ?
         ORDER BY kt.is_default DESC, k.kode ASC
     ");
@@ -419,7 +419,7 @@ if (($_GET['ajax'] ?? '') === 'export_rekap') {
                COALESCE(rootS.tgl_dibuat, s.tgl_dibuat) AS tgl_surat_asli,
                COALESCE(rootS.nomor, s.nomor) AS nomor_family
         FROM Surat s
-        JOIN kode_surat k ON s.kode_id = k.id
+        JOIN Kode_Surat k ON s.kode_id = k.id
         LEFT JOIN Users u ON s.dibuat_oleh = u.id
         LEFT JOIN Surat rootS ON rootS.id = COALESCE(s.induk_surat_id, s.id)
         {$sqlWhere}
@@ -650,7 +650,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'upload_
 
         $deskripsiTemplateInput = trim($_POST['deskripsi'] ?? '');
 
-        $stmt = $pdo->prepare("INSERT INTO template_master (nama, deskripsi, file_path, drive_file_id, drive_link, format, fields_json, diupload_oleh) VALUES (?, ?, NULL, ?, ?, ?, ?, ?)");
+        $stmt = $pdo->prepare("INSERT INTO Template_Master (nama, deskripsi, file_path, drive_file_id, drive_link, format, fields_json, diupload_oleh) VALUES (?, ?, NULL, ?, ?, ?, ?, ?)");
         $stmt->execute([
             $namaTemplateInput,
             $deskripsiTemplateInput !== '' ? $deskripsiTemplateInput : null,
@@ -669,21 +669,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'upload_
         $namaKodeInput = trim($_POST['nama_kode'] ?? '');
         $namaKodeFinal = $namaKodeInput !== '' ? $namaKodeInput : $kodeInput;
 
-        $stmtCekKode = $pdo->prepare("SELECT id FROM kode_surat WHERE kode = ? AND nama = ?");
+        $stmtCekKode = $pdo->prepare("SELECT id FROM Kode_Surat WHERE kode = ? AND nama = ?");
         $stmtCekKode->execute([$kodeInput, $namaKodeFinal]);
         $kodeId = (int) $stmtCekKode->fetchColumn();
 
         if (!$kodeId) {
-            $stmtKode = $pdo->prepare("INSERT INTO kode_surat (kode, nama) VALUES (?, ?)");
+            $stmtKode = $pdo->prepare("INSERT INTO Kode_Surat (kode, nama) VALUES (?, ?)");
             $stmtKode->execute([$kodeInput, $namaKodeFinal]);
             $kodeId = (int) $pdo->lastInsertId();
         }
 
-        $cek = $pdo->prepare("SELECT COUNT(*) FROM kode_template WHERE kode_id = ?");
+        $cek = $pdo->prepare("SELECT COUNT(*) FROM Kode_Template WHERE kode_id = ?");
         $cek->execute([$kodeId]);
         $jadikanDefault = ((int) $cek->fetchColumn() === 0) ? 1 : 0;
 
-        $stmtHubung = $pdo->prepare("INSERT INTO kode_template (kode_id, template_id, is_default) VALUES (?, ?, ?)");
+        $stmtHubung = $pdo->prepare("INSERT INTO Kode_Template (kode_id, template_id, is_default) VALUES (?, ?, ?)");
         $stmtHubung->execute([$kodeId, $templateId, $jadikanDefault]);
 
         $pdo->commit();
@@ -725,7 +725,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'hapus_t
     try {
         $templateId = (int) $_POST['template_id'];
 
-        $stmt = $pdo->prepare("SELECT * FROM template_master WHERE id = ?");
+        $stmt = $pdo->prepare("SELECT * FROM Template_Master WHERE id = ?");
         $stmt->execute([$templateId]);
         $tpl = $stmt->fetch();
         if (!$tpl) {
@@ -739,8 +739,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'hapus_t
         }
 
         $pdo->beginTransaction();
-        $pdo->prepare("DELETE FROM kode_template WHERE template_id = ?")->execute([$templateId]);
-        $pdo->prepare("DELETE FROM template_master WHERE id = ?")->execute([$templateId]);
+        $pdo->prepare("DELETE FROM Kode_Template WHERE template_id = ?")->execute([$templateId]);
+        $pdo->prepare("DELETE FROM Template_Master WHERE id = ?")->execute([$templateId]);
         $pdo->commit();
 
         catatAudit($pdo, 'Surat', 'Hapus Template', "Menghapus template \"{$tpl['nama']}\" (#{$templateId})", $tpl, null);
@@ -767,7 +767,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'edit_te
         $templateId = (int) ($_POST['template_id'] ?? 0);
         $pdo->beginTransaction();
 
-        $stmt = $pdo->prepare("SELECT * FROM template_master WHERE id = ?");
+        $stmt = $pdo->prepare("SELECT * FROM Template_Master WHERE id = ?");
         $stmt->execute([$templateId]);
         $tpl = $stmt->fetch();
         if (!$tpl) {
@@ -781,7 +781,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'edit_te
         }
         $deskripsiBaru = trim($_POST['deskripsi'] ?? '');
 
-        $pdo->prepare("UPDATE template_master SET nama = ?, deskripsi = ? WHERE id = ?")
+        $pdo->prepare("UPDATE Template_Master SET nama = ?, deskripsi = ? WHERE id = ?")
             ->execute([$namaTemplateBaru, $deskripsiBaru !== '' ? $deskripsiBaru : null, $templateId]);
 
         // ----- 2) Rename placeholder ${...} di dalam file .docx (kalau ada mapping) -----
@@ -832,7 +832,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'edit_te
                 }
                 unset($f);
 
-                $pdo->prepare("UPDATE template_master SET fields_json = ? WHERE id = ?")
+                $pdo->prepare("UPDATE Template_Master SET fields_json = ? WHERE id = ?")
                     ->execute([json_encode($fieldsBaruDenganLabel, JSON_UNESCAPED_UNICODE), $templateId]);
 
                 if (!empty($penggantianPlaceholder)) {
@@ -864,21 +864,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'edit_te
                 continue;
             }
 
-            $stmtKodeId = $pdo->prepare("SELECT kode_id FROM kode_template WHERE id = ? AND template_id = ?");
+            $stmtKodeId = $pdo->prepare("SELECT kode_id FROM Kode_Template WHERE id = ? AND template_id = ?");
             $stmtKodeId->execute([$kodeTemplateId, $templateId]);
             $kodeId = (int) $stmtKodeId->fetchColumn();
             if (!$kodeId) {
                 continue;
             }
 
-            // Cek supaya tidak bentrok dengan baris kode_surat lain (kombinasi kode+nama unik)
-            $cekBentrok = $pdo->prepare("SELECT id FROM kode_surat WHERE kode = ? AND nama = ? AND id != ?");
+            // Cek supaya tidak bentrok dengan baris Kode_Surat lain (kombinasi kode+nama unik)
+            $cekBentrok = $pdo->prepare("SELECT id FROM Kode_Surat WHERE kode = ? AND nama = ? AND id != ?");
             $cekBentrok->execute([$kodeBaru, $namaKodeBaru, $kodeId]);
             if ($cekBentrok->fetch()) {
                 throw new RuntimeException("Kombinasi kode \"{$kodeBaru}\" & jenis surat \"{$namaKodeBaru}\" sudah dipakai baris lain.");
             }
 
-            $pdo->prepare("UPDATE kode_surat SET kode = ?, nama = ? WHERE id = ?")
+            $pdo->prepare("UPDATE Kode_Surat SET kode = ?, nama = ? WHERE id = ?")
                 ->execute([$kodeBaru, $namaKodeBaru, $kodeId]);
         }
 
@@ -934,11 +934,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'catat_s
             }
             $fileRelatif = $hasilDriveMasuk['link'];
         }
-        $stmtKodeManual = $pdo->prepare("SELECT id FROM kode_surat WHERE kode = ?");
+        $stmtKodeManual = $pdo->prepare("SELECT id FROM Kode_Surat WHERE kode = ?");
         $stmtKodeManual->execute(['MASUK']);
         $kodeManualId = (int) $stmtKodeManual->fetchColumn();
         if (!$kodeManualId) {
-            $pdo->prepare("INSERT INTO kode_surat (kode, nama) VALUES (?, ?)")->execute(['MASUK', 'Surat Masuk']);
+            $pdo->prepare("INSERT INTO Kode_Surat (kode, nama) VALUES (?, ?)")->execute(['MASUK', 'Surat Masuk']);
             $kodeManualId = (int) $pdo->lastInsertId();
         }
 
@@ -1005,9 +1005,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
         $templateIdPost = (int) ($_POST['template_id'] ?? 0);
         try {
             $stmt = $pdo->prepare("SELECT k.*, t.id AS template_id, t.drive_file_id, t.format
-                                    FROM kode_surat k
-                                    JOIN kode_template kt ON kt.kode_id = k.id AND kt.template_id = ?
-                                    JOIN template_master t ON t.id = kt.template_id
+                                    FROM Kode_Surat k
+                                    JOIN Kode_Template kt ON kt.kode_id = k.id AND kt.template_id = ?
+                                    JOIN Template_Master t ON t.id = kt.template_id
                                     WHERE k.id = ?");
             $stmt->execute([$templateIdPost, $kodeIdPost]);
             $kode = $stmt->fetch();
@@ -1849,7 +1849,7 @@ $daftar_surat_semua = $pdo->query("
               WHERE ap.jenis_pengajuan = 'Surat' AND ap.ref_id = s.id AND ap.status = 'Ditolak'
               ORDER BY ap.tgl_aksi DESC LIMIT 1) AS catatan_ditolak
     FROM Surat s
-    JOIN kode_surat k ON s.kode_id = k.id
+    JOIN Kode_Surat k ON s.kode_id = k.id
     LEFT JOIN Users u ON s.dibuat_oleh = u.id
     LEFT JOIN Surat rootS ON rootS.id = COALESCE(s.induk_surat_id, s.id)
     ORDER BY root_tgl_dibuat DESC, root_id DESC, s.revisi_ke DESC
@@ -1861,11 +1861,11 @@ $daftar_surat_masuk = array_values(array_filter($daftar_surat_semua, fn($s) => $
 // ==========================================
 // [DATA: TAB UPLOAD TEMPLATE] Daftar template + kode yang terhubung
 // ==========================================
-$daftar_template = $pdo->query("SELECT * FROM template_master ORDER BY created_at DESC")->fetchAll();
+$daftar_template = $pdo->query("SELECT * FROM Template_Master ORDER BY created_at DESC")->fetchAll();
 
 $daftar_kode_per_template = [];
-$rowsKodeTemplate = $pdo->query("SELECT kt.template_id, k.kode FROM kode_template kt
-                                  JOIN kode_surat k ON k.id = kt.kode_id")->fetchAll();
+$rowsKodeTemplate = $pdo->query("SELECT kt.template_id, k.kode FROM Kode_Template kt
+                                  JOIN Kode_Surat k ON k.id = kt.kode_id")->fetchAll();
 foreach ($rowsKodeTemplate as $r) {
     $daftar_kode_per_template[$r['template_id']][] = $r['kode'];
 }
@@ -1873,13 +1873,13 @@ foreach ($rowsKodeTemplate as $r) {
 // ==========================================
 // [DATA: TAB BUAT SURAT] Daftar kode surat (yang punya minimal 1 template)
 // ==========================================
-$daftar_kode = $pdo->query("SELECT * FROM kode_surat ORDER BY nama")->fetchAll();
+$daftar_kode = $pdo->query("SELECT * FROM Kode_Surat ORDER BY nama")->fetchAll();
 
 $template_per_kode = [];
 $rowsTplPerKode = $pdo->query("SELECT kt.id AS kode_template_id, kt.kode_id, kt.template_id, kt.is_default,
                                        t.nama AS nama_template, t.deskripsi, t.format
-                                FROM kode_template kt
-                                JOIN template_master t ON t.id = kt.template_id
+                                FROM Kode_Template kt
+                                JOIN Template_Master t ON t.id = kt.template_id
                                 ORDER BY kt.is_default DESC, t.nama ASC")->fetchAll();
 foreach ($rowsTplPerKode as $r) {
     $template_per_kode[$r['kode_id']][] = $r;
@@ -1904,9 +1904,9 @@ $fields_blok = [];
 $fields_invoice = [];
 if ($active_tab === 'tabPanelBuatSurat' && $kodeIdTerpilih && $templateIdTerpilih) {
     $stmt = $pdo->prepare("SELECT k.*, t.id AS template_id, t.nama AS nama_template, t.drive_file_id, t.drive_link, t.format, t.fields_json
-                            FROM kode_surat k
-                            JOIN kode_template kt ON kt.kode_id = k.id AND kt.template_id = ?
-                            JOIN template_master t ON t.id = kt.template_id
+                            FROM Kode_Surat k
+                            JOIN Kode_Template kt ON kt.kode_id = k.id AND kt.template_id = ?
+                            JOIN Template_Master t ON t.id = kt.template_id
                             WHERE k.id = ?");
     $stmt->execute([$templateIdTerpilih, $kodeIdTerpilih]);
     $kodeTerpilih = $stmt->fetch();

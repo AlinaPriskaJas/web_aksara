@@ -58,7 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $kategori_label = [];
                 if (!empty($kategori_objek_ids)) {
                     $inQuery = implode(',', array_fill(0, count($kategori_objek_ids), '?'));
-                    $stmtKat = $conn->prepare("SELECT nama_kategori FROM kategori_objek_k3 WHERE id_kategori IN ($inQuery)");
+                    $stmtKat = $conn->prepare("SELECT nama_kategori FROM Kategori_Objek_K3 WHERE id_kategori IN ($inQuery)");
                     $stmtKat->execute($kategori_objek_ids);
                     $kategori_label = array_column($stmtKat->fetchAll(), 'nama_kategori');
                 }
@@ -432,7 +432,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // Get Lists for Forms
 $klien_list = $conn->query("SELECT id, nama_perusahaan, pic_nama, pic_whatsapp FROM Data_Klien ORDER BY nama_perusahaan ASC")->fetchAll();
 $ahli_list = $conn->query("SELECT id, nama_lengkap, tingkat_ahli, bidang_keahlian FROM Sertifikat_Ahli ORDER BY nama_lengkap ASC")->fetchAll();
-$kategori_objek_list = $conn->query("SELECT id_kategori, kode_kategori, nama_kategori FROM kategori_objek_k3 ORDER BY nama_kategori ASC")->fetchAll();
+$kategori_objek_list = $conn->query("SELECT id_kategori, kode_kategori, nama_kategori FROM Kategori_Objek_K3 ORDER BY nama_kategori ASC")->fetchAll();
 $user_list = $conn->query("
     SELECT u.id, u.nama_lengkap, u.role, sa.tingkat_ahli, sa.bidang_keahlian
     FROM Users u

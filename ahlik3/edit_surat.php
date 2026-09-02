@@ -118,9 +118,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
         $templateIdPost = (int) ($_POST['template_id'] ?? 0);
         try {
             $stmtK = $pdo->prepare("SELECT k.*, t.id AS template_id, t.drive_file_id, t.format
-                                    FROM kode_surat k
-                                    JOIN kode_template kt ON kt.kode_id = k.id AND kt.template_id = ?
-                                    JOIN template_master t ON t.id = kt.template_id
+                                    FROM Kode_Surat k
+                                    JOIN Kode_Template kt ON kt.kode_id = k.id AND kt.template_id = ?
+                                    JOIN Template_Master t ON t.id = kt.template_id
                                     WHERE k.id = ?");
             $stmtK->execute([$templateIdPost, $kodeIdPost]);
             $kode = $stmtK->fetch();
@@ -430,13 +430,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
 // ==========================================
 // [DATA] Daftar jenis surat & template (sama seperti tab Buat Surat)
 // ==========================================
-$daftar_kode = $pdo->query("SELECT * FROM kode_surat ORDER BY nama")->fetchAll();
+$daftar_kode = $pdo->query("SELECT * FROM Kode_Surat ORDER BY nama")->fetchAll();
 
 $template_per_kode = [];
-$rowsTplPerKode = $pdo->query("SELECT kt.id AS kode_template_id, kt.kode_id, kt.template_id, kt.is_default,
+$rowsTplPerKode = $pdo->query("SELECT kt.id AS Kode_Template_id, kt.kode_id, kt.template_id, kt.is_default,
                                        t.nama AS nama_template, t.deskripsi, t.format
-                                FROM kode_template kt
-                                JOIN template_master t ON t.id = kt.template_id
+                                FROM Kode_Template kt
+                                JOIN Template_Master t ON t.id = kt.template_id
                                 ORDER BY kt.is_default DESC, t.nama ASC")->fetchAll();
 foreach ($rowsTplPerKode as $r) {
     $template_per_kode[$r['kode_id']][] = $r;
@@ -463,9 +463,9 @@ $fields_blok = [];
 $fields_invoice = [];
 if ($kodeIdTerpilih && $templateIdTerpilih) {
     $stmtF = $pdo->prepare("SELECT k.*, t.id AS template_id, t.nama AS nama_template, t.drive_file_id, t.drive_link, t.format, t.fields_json
-                            FROM kode_surat k
-                            JOIN kode_template kt ON kt.kode_id = k.id AND kt.template_id = ?
-                            JOIN template_master t ON t.id = kt.template_id
+                            FROM Kode_Surat k
+                            JOIN Kode_Template kt ON kt.kode_id = k.id AND kt.template_id = ?
+                            JOIN Template_Master t ON t.id = kt.template_id
                             WHERE k.id = ?");
     $stmtF->execute([$templateIdTerpilih, $kodeIdTerpilih]);
     $kodeTerpilih = $stmtF->fetch();

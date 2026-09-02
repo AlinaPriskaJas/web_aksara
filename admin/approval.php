@@ -566,8 +566,8 @@ if (!empty($daftar_pengajuan)) {
         $stmtUnit = $conn->prepare("
             SELECT pu.id, pu.pengajuan_id, pu.nama_unit, pu.jenis_pemeriksaan, k.nama_kategori AS bidang
             FROM Pengajuan_Pemeriksaan_Unit pu
-            LEFT JOIN jenis_objek_k3 j ON j.id_jenis = pu.id_jenis
-            LEFT JOIN kategori_objek_k3 k ON k.id_kategori = j.id_kategori
+            LEFT JOIN Jenis_Objek_K3 j ON j.id_jenis = pu.id_jenis
+            LEFT JOIN Kategori_Objek_K3 k ON k.id_kategori = j.id_kategori
             WHERE pu.pengajuan_id IN ($placeholders)
             ORDER BY pu.pengajuan_id ASC, pu.urutan ASC, pu.id ASC
         ");
@@ -733,7 +733,7 @@ try {
         SELECT s.*, u.nama_lengkap AS nama_pembuat, u.role AS role_pembuat, ks.nama AS nama_jenis_surat
         FROM Surat s
         LEFT JOIN Users u ON s.dibuat_oleh = u.id
-        LEFT JOIN kode_surat ks ON s.kode_id = ks.id
+        LEFT JOIN Kode_Surat ks ON s.kode_id = ks.id
     ";
     $paramsSurat = [];
     if ($status_filter_surat !== 'Semua') {
