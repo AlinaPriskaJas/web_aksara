@@ -70,7 +70,7 @@ function resolveNomorSurat(PDO $pdo, int $kode_id, ?string $noUrutManual = null)
     $bulanRomawi = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'][date('n') - 1];
     $nomorLengkap = sprintf('%03d/%s/ARP/%s/%d', (int) $noUrutManual, $kode, $bulanRomawi, $tahun);
 
-    $cek = $pdo->prepare("SELECT id FROM surat WHERE nomor = ? AND kode_id = ?");
+    $cek = $pdo->prepare("SELECT id FROM Surat WHERE nomor = ? AND kode_id = ?");
     $cek->execute([$nomorLengkap, $kode_id]);
     if ($cek->fetch()) {
         throw new RuntimeException("Nomor surat \"{$nomorLengkap}\" sudah digunakan surat lain untuk jenis surat ini. Gunakan nomor urut lain atau kosongkan untuk otomatis.");
@@ -503,7 +503,7 @@ function muatDataInvoiceUntukKuitansi(PDO $pdo, int $invoiceSuratId): ?array
 {
     $stmt = $pdo->prepare("
         SELECT s.*, k.nama AS jenis_surat_nama
-        FROM surat s
+        FROM Surat s
         JOIN kode_surat k ON k.id = s.kode_id
         WHERE s.id = ? AND s.arah = 'Keluar'
     ");
@@ -608,7 +608,7 @@ function daftarSuratInvoice(PDO $pdo): array
 {
     $stmt = $pdo->query("
         SELECT s.id, s.nomor, s.perihal, s.tujuan, s.tgl_dibuat, s.status
-        FROM surat s
+        FROM Surat s
         JOIN kode_surat k ON k.id = s.kode_id
         WHERE s.arah = 'Keluar' AND k.nama LIKE '%Invoice%'
         ORDER BY s.tgl_dibuat DESC, s.id DESC
@@ -2415,7 +2415,7 @@ function arp_ganti_vml_ttd_ke_drawingml(string $pathDocx): int
 function arp_tempel_ttd_ke_surat(PDO $conn, int $surat_id, int $direksi_id): bool
 {
     try {
-        $stmtSurat = $conn->prepare("SELECT drive_file_id FROM surat WHERE id = :id");
+        $stmtSurat = $conn->prepare("SELECT drive_file_id FROM Surat WHERE id = :id");
         $stmtSurat->execute([':id' => $surat_id]);
         $driveFileId = $stmtSurat->fetchColumn();
 

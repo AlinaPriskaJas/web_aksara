@@ -241,7 +241,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['proses_approval_surat
         try {
             $conn->beginTransaction();
 
-            $cekSurat = $conn->prepare("SELECT dibuat_oleh, status, nomor, perihal FROM surat WHERE id = :id FOR UPDATE");
+            $cekSurat = $conn->prepare("SELECT dibuat_oleh, status, nomor, perihal FROM Surat WHERE id = :id FOR UPDATE");
             $cekSurat->execute([':id' => $surat_id]);
             $rowSurat = $cekSurat->fetch();
 
@@ -256,7 +256,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['proses_approval_surat
 
             $status_surat_baru = $status_map_surat[$decision];
 
-            $updSurat = $conn->prepare("UPDATE surat SET status = :status WHERE id = :id");
+            $updSurat = $conn->prepare("UPDATE Surat SET status = :status WHERE id = :id");
             $updSurat->execute([
                 ':status' => $status_surat_baru,
                 ':id' => $surat_id,
@@ -601,7 +601,7 @@ $counts_surat = [
     'Draft' => 0,
 ];
 try {
-    $stmtCountSurat = $conn->query("SELECT status, COUNT(*) AS jumlah FROM surat WHERE arah = 'Keluar' GROUP BY status");
+    $stmtCountSurat = $conn->query("SELECT status, COUNT(*) AS jumlah FROM Surat WHERE arah = 'Keluar' GROUP BY status");
     foreach ($stmtCountSurat->fetchAll() as $c) {
         if (isset($counts_surat[$c['status']])) {
             $counts_surat[$c['status']] = (int) $c['jumlah'];
@@ -615,7 +615,7 @@ if ($tab_aktif === 'surat') {
     try {
         $sqlSurat = "
             SELECT s.*, u.nama_lengkap AS nama_pembuat, u.role AS role_pembuat, ks.nama AS nama_jenis_surat
-            FROM surat s
+            FROM Surat s
             LEFT JOIN Users u ON s.dibuat_oleh = u.id
             LEFT JOIN kode_surat ks ON s.kode_id = ks.id
             WHERE s.arah = 'Keluar'

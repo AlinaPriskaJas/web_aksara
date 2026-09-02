@@ -60,7 +60,7 @@ $surat_id = (int) ($_GET['id'] ?? $_POST['surat_id'] ?? 0);
 $error_msg = "";
 $success_msg = "";
 
-$stmtSurat = $pdo->prepare("SELECT * FROM surat WHERE id = ?");
+$stmtSurat = $pdo->prepare("SELECT * FROM Surat WHERE id = ?");
 $stmtSurat->execute([$surat_id]);
 $surat = $stmtSurat->fetch();
 
@@ -103,7 +103,7 @@ if ($surat['status'] === 'Ditolak') {
 // pakai induknya; kalau tidak, berarti baris ini sendiri adalah akarnya.
 $idRootFamily = (int) ($surat['induk_surat_id'] ?: $surat['id']);
 
-$stmtMaxRevisiPreview = $pdo->prepare("SELECT MAX(revisi_ke) FROM surat WHERE id = ? OR induk_surat_id = ?");
+$stmtMaxRevisiPreview = $pdo->prepare("SELECT MAX(revisi_ke) FROM Surat WHERE id = ? OR induk_surat_id = ?");
 $stmtMaxRevisiPreview->execute([$idRootFamily, $idRootFamily]);
 $revisiBerikutnyaPreview = (int) ($stmtMaxRevisiPreview->fetchColumn() ?: 0) + 1;
 
@@ -159,7 +159,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
                     // Cek duplikat KECUALI ke sesama anggota family (baris asli/revisi lain
                     // yang memang sengaja punya nomor sama).
                     $cekNomor = $pdo->prepare("
-                        SELECT id FROM surat
+                        SELECT id FROM Surat
                         WHERE nomor = ? AND id != ? AND COALESCE(induk_surat_id, id) != ?
                     ");
                     $cekNomor->execute([$nomorBaru, $surat_id, $idRootFamily]);
@@ -172,7 +172,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
             // Nomor revisi baris BARU ini dihitung dari revisi TERTINGGI di seluruh
             // family (bukan cuma baris yang sedang dibuka) -- supaya tetap benar walau
             // user membuka & merevisi dari baris revisi lama, bukan dari yang terbaru.
-            $stmtMaxRevisi = $pdo->prepare("SELECT MAX(revisi_ke) FROM surat WHERE id = ? OR induk_surat_id = ?");
+            $stmtMaxRevisi = $pdo->prepare("SELECT MAX(revisi_ke) FROM Surat WHERE id = ? OR induk_surat_id = ?");
             $stmtMaxRevisi->execute([$idRootFamily, $idRootFamily]);
             $revisiTertinggiFamily = (int) ($stmtMaxRevisi->fetchColumn() ?: 0);
             $revisiKeDipakai = $tandaiRevisiBaru ? ($revisiTertinggiFamily + 1) : $revisiKeSaatIni;
@@ -333,7 +333,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
                 // tetap bisa dibuka langsung dari daftar Surat Keluar.
                 $nomorAgendaRevisi = generateNomorAgenda($pdo, 'Keluar');
 
-                $insertRevisi = $pdo->prepare("INSERT INTO surat
+                $insertRevisi = $pdo->prepare("INSERT INTO Surat
                     (induk_surat_id, direvisi_dari_id, nomor_agenda, nomor, kode_id, template_id, perihal, status, arah, tujuan, dibuat_oleh, tgl_dibuat, tanggal_diterima, file_hasil, drive_file_id, drive_link, revisi_ke, isi_data)
                     VALUES (?, ?, ?, ?, ?, ?, ?, 'Draft', 'Keluar', ?, ?, CURDATE(), NULL, ?, ?, ?, ?, ?)");
                 $insertRevisi->execute([
@@ -384,7 +384,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
                 arp_hapus_file_drive($driveFileIdLama);
             }
 
-            $upd = $pdo->prepare("UPDATE surat SET nomor = ?, kode_id = ?, template_id = ?, perihal = ?, tujuan = ?, file_hasil = ?, drive_file_id = ?, drive_link = ?, isi_data = ? WHERE id = ?");
+            $upd = $pdo->prepare("UPDATE Surat SET nomor = ?, kode_id = ?, template_id = ?, perihal = ?, tujuan = ?, file_hasil = ?, drive_file_id = ?, drive_link = ?, isi_data = ? WHERE id = ?");
             $upd->execute([
                 $nomorBaru,
                 $kodeIdPost,
@@ -856,7 +856,6 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
                                 var idTersimpan = <?= json_encode($invoiceSumberIdTersimpan) ?>;
                                 if (!inputCari) return;
 
-
                                 var daftarInvoice = [];
                                 var boxSaran = null;
                                 var timerCariInvoice = null;
@@ -990,7 +989,6 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
                             })();
                         </script>
                     <?php endif; ?>
-
 
 
                     <?php if (!empty($kodeTerpilih['deskripsi'])): ?>

@@ -65,7 +65,7 @@ try {
     $stmtReimb = $conn->prepare("
         SELECT r.*, s.nomor AS nomor_surat_pengajuan
         FROM Reimburse r
-        LEFT JOIN surat s ON r.surat_id = s.id
+        LEFT JOIN Surat s ON r.surat_id = s.id
         WHERE r.user_id = :user_id
         ORDER BY r.created_at DESC
     ");

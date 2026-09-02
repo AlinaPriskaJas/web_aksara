@@ -418,10 +418,10 @@ if (($_GET['ajax'] ?? '') === 'export_rekap') {
                COALESCE(s.induk_surat_id, s.id) AS root_id,
                COALESCE(rootS.tgl_dibuat, s.tgl_dibuat) AS tgl_surat_asli,
                COALESCE(rootS.nomor, s.nomor) AS nomor_family
-        FROM surat s
+        FROM Surat s
         JOIN kode_surat k ON s.kode_id = k.id
         LEFT JOIN Users u ON s.dibuat_oleh = u.id
-        LEFT JOIN surat rootS ON rootS.id = COALESCE(s.induk_surat_id, s.id)
+        LEFT JOIN Surat rootS ON rootS.id = COALESCE(s.induk_surat_id, s.id)
         {$sqlWhere}
         ORDER BY root_id ASC, s.revisi_ke DESC
     ");
@@ -732,7 +732,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'hapus_t
             throw new RuntimeException("Template tidak ditemukan.");
         }
 
-        $cekDipakai = $pdo->prepare("SELECT COUNT(*) FROM surat WHERE template_id = ?");
+        $cekDipakai = $pdo->prepare("SELECT COUNT(*) FROM Surat WHERE template_id = ?");
         $cekDipakai->execute([$templateId]);
         if ((int) $cekDipakai->fetchColumn() > 0) {
             throw new RuntimeException("Template \"{$tpl['nama']}\" sudah pernah dipakai untuk membuat surat, tidak bisa dihapus.");
@@ -942,7 +942,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'catat_s
             $kodeManualId = (int) $pdo->lastInsertId();
         }
 
-        $insert = $pdo->prepare("INSERT INTO surat
+        $insert = $pdo->prepare("INSERT INTO Surat
             (nomor_agenda, nomor, kode_id, template_id, perihal, status, arah, tujuan, dibuat_oleh, tgl_dibuat, tanggal_diterima, file_hasil, isi_data)
             VALUES (?, ?, ?, NULL, ?, ?, 'Masuk', ?, ?, ?, ?, ?, ?)");
         $insert->execute([
@@ -1045,7 +1045,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
             if ($adaNoSuratKhususPost) {
                 $noSuratManualPost = trim($_POST['no_surat_manual'] ?? '');
                 $nomorSurat = buatNoSuratKhusus($noSuratManualPost);
-                $cekNomorDup = $pdo->prepare("SELECT id FROM surat WHERE nomor = ?");
+                $cekNomorDup = $pdo->prepare("SELECT id FROM Surat WHERE nomor = ?");
                 $cekNomorDup->execute([$nomorSurat]);
                 if ($cekNomorDup->fetch()) {
                     throw new RuntimeException("Nomor surat \"{$nomorSurat}\" sudah digunakan surat lain.");
@@ -1200,7 +1200,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
             }
             $isiDataDisimpan['__ringkasan'] = $ringkasanDisertakan;
 
-            $insert = $pdo->prepare("INSERT INTO surat
+            $insert = $pdo->prepare("INSERT INTO Surat
                 (nomor_agenda, nomor, kode_id, template_id, perihal, status, arah, tujuan, dibuat_oleh, tgl_dibuat, tanggal_diterima, file_hasil, drive_file_id, drive_link, isi_data)
                 VALUES (?, ?, ?, ?, ?, ?, 'Keluar', ?, ?, CURDATE(), NULL, ?, ?, ?, ?)");
             $insert->execute([
@@ -1273,7 +1273,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'proses_
         $suratId = (int) $_POST['surat_id'];
         $catatan = trim($_POST['catatan'] ?? '');
 
-        $cek = $pdo->prepare("SELECT * FROM surat WHERE id = ? AND arah = 'Masuk'");
+        $cek = $pdo->prepare("SELECT * FROM Surat WHERE id = ? AND arah = 'Masuk'");
         $cek->execute([$suratId]);
         $surat = $cek->fetch();
         if (!$surat) {
@@ -1291,7 +1291,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'proses_
             'catatan' => $catatan !== '' ? $catatan : null,
         ];
 
-        $pdo->prepare("UPDATE surat SET status = 'Diproses', isi_data = ? WHERE id = ?")
+        $pdo->prepare("UPDATE Surat SET status = 'Diproses', isi_data = ? WHERE id = ?")
             ->execute([json_encode($isiData, JSON_UNESCAPED_UNICODE), $suratId]);
 
         catatAudit($pdo, 'Surat', 'Proses Surat Masuk', "Memproses surat masuk #{$suratId} (" . ($surat['nomor'] ?? '') . ")", ['status' => $surat['status']], ['status' => 'Diproses']);
@@ -1317,7 +1317,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'disposi
 
         $pdo->beginTransaction();
 
-        $cek = $pdo->prepare("SELECT * FROM surat WHERE id = ? AND arah = 'Masuk' FOR UPDATE");
+        $cek = $pdo->prepare("SELECT * FROM Surat WHERE id = ? AND arah = 'Masuk' FOR UPDATE");
         $cek->execute([$suratId]);
         $surat = $cek->fetch();
         if (!$surat) {
@@ -1350,7 +1350,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'disposi
             'catatan' => $catatan !== '' ? $catatan : $instruksi,
         ];
 
-        $pdo->prepare("UPDATE surat SET status = 'Didisposisi', isi_data = ? WHERE id = ?")
+        $pdo->prepare("UPDATE Surat SET status = 'Didisposisi', isi_data = ? WHERE id = ?")
             ->execute([json_encode($isiData, JSON_UNESCAPED_UNICODE), $suratId]);
 
         // Kirim notifikasi ke user tujuan disposisi (kalau tabel Notifikasi tersedia).
@@ -1404,7 +1404,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'selesai
         $suratId = (int) $_POST['surat_id'];
         $catatan = trim($_POST['catatan'] ?? '');
 
-        $cek = $pdo->prepare("SELECT * FROM surat WHERE id = ? AND arah = 'Masuk'");
+        $cek = $pdo->prepare("SELECT * FROM Surat WHERE id = ? AND arah = 'Masuk'");
         $cek->execute([$suratId]);
         $surat = $cek->fetch();
         if (!$surat) {
@@ -1422,7 +1422,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'selesai
             'catatan' => $catatan !== '' ? $catatan : null,
         ];
 
-        $pdo->prepare("UPDATE surat SET status = 'Selesai', isi_data = ? WHERE id = ?")
+        $pdo->prepare("UPDATE Surat SET status = 'Selesai', isi_data = ? WHERE id = ?")
             ->execute([json_encode($isiData, JSON_UNESCAPED_UNICODE), $suratId]);
 
         catatAudit($pdo, 'Surat', 'Selesaikan', "Menyelesaikan surat masuk #{$suratId} (" . ($surat['nomor'] ?? '') . ")", ['status' => $surat['status']], ['status' => 'Selesai']);
@@ -1438,7 +1438,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'selesai
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'arsipkan_surat_masuk') {
     try {
         $suratId = (int) $_POST['surat_id'];
-        $cek = $pdo->prepare("SELECT status FROM surat WHERE id = ? AND arah = 'Masuk'");
+        $cek = $pdo->prepare("SELECT status FROM Surat WHERE id = ? AND arah = 'Masuk'");
         $cek->execute([$suratId]);
         $statusSekarang = $cek->fetchColumn();
 
@@ -1449,7 +1449,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'arsipka
             throw new RuntimeException("Hanya surat berstatus Selesai yang bisa diarsipkan.");
         }
 
-        $pdo->prepare("UPDATE surat SET status = 'Diarsipkan' WHERE id = ?")->execute([$suratId]);
+        $pdo->prepare("UPDATE Surat SET status = 'Diarsipkan' WHERE id = ?")->execute([$suratId]);
         catatAudit($pdo, 'Surat', 'Arsipkan', "Mengarsipkan surat masuk #{$suratId}", ['status' => $statusSekarang], ['status' => 'Diarsipkan']);
         $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Surat masuk berhasil diarsipkan.'];
     } catch (Throwable $e) {
@@ -1462,7 +1462,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'arsipka
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'batalkan_tindakan_surat_masuk') {
     try {
         $suratId = (int) $_POST['surat_id'];
-        $cek = $pdo->prepare("SELECT status FROM surat WHERE id = ? AND arah = 'Masuk'");
+        $cek = $pdo->prepare("SELECT status FROM Surat WHERE id = ? AND arah = 'Masuk'");
         $cek->execute([$suratId]);
         $statusSekarang = $cek->fetchColumn();
 
@@ -1473,7 +1473,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'batalka
             throw new RuntimeException("Hanya surat berstatus Didisposisi atau Selesai yang bisa dikembalikan ke Diproses.");
         }
 
-        $pdo->prepare("UPDATE surat SET status = 'Diproses' WHERE id = ?")->execute([$suratId]);
+        $pdo->prepare("UPDATE Surat SET status = 'Diarsipkan' WHERE id = ?")->execute([$suratId]);
         catatAudit($pdo, 'Surat', 'Batalkan Tindakan', "Mengembalikan surat #{$suratId} ke status Diproses", ['status' => $statusSekarang], ['status' => 'Diproses']);
         $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Tindakan dibatalkan, surat dikembalikan ke status Diproses.'];
     } catch (Throwable $e) {
@@ -1495,7 +1495,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'ajukan_
 
         $pdo->beginTransaction();
 
-        $cek = $pdo->prepare("SELECT * FROM surat WHERE id = ? FOR UPDATE");
+        $cek = $pdo->prepare("SELECT * FROM Surat WHERE id = ? FOR UPDATE");
         $cek->execute([$suratId]);
         $surat = $cek->fetch();
 
@@ -1509,7 +1509,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'ajukan_
             throw new RuntimeException("Surat ini sudah diajukan/diproses sebelumnya (" . $surat['status'] . ").");
         }
 
-        $pdo->prepare("UPDATE surat SET status = 'Menunggu Persetujuan' WHERE id = ?")->execute([$suratId]);
+        $pdo->prepare("UPDATE Surat SET status = 'Menunggu Persetujuan' WHERE id = ?")->execute([$suratId]);
 
         $insertApproval = $pdo->prepare("
             INSERT INTO Approval (jenis_pengajuan, ref_id, requester_id, level, status)
@@ -1584,7 +1584,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'proses_
 
         $pdo->beginTransaction();
 
-        $cek = $pdo->prepare("SELECT * FROM surat WHERE id = ? FOR UPDATE");
+        $cek = $pdo->prepare("SELECT * FROM Surat WHERE id = ? FOR UPDATE");
         $cek->execute([$suratId]);
         $surat = $cek->fetch();
 
@@ -1596,7 +1596,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'proses_
         }
 
         $statusBaru = $status_map[$decision];
-        $pdo->prepare("UPDATE surat SET status = ? WHERE id = ?")->execute([$statusBaru, $suratId]);
+        $pdo->prepare("UPDATE Surat SET status = ? WHERE id = ?")->execute([$statusBaru, $suratId]);
 
         $cekApproval = $pdo->prepare("
             SELECT id FROM Approval
@@ -1666,7 +1666,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'proses_
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'revisi_surat') {
     try {
         $suratId = (int) $_POST['surat_id'];
-        $cek = $pdo->prepare("SELECT status FROM surat WHERE id = ?");
+        $cek = $pdo->prepare("SELECT status FROM Surat WHERE id = ?");
         $cek->execute([$suratId]);
         $statusSekarang = $cek->fetchColumn();
 
@@ -1674,7 +1674,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'revisi_
             throw new RuntimeException("Hanya surat berstatus Ditolak yang bisa direvisi.");
         }
 
-        $pdo->prepare("UPDATE surat SET status = 'Draft' WHERE id = ?")->execute([$suratId]);
+        $pdo->prepare("UPDATE Surat SET status = 'Draft' WHERE id = ?")->execute([$suratId]);
         catatAudit($pdo, 'Surat', 'Revisi', "Mengembalikan surat #{$suratId} ke Draft untuk direvisi", ['status' => $statusSekarang], ['status' => 'Draft']);
         $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Surat dikembalikan ke Draft untuk direvisi.'];
     } catch (Throwable $e) {
@@ -1690,7 +1690,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'kirim_s
 
         $pdo->beginTransaction();
 
-        $cek = $pdo->prepare("SELECT * FROM surat WHERE id = ? FOR UPDATE");
+        $cek = $pdo->prepare("SELECT * FROM Surat WHERE id = ? FOR UPDATE");
         $cek->execute([$suratId]);
         $surat = $cek->fetch();
 
@@ -1701,7 +1701,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'kirim_s
             throw new RuntimeException("Surat harus berstatus Disetujui sebelum bisa dikirim ke client.");
         }
 
-        $pdo->prepare("UPDATE surat SET status = 'Terkirim' WHERE id = ?")->execute([$suratId]);
+        $pdo->prepare("UPDATE Surat SET status = 'Terkirim' WHERE id = ?")->execute([$suratId]);
 
         // Cocokkan nama tujuan surat dengan Data_Klien untuk mengirim notifikasi
         // langsung ke akun client terkait (jika akunnya terdaftar di sistem).
@@ -1779,7 +1779,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'kirim_s
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'arsipkan_surat') {
     try {
         $suratId = (int) $_POST['surat_id'];
-        $cek = $pdo->prepare("SELECT status FROM surat WHERE id = ?");
+        $cek = $pdo->prepare("SELECT status FROM Surat WHERE id = ?");
         $cek->execute([$suratId]);
         $statusSekarang = $cek->fetchColumn();
 
@@ -1787,7 +1787,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'arsipka
             throw new RuntimeException("Hanya surat berstatus Terkirim yang bisa diarsipkan.");
         }
 
-        $pdo->prepare("UPDATE surat SET status = 'Diarsipkan' WHERE id = ?")->execute([$suratId]);
+        $pdo->prepare("UPDATE Surat SET status = 'Diarsipkan' WHERE id = ?")->execute([$suratId]);
         catatAudit($pdo, 'Surat', 'Arsipkan', "Mengarsipkan surat keluar #{$suratId}", ['status' => $statusSekarang], ['status' => 'Diarsipkan']);
         $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Surat berhasil diarsipkan.'];
     } catch (Throwable $e) {
@@ -1800,7 +1800,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'hapus_s
     $tabTujuanHapus = 'surat_keluar';
     try {
         $suratId = (int) $_POST['surat_id'];
-        $stmt = $pdo->prepare("SELECT * FROM surat WHERE id = ?");
+        $stmt = $pdo->prepare("SELECT * FROM Surat WHERE id = ?");
         $stmt->execute([$suratId]);
         $s = $stmt->fetch();
         if (!$s) {
@@ -1808,7 +1808,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'hapus_s
         }
         $tabTujuanHapus = ($s['arah'] === 'Masuk') ? 'surat_masuk' : 'surat_keluar';
 
-        $pdo->prepare("DELETE FROM surat WHERE id = ?")->execute([$suratId]);
+        $pdo->prepare("DELETE FROM Surat WHERE id = ?")->execute([$suratId]);
 
         catatAudit($pdo, 'Surat', 'Hapus', "Menghapus surat #{$suratId} (" . ($s['nomor'] ?? '') . ")", $s, null);
 
@@ -1843,15 +1843,15 @@ $daftar_surat_semua = $pdo->query("
            u.nama_lengkap AS pembuat_nama, u.role AS pembuat_role,
            COALESCE(s.induk_surat_id, s.id) AS root_id,
            COALESCE(rootS.tgl_dibuat, s.tgl_dibuat) AS root_tgl_dibuat,
-           (SELECT COUNT(*) FROM surat child WHERE child.direvisi_dari_id = s.id) AS jumlah_revisi_turunan,
-           (SELECT MAX(child.revisi_ke) FROM surat child WHERE child.direvisi_dari_id = s.id) AS revisi_terbaru_ke,
+           (SELECT COUNT(*) FROM Surat child WHERE child.direvisi_dari_id = s.id) AS jumlah_revisi_turunan,
+           (SELECT MAX(child.revisi_ke) FROM Surat child WHERE child.direvisi_dari_id = s.id) AS revisi_terbaru_ke,
            (SELECT ap.catatan FROM Approval ap
               WHERE ap.jenis_pengajuan = 'Surat' AND ap.ref_id = s.id AND ap.status = 'Ditolak'
               ORDER BY ap.tgl_aksi DESC LIMIT 1) AS catatan_ditolak
-    FROM surat s
+    FROM Surat s
     JOIN kode_surat k ON s.kode_id = k.id
     LEFT JOIN Users u ON s.dibuat_oleh = u.id
-    LEFT JOIN surat rootS ON rootS.id = COALESCE(s.induk_surat_id, s.id)
+    LEFT JOIN Surat rootS ON rootS.id = COALESCE(s.induk_surat_id, s.id)
     ORDER BY root_tgl_dibuat DESC, root_id DESC, s.revisi_ke DESC
 ")->fetchAll();
 
@@ -1986,7 +1986,7 @@ if ($kodeTerpilih) {
     $counterDariKodeSurat = ((int) $kodeTerpilih['tahun_counter'] === $tahun) ? (int) $kodeTerpilih['counter'] : 0;
 
     $stmtMaxNomor = $pdo->prepare("
-        SELECT nomor FROM surat
+        SELECT nomor FROM Surat
         WHERE kode_id = ? AND nomor LIKE ?
     ");
     $stmtMaxNomor->execute([$kodeTerpilih['id'], '%/' . $kodeTerpilih['kode'] . '/ARP/%/' . $tahun]);
@@ -2004,7 +2004,7 @@ if ($kodeTerpilih) {
     $invoiceSumberIdPreview = (int) ($_POST['invoice_sumber_id'] ?? 0);
     $ikutiNomorInvoicePreview = isset($_POST['ikuti_nomor_invoice']);
     if ($invoiceSumberIdPreview > 0 && $ikutiNomorInvoicePreview) {
-        $stmtNomorInvoicePreview = $pdo->prepare("SELECT nomor FROM surat WHERE id = ?");
+        $stmtNomorInvoicePreview = $pdo->prepare("SELECT nomor FROM Surat WHERE id = ?");
         $stmtNomorInvoicePreview->execute([$invoiceSumberIdPreview]);
         $nomorInvoicePreview = $stmtNomorInvoicePreview->fetchColumn();
         if ($nomorInvoicePreview) {

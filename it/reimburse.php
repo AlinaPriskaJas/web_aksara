@@ -109,7 +109,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $nomor_surat = "SR-REIMB/" . date('Ymd') . "/" . $reimburse_id;
                     $perihal = "Pencairan Reimburse Kategori " . $reim['kategori'];
 
-                    $surStmt = $conn->prepare("INSERT INTO surat (nomor, kode_id, perihal, status, arah, dibuat_oleh, tgl_dibuat, reimburse_id) VALUES (:nomor, 1, :perihal, 'Draft', 'Keluar', :dibuat_oleh, NOW(), :reimburse_id)");
+                    $surStmt = $conn->prepare("INSERT INTO Surat (nomor, kode_id, perihal, status, arah, dibuat_oleh, tgl_dibuat, reimburse_id) VALUES (:nomor, 1, :perihal, 'Draft', 'Keluar', :dibuat_oleh, NOW(), :reimburse_id)");
                     $surStmt->execute([
                         'nomor' => $nomor_surat,
                         'perihal' => $perihal,
@@ -157,7 +157,7 @@ try {
     $stmtMine = $conn->prepare("
         SELECT r.*, s.nomor AS nomor_surat_pengajuan
         FROM Reimburse r
-        LEFT JOIN surat s ON r.surat_id = s.id
+        LEFT JOIN Surat s ON r.surat_id = s.id
         WHERE r.user_id = :user_id
         ORDER BY r.created_at DESC
     ");
