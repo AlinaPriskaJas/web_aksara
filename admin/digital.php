@@ -51,24 +51,25 @@ if (!array_key_exists($grup_filter, $grup_map)) {
 }
 
 // ================== STATISTIK ==================
-$total_dokumen    = 0;
-$total_laporan    = 0;
-$total_sertifikat = 0;
-$total_surat      = 0;
+$total_dokumen = 0;
+$total_surat   = 0;
+$total_suket   = 0;
+$total_laporan = 0;
 try {
     $total_dokumen = (int) $conn->query("SELECT COUNT(*) FROM Dokumen_Digital")->fetchColumn();
+
+    $total_surat = (int) $conn->query("
+        SELECT COUNT(*) FROM Dokumen_Digital
+        WHERE modul_sumber IN ('Surat Keluar', 'Surat Masuk', 'Surat')
+    ")->fetchColumn();
+
+    $stmtSuket = $conn->prepare("SELECT COUNT(*) FROM Dokumen_Digital WHERE kategori = :k");
+    $stmtSuket->execute([':k' => 'Suket K3']);
+    $total_suket = (int) $stmtSuket->fetchColumn();
 
     $stmtLaporan = $conn->prepare("SELECT COUNT(*) FROM Dokumen_Digital WHERE kategori = :k");
     $stmtLaporan->execute([':k' => 'Laporan']);
     $total_laporan = (int) $stmtLaporan->fetchColumn();
-
-    $stmtSertifikat = $conn->prepare("SELECT COUNT(*) FROM Dokumen_Digital WHERE kategori = :k");
-    $stmtSertifikat->execute([':k' => 'Sertifikat Ahli']);
-    $total_sertifikat = (int) $stmtSertifikat->fetchColumn();
-
-    $stmtSurat = $conn->prepare("SELECT COUNT(*) FROM Dokumen_Digital WHERE kategori IN ('Legal Perusahaan', 'Kontrak Klien')");
-    $stmtSurat->execute();
-    $total_surat = (int) $stmtSurat->fetchColumn();
 } catch (PDOException $e) {
     // biarkan default 0 jika query gagal
 }
@@ -179,28 +180,28 @@ include "../includes/topbar.php";
         <div class="col-xl-3 col-md-6 col-12">
             <div class="stat-card">
                 <div class="stat-card-info">
-                    <span class="stat-card-title">Laporan</span>
-                    <span class="stat-card-value"><?= $total_laporan ?></span>
-                </div>
-                <div class="stat-card-icon warning"><i class="bi bi-file-earmark-bar-graph-fill"></i></div>
-            </div>
-        </div>
-        <div class="col-xl-3 col-md-6 col-12">
-            <div class="stat-card">
-                <div class="stat-card-info">
-                    <span class="stat-card-title">Sertifikat</span>
-                    <span class="stat-card-value"><?= $total_sertifikat ?></span>
-                </div>
-                <div class="stat-card-icon success"><i class="bi bi-award-fill"></i></div>
-            </div>
-        </div>
-        <div class="col-xl-3 col-md-6 col-12">
-            <div class="stat-card">
-                <div class="stat-card-info">
-                    <span class="stat-card-title">Surat &amp; Legal</span>
+                    <span class="stat-card-title">Total Surat</span>
                     <span class="stat-card-value"><?= $total_surat ?></span>
                 </div>
-                <div class="stat-card-icon"><i class="bi bi-envelope-paper-fill"></i></div>
+                <div class="stat-card-icon warning"><i class="bi bi-envelope-fill"></i></div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 col-12">
+            <div class="stat-card">
+                <div class="stat-card-info">
+                    <span class="stat-card-title">Total Suket K3</span>
+                    <span class="stat-card-value"><?= $total_suket ?></span>
+                </div>
+                <div class="stat-card-icon success"><i class="bi bi-file-earmark-medical"></i></div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 col-12">
+            <div class="stat-card">
+                <div class="stat-card-info">
+                    <span class="stat-card-title">Total Laporan</span>
+                    <span class="stat-card-value"><?= $total_laporan ?></span>
+                </div>
+                <div class="stat-card-icon"><i class="bi bi-clipboard-data-fill"></i></div>
             </div>
         </div>
     </div>
@@ -323,7 +324,12 @@ include "../includes/topbar.php";
                                         <a href="<?= htmlspecialchars($hrefDok) ?>" download class="btn-secondary-custom" style="height:32px; padding:0 10px; font-size:0.8rem;" title="Unduh">
                                             <i class="bi bi-download"></i>
                                         </a>
-                                        
+                                        <?php if ($linkAsal): ?>
+                                            <a href="<?= htmlspecialchars($linkAsal) ?>" class="btn-secondary-custom" style="height:32px; padding:0 10px; font-size:0.8rem;" title="Buka Halaman Asal">
+                                                <i class="bi bi-box-arrow-up-right"></i>
+                                            </a>
+                                        <?php endif; ?>
+                                    </div>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
