@@ -19,13 +19,22 @@
         loader.classList.remove('is-hidden');
     }
 
-    // Sembunyikan begitu HTML halaman selesai di-parse (bukan nunggu SEMUA
-    // gambar/aset selesai — itu sebabnya dipakai DOMContentLoaded, bukan
-    // 'load'. Kalau pakai 'load', loader akan nunggu foto/gambar paling
-    // lambat di halaman itu selesai diunduh dulu baru hilang, sehingga
-    // halaman yang banyak gambar (mis. daftar bukti absensi/sertifikat)
-    // malah terasa lebih lama loading, padahal kontennya sudah siap).
-    document.addEventListener('DOMContentLoaded', hideLoader);
+    // Sembunyikan begitu SELURUH halaman selesai dimuat (window 'load':
+    // HTML + CSS + JS + semua gambar/aset), bukan cuma DOMContentLoaded
+    // (HTML selesai di-parse saja). Sebelumnya pakai DOMContentLoaded
+    // supaya tidak menunggu gambar paling lambat, TAPI efeknya loading
+    // page kita hilang duluan sementara ikon loading di tab browser
+    // masih berputar (karena tab baru berhenti loading pas 'load' event
+    // selesai) — jadi kelihatan janggal: overlay sudah hilang tapi
+    // browser masih keliatan "memuat". Dengan 'load', overlay & indikator
+    // tab sama-sama hilang bersamaan.
+    window.addEventListener('load', hideLoader);
+
+    // Jaga-jaga kalau event 'load' entah kenapa sudah lewat duluan
+    // sebelum listener ini terpasang (mis. skrip telat dieksekusi).
+    if (document.readyState === 'complete') {
+        hideLoader();
+    }
 
     // Failsafe: jangan sampai loader "nyangkut" selamanya kalau ada
     // aset yang gagal/lambat dimuat.

@@ -525,7 +525,14 @@ function ambil_file_ref(PDO $conn, string $jenis, int $ref_id): ?string
 // gagal upload), tombolnya tidak ditampilkan.
 function ambil_surat_cuti_link(PDO $conn, int $ref_id): ?string
 {
-    return arp_ambil_link_surat_cuti($conn, $ref_id);
+    try {
+        $s = $conn->prepare("SELECT surat_cuti_link FROM Cuti WHERE id = :id");
+        $s->execute([':id' => $ref_id]);
+        $v = $s->fetchColumn();
+        return $v !== false && $v !== null && $v !== '' ? (string) $v : null;
+    } catch (PDOException $e) {
+        return null;
+    }
 }
 
 // Untuk pengajuan jenis "Cuti", kolom Jenis di tabel Approval Center cuma
@@ -1168,6 +1175,16 @@ include "../includes/topbar.php";
         const modal = new bootstrap.Modal(document.getElementById('modalLihatFile'));
         modal.show();
     }
+
+    // Setelah modal ditutup, kosongkan isinya (khususnya iframe preview Google
+    // Drive untuk PDF). Tanpa ini, iframe-nya TETAP ada di DOM walau modal
+    // sudah tertutup dan terus memuat/polling resource dari Google Drive di
+    // belakang layar -- itulah sebabnya tab browser kelihatan "masih loading"
+    // padahal loading page bawaan situs ini sudah lama hilang (loading page
+    // itu cuma untuk pemuatan halaman awal, bukan untuk konten di dalam modal).
+    document.getElementById('modalLihatFile').addEventListener('hidden.bs.modal', function () {
+        document.getElementById('modalLihatFileBody').innerHTML = '';
+    });
 
     function cetakPdfLampiran(fileUrlAsli) {
         const frame = document.getElementById('modalLihatFileFrame');

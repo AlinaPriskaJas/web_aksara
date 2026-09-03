@@ -13,6 +13,7 @@ switch ($current_role) {
         $menus = [
             ['label' => 'Dashboard', 'url' => 'dashboard.php', 'icon' => 'bi-speedometer2'],
             ['label' => 'Absensi', 'url' => 'absensi.php', 'icon' => 'bi-calendar-check'],
+            ['label' => 'Surat', 'url' => 'surat.php', 'icon' => 'bi-envelope'],
             ['label' => 'Approval', 'url' => 'approval.php', 'icon' => 'bi-check-circle'],
             ['label' => 'Data Client', 'url' => 'data_client.php', 'icon' => 'bi-people'],
             /* ['label' => 'Digital Sign', 'url' => 'digital.php', 'icon' => 'bi-pencil-square'], */
@@ -22,10 +23,9 @@ switch ($current_role) {
             ['label' => 'Suket K3', 'url' => 'suket.php', 'icon' => 'bi-file-earmark-medical'],
             ['label' => 'Sertifikat Ahli', 'url' => 'sertifikat_ahli.php', 'icon' => 'bi-award'],
             ['label' => 'Jadwal Pemeriksaan', 'url' => 'jadwal.php', 'icon' => 'bi-calendar-event'],
-            ['label' => 'Laporan Insiden', 'url' => 'insiden.php', 'icon' => 'bi-exclamation-triangle'],
-            ['label' => 'Surat', 'url' => 'surat.php', 'icon' => 'bi-envelope'],
             ['label' => 'Reimburse', 'url' => 'reimburse.php', 'icon' => 'bi-cash-coin'],
             ['label' => 'Cuti', 'url' => 'cuti.php', 'icon' => 'bi-calendar-x'],
+            ['label' => 'Laporan Insiden', 'url' => 'insiden.php', 'icon' => 'bi-exclamation-triangle'],
             ['label' => 'Profile', 'url' => 'profile.php', 'icon' => 'bi-person']
         ];
         break;
