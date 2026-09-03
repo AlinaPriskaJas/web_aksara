@@ -586,6 +586,11 @@ try {
     }
     unset($leaveTahunanRow);
 }
+// BARU: lampirkan link Surat Cuti (dari tabel Surat, bukan kolom di Cuti)
+foreach ($leavesTahunan as &$leaveTahunanRow) {
+    $leaveTahunanRow['surat_cuti_link'] = arp_ambil_link_surat_cuti($conn, (int) $leaveTahunanRow['id']);
+}
+unset($leaveTahunanRow);
 
 // Data untuk tab Saldo Cuti
 function sum_durasi($conn, $user_id, $jenis, $tahun)

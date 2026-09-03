@@ -47,7 +47,7 @@ if ($cuti_id <= 0) {
 
 // ================== CEK HAK AKSES ==================
 try {
-    $stmtCheck = $conn->prepare("SELECT user_id, status, surat_cuti_link FROM Cuti WHERE id = :id LIMIT 1");
+    $stmtCheck = $conn->prepare("SELECT user_id, status FROM Cuti WHERE id = :id LIMIT 1");
     $stmtCheck->execute(['id' => $cuti_id]);
     $cutiCheck = $stmtCheck->fetch();
 } catch (PDOException $e) {
@@ -94,33 +94,15 @@ $namaFileDasar = $hasil['nama_file_dasar'];
 // Ini best-effort: kalau gagal (mis. Drive lagi bermasalah), unduhan surat ke
 // user TETAP dilanjutkan -- jangan sampai user gagal mencetak surat gara-gara
 // masalah Drive.
+// ================== SELF-HEAL: PASTIKAN SURAT ADA DI DRIVE ==================
 try {
-    if ($sudahDisetujui && empty($cutiCheck['surat_cuti_link'])) {
-        $namaFileDrive = arp_nama_file_tanggal_pengirim($hasil['nama_karyawan'], 'docx');
-        $hasilDrive = arp_upload_ke_drive(
-            $docxPath,
-            $namaFileDrive,
-            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            $cuti_id,
-            'Surat Cuti'
-        );
-        if ($hasilDrive && !empty($hasilDrive['link'])) {
-            $updLink = $conn->prepare("UPDATE Cuti SET surat_cuti_link = :link, drive_file_id = :file_id WHERE id = :id");
-            $updLink->execute([
-                'link' => $hasilDrive['link'],
-                'file_id' => $hasilDrive['file_id'] ?? null,
-                'id' => $cuti_id,
-            ]);
-        }
-        // Gagal upload? Biarkan saja -- kolom "Surat Cuti" di tabel akan tetap
-        // kosong sampai dicoba lagi (baik lewat tombol ini lagi, atau lewat
-        // proses approval kalau suratnya belum sempat dibuat sama sekali).
+    if ($sudahDisetujui && !arp_ambil_link_surat_cuti($conn, $cuti_id)) {
+        arp_generate_dan_unggah_surat_cuti($conn, $cuti_id, true);
+        // Gagal upload? Biarkan saja -- tetap bisa dicoba lagi lewat tombol ini
+        // atau lewat proses approval kalau suratnya belum sempat dibuat sama sekali.
     }
 } catch (Throwable $e) {
-    // Jangan sampai kegagalan self-heal (mis. kolom surat_cuti_link belum ada
-    // karena migrations/2026_08_31_add_surat_cuti_link.sql belum dijalankan)
-    // menggagalkan unduhan surat yang sedang diminta user.
-    error_log('Self-heal upload Surat Cuti ke Drive gagal untuk Cuti #' . $cuti_id . ': ' . $e->getMessage());
+    error_log('Self-heal Surat Cuti gagal untuk Cuti #' . $cuti_id . ': ' . $e->getMessage());
 }
 
 // ================== KIRIM FILE KE BROWSER ==================

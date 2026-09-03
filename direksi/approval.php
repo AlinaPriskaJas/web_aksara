@@ -525,14 +525,7 @@ function ambil_file_ref(PDO $conn, string $jenis, int $ref_id): ?string
 // gagal upload), tombolnya tidak ditampilkan.
 function ambil_surat_cuti_link(PDO $conn, int $ref_id): ?string
 {
-    try {
-        $s = $conn->prepare("SELECT surat_cuti_link FROM Cuti WHERE id = :id");
-        $s->execute([':id' => $ref_id]);
-        $v = $s->fetchColumn();
-        return $v !== false && $v !== null && $v !== '' ? (string) $v : null;
-    } catch (PDOException $e) {
-        return null;
-    }
+    return arp_ambil_link_surat_cuti($conn, $ref_id);
 }
 
 // Untuk pengajuan jenis "Cuti", kolom Jenis di tabel Approval Center cuma

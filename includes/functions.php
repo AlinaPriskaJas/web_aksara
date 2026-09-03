@@ -1,4 +1,5 @@
 <?php
+// includes/functions.php
 require_once __DIR__ . '/../vendor/autoload.php';
 
 use PhpOffice\PhpWord\TemplateProcessor;
@@ -43,7 +44,7 @@ function arp_dengan_template_sementara(string $driveFileId, callable $callback)
 // oleh user (mis. "015"); bagian kode jenis / "ARP" / bulan romawi /
 // tahun tetap dibuat otomatis persis seperti generateNomorSurat().
 // Kalau angka urut dikosongkan -> full otomatis (counter di
-// kode_surat ikut naik). Kalau diisi manual -> divalidasi angka &
+// Kode_Surat ikut naik). Kalau diisi manual -> divalidasi angka &
 // dicek supaya tidak duplikat, TANPA mengubah counter kode_surat
 // (jadi urutan otomatis berikutnya tidak "meloncat").
 // ==========================================
@@ -59,7 +60,7 @@ function resolveNomorSurat(PDO $pdo, int $kode_id, ?string $noUrutManual = null)
         throw new RuntimeException("Nomor urut surat harus berupa angka (contoh: 015).");
     }
 
-    $stmt = $pdo->prepare("SELECT kode FROM kode_surat WHERE id = ?");
+    $stmt = $pdo->prepare("SELECT kode FROM Kode_Surat WHERE id = ?");
     $stmt->execute([$kode_id]);
     $kode = $stmt->fetchColumn();
     if (!$kode) {
@@ -86,7 +87,7 @@ function generateNomorSurat(PDO $pdo, int $kode_id): string
 {
     $tahun = (int) date('Y');
 
-    $stmt = $pdo->prepare("SELECT kode, counter, tahun_counter FROM kode_surat WHERE id = ? FOR UPDATE");
+    $stmt = $pdo->prepare("SELECT kode, counter, tahun_counter FROM Kode_Surat WHERE id = ? FOR UPDATE");
     $stmt->execute([$kode_id]);
     $row = $stmt->fetch();
 
@@ -96,7 +97,7 @@ function generateNomorSurat(PDO $pdo, int $kode_id): string
 
     $counter = ((int) $row['tahun_counter'] === $tahun) ? $row['counter'] + 1 : 1;
 
-    $update = $pdo->prepare("UPDATE kode_surat SET counter = ?, tahun_counter = ? WHERE id = ?");
+    $update = $pdo->prepare("UPDATE Kode_Surat SET counter = ?, tahun_counter = ? WHERE id = ?");
     $update->execute([$counter, $tahun, $kode_id]);
 
     $bulanRomawi = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'][date('n') - 1];
@@ -360,7 +361,7 @@ const KOLOM_SUBTOTAL = 'item_sub_total';    // subtotal per baris, dihitung otom
 // selalu konsisten format "Rp. 1.234.567").
 // - total/ppn/pph_23/total_bayar/terbilang : untuk tabel item bertipe uang (qty x harga)
 // - total_alat : untuk tabel item bertipe kuantitas saja (tanpa harga), cth "13 Unit"
-const FIELD_OTOMATIS_SISTEM = ['nomor', 'nomor_surat', 'no_surat', 'total', 'ppn', 'pph_23', 'diskon', 'diskon_persen', 'total_bayar', 'terbilang', 'total_alat', 'grand_total', 'down_payment', 'down_payment_persen', 'sisa_pelunasan','ttd_direksi'];
+const FIELD_OTOMATIS_SISTEM = ['nomor', 'nomor_surat', 'no_surat', 'total', 'ppn', 'pph_23', 'diskon', 'diskon_persen', 'total_bayar', 'terbilang', 'total_alat', 'grand_total', 'down_payment', 'down_payment_persen', 'sisa_pelunasan', 'ttd_direksi'];
 
 const PREFIX_INVOICE = 'invoice_';
 
@@ -504,7 +505,7 @@ function muatDataInvoiceUntukKuitansi(PDO $pdo, int $invoiceSuratId): ?array
     $stmt = $pdo->prepare("
         SELECT s.*, k.nama AS jenis_surat_nama
         FROM Surat s
-        JOIN kode_surat k ON k.id = s.kode_id
+        JOIN Kode_Surat k ON k.id = s.kode_id
         WHERE s.id = ? AND s.arah = 'Keluar'
     ");
     $stmt->execute([$invoiceSuratId]);
@@ -609,7 +610,7 @@ function daftarSuratInvoice(PDO $pdo): array
     $stmt = $pdo->query("
         SELECT s.id, s.nomor, s.perihal, s.tujuan, s.tgl_dibuat, s.status
         FROM Surat s
-        JOIN kode_surat k ON k.id = s.kode_id
+        JOIN Kode_Surat k ON k.id = s.kode_id
         WHERE s.arah = 'Keluar' AND k.nama LIKE '%Invoice%'
         ORDER BY s.tgl_dibuat DESC, s.id DESC
     ");
@@ -2528,5 +2529,182 @@ function arp_tempel_ttd_ke_surat(PDO $conn, int $surat_id, int $direksi_id): boo
         error_log('Gagal menempelkan TTD ke Surat #' . $surat_id . ': ' . $e->getMessage());
         arp_drive_set_last_error($e->getMessage());
         return false;
+    }
+}
+
+// ==========================================
+// AMBIL TEMPLATE + KODE_SURAT UNTUK MODUL REIMBURSE.
+// Template "Reimbursement Harian" WAJIB sudah dihubungkan ke sebuah
+// Kode_Surat lewat Kode_Template (Admin > Kelola Jenis Surat), supaya
+// nomor surat bisa dibuat otomatis.
+// ==========================================
+function arp_muat_template_reimburse(PDO $pdo): ?array
+{
+    $stmt = $pdo->prepare("
+        SELECT k.*, t.id AS template_id, t.nama AS nama_template,
+               t.drive_file_id, t.drive_link, t.format, t.fields_json
+        FROM Template_Master t
+        JOIN Kode_Template kt ON kt.template_id = t.id
+        JOIN Kode_Surat k ON k.id = kt.kode_id
+        WHERE t.nama LIKE '%Reimburs%' AND t.format = 'word_pdf' AND t.drive_file_id IS NOT NULL
+        ORDER BY t.id DESC
+        LIMIT 1
+    ");
+    $stmt->execute();
+    $row = $stmt->fetch();
+    return $row ?: null;
+}
+
+// ==========================================
+// PROSES PENGAJUAN REIMBURSE: generate surat Word dari template,
+// upload ke Drive, simpan baris Surat + Reimburse dalam SATU transaksi.
+// Nominal (kolom Reimburse.nominal) = ${total_bayar} hasil hitung dari
+// tabel rincian item (qty x harga), BUKAN input manual.
+//
+// $dataFormPost : nilai field dinamis (['tanggal_pengeluaran'=>'2026-09-01', ...])
+//                 -- key yang namanya mengandung "tanggal"/"tgl" otomatis
+//                 diformat ke tanggal Indonesia untuk isi dokumen.
+// $itemsPost    : baris rincian pengeluaran, cth
+//                 [['deskripsi'=>'Bensin dinas','qty'=>'1','harga_satuan'=>'150000']]
+//
+// @return array{ok:bool, msg:string, reimburse_id?:int, nomor?:string}
+// ==========================================
+function arp_proses_pengajuan_reimburse(PDO $pdo, array $kodeRow, int $userId, array $dataFormPost, array $itemsPost, ?string $noUrutManual = null): array
+{
+    // Bersihkan baris item kosong
+    $items = [];
+    foreach ($itemsPost as $baris) {
+        $baris = array_map('trim', (array) $baris);
+        $adaIsi = false;
+        foreach ($baris as $v) {
+            if ($v !== '') {
+                $adaIsi = true;
+                break;
+            }
+        }
+        if ($adaIsi)
+            $items[] = $baris;
+    }
+    if (empty($items)) {
+        return ['ok' => false, 'msg' => 'Isi minimal satu baris rincian pengeluaran.'];
+    }
+
+    $ringkasanDisertakan = [
+        'ppn' => false,
+        'pph_23' => false,
+        'diskon' => false,
+        'grand_total' => false,
+        'dp' => false,
+        'total_bayar' => true,
+        'sisa_pelunasan' => false,
+    ];
+    $hitung = hitungRingkasanTotalSurat($items, $ringkasanDisertakan);
+    if (!$hitung['ada_subtotal'] || $hitung['total'] <= 0) {
+        return ['ok' => false, 'msg' => 'Isi Qty & Harga pada rincian pengeluaran dengan benar (harus lebih dari 0).'];
+    }
+    $nominal = (float) $hitung['total'];
+
+    $dataFormDocx = [];
+    $dataFormMentah = [];
+    foreach ($dataFormPost as $fieldName => $fieldValue) {
+        $fieldValue = trim((string) $fieldValue);
+        $dataFormMentah[$fieldName] = $fieldValue;
+        if (preg_match('/tanggal|tgl/i', $fieldName) && $fieldValue !== '') {
+            $fieldValue = formatTanggalIndonesia($fieldValue);
+        }
+        $dataFormDocx[$fieldName] = $fieldValue;
+    }
+
+    $tanggalPengeluaran = null;
+    foreach ($dataFormMentah as $namaField => $nilai) {
+        if ($tanggalPengeluaran === null && preg_match('/tanggal|tgl/i', $namaField) && $nilai !== '') {
+            $tanggalPengeluaran = $nilai;
+        }
+    }
+    $tanggalPengeluaran = $tanggalPengeluaran ?: date('Y-m-d');
+
+    try {
+        $pdo->beginTransaction();
+
+        // GANTI: sekarang pakai resolveNomorSurat() supaya konsisten dengan
+        // modul Surat -- nomor otomatis dihitung dari nomor tertinggi yang
+        // BENAR-BENAR sudah dipakai (bukan cuma kolom counter), dan bisa
+        // diisi manual lewat $noUrutManual (tetap divalidasi anti-duplikat).
+        $nomorSurat = resolveNomorSurat($pdo, (int) $kodeRow['id'], $noUrutManual);
+
+        $stmtUser = $pdo->prepare("SELECT nama_lengkap FROM Users WHERE id = ?");
+        $stmtUser->execute([$userId]);
+        $namaUser = $stmtUser->fetchColumn() ?: '-';
+
+        $fileHasilRelatif = arp_dengan_template_sementara($kodeRow['drive_file_id'], function ($pathTemplateLokal) use ($dataFormDocx, $items, $nomorSurat, $kodeRow, $ringkasanDisertakan, $namaUser) {
+            return generateSuratDocx($pathTemplateLokal, $dataFormDocx, $items, $nomorSurat, [], $kodeRow['nama'], $namaUser, $ringkasanDisertakan);
+        });
+
+        $pathAbsolut = __DIR__ . '/../' . $fileHasilRelatif;
+
+        $hasilDrive = arp_upload_ke_drive(
+            $pathAbsolut,
+            basename($fileHasilRelatif),
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            $userId,
+            'Reimburse'
+        );
+
+        if (is_file($pathAbsolut)) {
+            @unlink($pathAbsolut);
+        }
+        if (!$hasilDrive || empty($hasilDrive['link'])) {
+            throw new RuntimeException('Gagal mengunggah surat ke Google Drive: ' . arp_drive_last_error());
+        }
+
+        $perihal = 'Pengajuan Reimbursement - ' . $namaUser;
+
+        $insertSurat = $pdo->prepare("INSERT INTO Surat
+        (nomor, kode_id, template_id, perihal, status, arah, tujuan, dibuat_oleh, tgl_dibuat, file_hasil, drive_file_id, drive_link, isi_data)
+        VALUES (?, ?, ?, ?, 'Draft', 'Keluar', ?, ?, CURDATE(), ?, ?, ?, ?)");
+        $insertSurat->execute([
+            $nomorSurat,
+            $kodeRow['id'],
+            $kodeRow['template_id'],
+            $perihal,
+            $namaUser,
+            $userId,
+            $hasilDrive['link'],
+            $hasilDrive['file_id'] ?? null,
+            $hasilDrive['link'],
+            json_encode(array_merge($dataFormMentah, ['__items' => $items]), JSON_UNESCAPED_UNICODE),
+        ]);
+        $suratId = (int) $pdo->lastInsertId();
+
+        $insertReim = $pdo->prepare("INSERT INTO Reimburse
+        (user_id, tanggal_pengeluaran, keterangan, nominal, lampiran_bukti, status, surat_id)
+        VALUES (?, ?, ?, ?, ?, 'Menunggu', ?)");
+        $insertReim->execute([
+            $userId,
+            $tanggalPengeluaran,
+            $perihal,
+            $nominal,
+            $hasilDrive['link'],
+            $suratId,
+        ]);
+        $reimburseId = (int) $pdo->lastInsertId();
+
+        $pdo->commit();
+
+        catatAudit(
+            $pdo,
+            'Reimburse',
+            'Tambah',
+            "Mengajukan reimburse sebesar Rp" . number_format($nominal, 0, ',', '.') . " (surat {$nomorSurat})",
+            null,
+            ['nominal' => $nominal, 'nomor_surat' => $nomorSurat]
+        );
+
+        return ['ok' => true, 'msg' => "Pengajuan reimbursement berhasil dikirim! Nomor surat: {$nomorSurat}.", 'reimburse_id' => $reimburseId, 'nomor' => $nomorSurat];
+    } catch (\Throwable $e) {
+        if ($pdo->inTransaction())
+            $pdo->rollBack();
+        error_log('Gagal generate surat reimburse: ' . $e->getMessage());
+        return ['ok' => false, 'msg' => 'Gagal membuat surat: ' . $e->getMessage()];
     }
 }
