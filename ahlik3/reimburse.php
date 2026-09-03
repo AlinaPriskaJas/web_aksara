@@ -21,6 +21,16 @@ $current_user_id = $_SESSION['user_id'];
 $success_msg = "";
 $error_msg = "";
 
+if (isset($_SESSION['flash'])) {
+    $flashSurat = $_SESSION['flash'];
+    unset($_SESSION['flash']);
+    if (($flashSurat['type'] ?? '') === 'success') {
+        $success_msg = $flashSurat['msg'];
+    } else {
+        $error_msg = $flashSurat['msg'] ?? '';
+    }
+}
+
 $kodeReimburse = arp_muat_template_reimburse($conn);
 
 // ===== Preview nomor urut surat reimburse =====
@@ -46,7 +56,37 @@ if ($kodeReimburse) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (!$kodeReimburse) {
+    if (isset($_POST['action']) && $_POST['action'] === 'ajukan') {
+        $reimburse_id = (int) ($_POST['reimburse_id'] ?? 0);
+
+        $hasilAjukan = arp_ajukan_reimburse($conn, $reimburse_id, $current_user_id);
+        if ($hasilAjukan['ok']) {
+            $success_msg = $hasilAjukan['msg'];
+        } else {
+            $error_msg = $hasilAjukan['msg'];
+        }
+    } elseif (isset($_POST['action']) && $_POST['action'] === 'edit') {
+        $active_tab = 'tabPanelReimburseSaya';
+        $reimburse_id = (int) ($_POST['reimburse_id'] ?? 0);
+        $kodeReimburseEdit = arp_muat_template_reimburse($conn);
+        if (!$kodeReimburseEdit) {
+            $error_msg = "Template Reimbursement belum terhubung ke Jenis Surat. Hubungi Admin.";
+        } else {
+            $hasilEdit = arp_proses_edit_reimburse(
+                $conn,
+                $kodeReimburseEdit,
+                $reimburse_id,
+                $current_user_id,
+                $_POST['dinamis'] ?? [],
+                $_POST['items'] ?? []
+            );
+            if ($hasilEdit['ok']) {
+                $success_msg = $hasilEdit['msg'];
+            } else {
+                $error_msg = $hasilEdit['msg'];
+            }
+        }
+    } elseif (!$kodeReimburse) {
         $error_msg = "Template Reimbursement belum terhubung ke Jenis Surat. Hubungi Admin untuk menghubungkannya di menu Kelola Jenis Surat.";
     } else {
         $hasil = arp_proses_pengajuan_reimburse(
@@ -89,7 +129,7 @@ if (empty($fields_reimburse['table_fields'])) {
 $reimbursements = [];
 try {
     $stmtReimb = $conn->prepare("
-        SELECT r.*, s.nomor AS nomor_surat_pengajuan, s.drive_link AS link_surat_drive, s.file_hasil AS link_surat_file
+        SELECT r.*, s.nomor AS nomor_surat_pengajuan, s.drive_link AS link_surat_drive, s.file_hasil AS link_surat_file, s.isi_data AS isi_data_surat
         FROM Reimburse r
         LEFT JOIN Surat s ON r.surat_id = s.id
         WHERE r.user_id = :user_id
@@ -102,7 +142,14 @@ try {
 }
 
 // ===== Rekap Dana: total seluruh pengajuan & total yang sudah dibayarkan (khusus milik user ini) =====
-$stmtTotalPengajuan = $conn->prepare("SELECT SUM(nominal) FROM Reimburse WHERE user_id = :user_id");
+// Catatan: 'Ditolak' TIDAK dihitung supaya kalau pengajuan ditolak, nominalnya
+// otomatis hilang dari "Total Dana Pengajuan" (kembali berkurang/ke 0 kalau
+// itu satu-satunya pengajuan). 'Draft' juga dikecualikan karena belum benar-benar
+// diajukan ke atasan (masih bisa diedit bebas, belum masuk antrean approval).
+$stmtTotalPengajuan = $conn->prepare("
+    SELECT SUM(nominal) FROM Reimburse
+    WHERE user_id = :user_id AND status NOT IN ('Ditolak', 'Draft')
+");
 $stmtTotalPengajuan->execute(['user_id' => $current_user_id]);
 $totalPengajuanSaya = $stmtTotalPengajuan->fetchColumn() ?: 0;
 
@@ -177,13 +224,15 @@ $totalDibayarkanSaya = $stmtTotalDibayarkan->fetchColumn() ?: 0;
                         <th>Perihal</th>
                         <th>Nominal</th>
                         <th>Surat</th>
+                        <th>Tindakan</th>
                         <th>Status</th>
+                        <th style="text-align:center;">Aksi</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if (count($reimbursements) === 0): ?>
                         <tr>
-                            <td colspan="6" class="text-center py-4 text-muted">
+                            <td colspan="8" class="text-center py-4 text-muted">
                                 <i class="bi bi-receipt-cutoff d-block mb-2" style="font-size:2rem;"></i>
                                 Belum ada pengajuan reimbursement.
                             </td>
@@ -212,17 +261,53 @@ $totalDibayarkanSaya = $stmtTotalDibayarkan->fetchColumn() ?: 0;
                                         <span class="text-muted fst-italic">Menunggu Approval</span>
                                     <?php endif; ?>
                                 </td>
+                                <td style="text-align:center;">
+                                    <?php if ($r['status'] === 'Draft'): ?>
+                                        <form method="POST" action="reimburse.php" style="display:inline-block;">
+                                            <input type="hidden" name="action" value="ajukan">
+                                            <input type="hidden" name="reimburse_id" value="<?= $r['id'] ?>">
+                                            <button type="submit" class="btn-primary-custom"
+                                                style="height:28px; padding:0 10px; font-size:0.75rem;">
+                                                <i class="bi bi-send me-1"></i>Ajukan
+                                            </button>
+                                        </form>
+                                    <?php else: ?>
+                                        <span class="text-muted">-</span>
+                                    <?php endif; ?>
+                                </td>
                                 <td>
-                                    <?php
-                                    $badgeClass = "badge-warning";
-                                    if ($r['status'] === 'Disetujui')
-                                        $badgeClass = "badge-primary";
-                                    if ($r['status'] === 'Dibayarkan')
-                                        $badgeClass = "badge-success";
-                                    if ($r['status'] === 'Ditolak')
-                                        $badgeClass = "badge-danger";
+                                    <?php if ($r['status'] === 'Draft'): ?>
+                                        <span class="text-muted">-</span>
+                                    <?php else:
+                                        $badgeClass = "badge-warning";
+                                        if ($r['status'] === 'Disetujui') $badgeClass = "badge-primary";
+                                        if ($r['status'] === 'Dibayarkan') $badgeClass = "badge-success";
+                                        if ($r['status'] === 'Ditolak') $badgeClass = "badge-danger";
                                     ?>
-                                    <span class="<?= $badgeClass ?>"><?= htmlspecialchars($r['status']) ?></span>
+                                        <span class="<?= $badgeClass ?>"><?= htmlspecialchars($r['status']) ?></span>
+                                    <?php endif; ?>
+                                </td>
+                                <?php
+                                    $isiDataDecoded = $r['isi_data_surat'] ? (json_decode($r['isi_data_surat'], true) ?: []) : [];
+                                    $itemsDataEdit = $isiDataDecoded['__items'] ?? [];
+                                    unset($isiDataDecoded['__items']);
+                                    $dataEditJs = [
+                                        'reimburse_id' => (int) $r['id'],
+                                        'dinamis' => $isiDataDecoded,
+                                        'items' => $itemsDataEdit,
+                                    ];
+                                ?>
+                                <td style="text-align:center;">
+                                    <?php if ($r['status'] === 'Draft'): ?>
+                                        <button type="button" class="btn btn-outline-secondary btn-sm tombol-edit-reimburse"
+                                            style="height:28px; width:28px; padding:0; border-radius:8px;"
+                                            title="Edit Reimbursement"
+                                            data-edit="<?= htmlspecialchars(json_encode($dataEditJs, JSON_UNESCAPED_UNICODE), ENT_QUOTES) ?>">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                    <?php else: ?>
+                                        <span class="text-muted">-</span>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -252,6 +337,7 @@ $totalDibayarkanSaya = $stmtTotalDibayarkan->fetchColumn() ?: 0;
                 </div>
             <?php else: ?>
             <form method="POST" action="reimburse.php" id="form-reimburse">
+                <input type="hidden" name="action" value="submit">
                 <div class="row g-3 mb-2">
                     <div class="col-12">
                         <label class="form-label fw-semibold fs-7 mb-2">No Urut Surat</label>
@@ -336,6 +422,78 @@ $totalDibayarkanSaya = $stmtTotalDibayarkan->fetchColumn() ?: 0;
                         onclick="closeModal('modalRemburse')">Batal</button>
                     <button type="submit" class="btn-primary-custom flex-grow-1">
                         <i class="bi bi-send me-1"></i> Kirim Pengajuan &amp; Buat Surat
+                    </button>
+                </div>
+            </form>
+            <?php endif; ?>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Edit Reimburse (hanya untuk status Draft) -->
+<div id="modalEditReimburse" class="arp-modal-overlay" onclick="closeModalOutside(event, 'modalEditReimburse')">
+    <div class="arp-modal-box">
+        <div class="arp-modal-header">
+            <div>
+                <h6 class="fw-bold mb-0">Edit Reimbursement</h6>
+                <small class="text-muted">Perubahan akan memperbarui dokumen surat yang sudah ada (tidak membuat surat baru).</small>
+            </div>
+            <button class="arp-modal-close" onclick="closeModal('modalEditReimburse')">&times;</button>
+        </div>
+        <div class="arp-modal-body">
+            <?php if (!$reimburse_template_belum_terhubung): ?>
+            <form method="POST" action="reimburse.php" id="form-edit-reimburse">
+                <input type="hidden" name="action" value="edit">
+                <input type="hidden" name="reimburse_id" id="edit-reimburse-id" value="">
+
+                <div class="row g-3 mb-2">
+                    <?php foreach ($fields_reimburse['fields'] as $f): ?>
+                        <?php $isTanggal = (bool) preg_match('/tanggal|tgl/i', $f['field']); ?>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold fs-7 mb-2"><?= htmlspecialchars($f['label']) ?></label>
+                            <?php if ($isTanggal): ?>
+                                <input type="date" name="dinamis[<?= htmlspecialchars($f['field']) ?>]"
+                                    data-field="<?= htmlspecialchars($f['field']) ?>"
+                                    class="form-control-custom edit-dinamis-input" required>
+                            <?php else: ?>
+                                <input type="text" name="dinamis[<?= htmlspecialchars($f['field']) ?>]"
+                                    data-field="<?= htmlspecialchars($f['field']) ?>"
+                                    class="form-control-custom edit-dinamis-input">
+                            <?php endif; ?>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+
+                <label class="form-label fw-semibold fs-7 mb-2">Rincian Pengeluaran *</label>
+                <div class="table-responsive-custom mb-2">
+                    <table class="table-custom" id="tabel-item-edit-reimburse">
+                        <thead>
+                            <tr>
+                                <th>No</th>
+                                <?php foreach ($fields_reimburse['table_fields'] as $kolom): ?>
+                                    <th><?= htmlspecialchars($kolom['label']) ?></th>
+                                <?php endforeach; ?>
+                                <th style="text-align:right;">Sub Total</th>
+                                <th style="width:36px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabel-item-edit-reimburse-body"></tbody>
+                    </table>
+                </div>
+                <button type="button" id="tombol-tambah-item-edit-reimburse" class="btn btn-outline-primary btn-sm mb-3">
+                    <i class="bi bi-plus-lg"></i> Tambah Baris
+                </button>
+
+                <div class="ringkasan-total-row total-bayar mb-4">
+                    <span>Total Reimburse</span>
+                    <span id="preview-total-edit-reimburse" style="font-family:monospace;">Rp. 0</span>
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn-secondary-custom flex-grow-1"
+                        onclick="closeModal('modalEditReimburse')">Batal</button>
+                    <button type="submit" class="btn-primary-custom flex-grow-1">
+                        <i class="bi bi-save me-1"></i> Simpan Perubahan
                     </button>
                 </div>
             </form>
@@ -440,6 +598,139 @@ $totalDibayarkanSaya = $stmtTotalDibayarkan->fetchColumn() ?: 0;
         tbody.appendChild(tr);
         pasangEvent(tr);
         idx++;
+    });
+})();
+</script>
+
+<script>
+(function () {
+    var tbodyEdit = document.getElementById('tabel-item-edit-reimburse-body');
+    var tombolTambahEdit = document.getElementById('tombol-tambah-item-edit-reimburse');
+    var elTotalEdit = document.getElementById('preview-total-edit-reimburse');
+    if (!tbodyEdit || !tombolTambahEdit) return;
+
+    var kolomListEdit = <?= json_encode(array_column($fields_reimburse['table_fields'], 'field')) ?>;
+    var idxEdit = 0;
+
+    function parseAngkaJs(teks) {
+        teks = String(teks || '').trim();
+        var m = teks.match(/-?\d[\d.,]*/);
+        if (!m) return null;
+        var a = m[0];
+        if (a.indexOf(',') !== -1 && a.indexOf('.') !== -1) a = a.replace(/\./g, '').replace(',', '.');
+        else if (a.indexOf(',') !== -1) a = a.replace(',', '.');
+        else { var b = a.split('.'); if (b.length > 1 && b[b.length - 1].length === 3) a = a.split('.').join(''); }
+        var h = parseFloat(a);
+        return isNaN(h) ? null : h;
+    }
+    function formatRupiahJs(a) {
+        var n = Math.round(a);
+        return 'Rp. ' + Math.abs(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    }
+    function formatRibuan(str) {
+        var s = str.replace(/\D/g, '');
+        return s === '' ? '' : s.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    }
+    function hitungBarisEdit(tr) {
+        var qty = null, harga = null;
+        tr.querySelectorAll('input[data-kolom]').forEach(function (inp) {
+            var n = inp.getAttribute('data-kolom');
+            if (qty === null && /qty|jumlah/i.test(n)) qty = parseAngkaJs(inp.value);
+            if (harga === null && /harga/i.test(n)) harga = parseAngkaJs(inp.value);
+        });
+        var sub = tr.querySelector('.subtotal-baris');
+        var nilai = (qty !== null && harga !== null) ? qty * harga : null;
+        if (sub) sub.textContent = nilai !== null ? formatRupiahJs(nilai) : '-';
+        return nilai;
+    }
+    function hitungTotalEdit() {
+        var total = 0;
+        tbodyEdit.querySelectorAll('.baris-item-edit-reimburse').forEach(function (tr) {
+            var n = hitungBarisEdit(tr);
+            if (n !== null) total += n;
+        });
+        if (elTotalEdit) elTotalEdit.textContent = formatRupiahJs(total);
+    }
+    function pasangEventEdit(tr) {
+        tr.querySelectorAll('input[data-tipe="harga"]').forEach(function (inp) {
+            inp.addEventListener('input', function () {
+                var pos = this.value.length - this.selectionStart;
+                this.value = formatRibuan(this.value);
+                var np = this.value.length - pos;
+                this.setSelectionRange(np, np);
+                hitungTotalEdit();
+            });
+        });
+        tr.querySelectorAll('input[data-kolom]').forEach(function (inp) {
+            inp.addEventListener('input', hitungTotalEdit);
+        });
+        var btn = tr.querySelector('.tombol-hapus-baris-edit-reimburse');
+        if (btn) btn.addEventListener('click', function () {
+            if (tbodyEdit.querySelectorAll('.baris-item-edit-reimburse').length > 1) {
+                tr.remove();
+            } else {
+                tr.querySelectorAll('input').forEach(function (i) { i.value = ''; });
+            }
+            hitungTotalEdit();
+        });
+    }
+
+    function tambahBarisEdit(nilaiAwal) {
+        nilaiAwal = nilaiAwal || {};
+        var tr = document.createElement('tr');
+        tr.className = 'baris-item-edit-reimburse';
+        tr.setAttribute('data-baris-index', idxEdit);
+        var html = '<td class="nomor-baris">' + (idxEdit + 1) + '</td>';
+        kolomListEdit.forEach(function (k) {
+            var isHarga = /harga/i.test(k);
+            var nilai = nilaiAwal[k] !== undefined ? nilaiAwal[k] : '';
+            if (isHarga && nilai !== '') {
+                var angka = parseAngkaJs(nilai);
+                nilai = angka !== null ? formatRibuan(String(Math.round(angka))) : nilai;
+            }
+            html += '<td><input type="text" name="items[' + idxEdit + '][' + k + ']" data-kolom="' + k + '"' +
+                (isHarga ? ' data-tipe="harga"' : '') + ' class="form-control-custom" value="' +
+                String(nilai).replace(/"/g, '&quot;') + '"></td>';
+        });
+        html += '<td class="subtotal-baris" style="text-align:right; font-family:monospace;">-</td>';
+        html += '<td style="text-align:center;"><button type="button" class="btn btn-outline-danger btn-sm tombol-hapus-baris-edit-reimburse"><i class="bi bi-x-lg"></i></button></td>';
+        tr.innerHTML = html;
+        tbodyEdit.appendChild(tr);
+        pasangEventEdit(tr);
+        idxEdit++;
+    }
+
+    tombolTambahEdit.addEventListener('click', function () {
+        tambahBarisEdit({});
+        hitungTotalEdit();
+    });
+
+    window.bukaModalEditReimburse = function (data) {
+        document.getElementById('edit-reimburse-id').value = data.reimburse_id;
+
+        document.querySelectorAll('.edit-dinamis-input').forEach(function (inp) {
+            var field = inp.getAttribute('data-field');
+            inp.value = (data.dinamis && data.dinamis[field] !== undefined) ? data.dinamis[field] : '';
+        });
+
+        tbodyEdit.innerHTML = '';
+        idxEdit = 0;
+        var items = (data.items && data.items.length > 0) ? data.items : [{}];
+        items.forEach(function (item) { tambahBarisEdit(item); });
+        hitungTotalEdit();
+
+        openModal('modalEditReimburse');
+    };
+
+    document.querySelectorAll('.tombol-edit-reimburse').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            try {
+                var data = JSON.parse(this.getAttribute('data-edit'));
+                window.bukaModalEditReimburse(data);
+            } catch (e) {
+                console.error('Gagal memuat data reimburse untuk diedit', e);
+            }
+        });
     });
 })();
 </script>

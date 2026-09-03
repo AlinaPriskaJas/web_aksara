@@ -2650,7 +2650,7 @@ function arp_proses_pengajuan_reimburse(PDO $pdo, array $kodeRow, int $userId, a
             basename($fileHasilRelatif),
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
             $userId,
-            'Reimburse'
+            'Surat_Reimburse'
         );
 
         if (is_file($pathAbsolut)) {
@@ -2680,27 +2680,25 @@ function arp_proses_pengajuan_reimburse(PDO $pdo, array $kodeRow, int $userId, a
         ]);
         $suratId = (int) $pdo->lastInsertId();
 
-        $insertReim = $pdo->prepare("INSERT INTO Reimburse
-        (user_id, tanggal_pengeluaran, keterangan, nominal, lampiran_bukti, status, surat_id)
-        VALUES (?, ?, ?, ?, ?, 'Menunggu', ?)");
+                $insertReim = $pdo->prepare("INSERT INTO Reimburse
+            (user_id, tanggal_pengeluaran, keterangan, nominal, lampiran_bukti, drive_file_id, drive_link, status, surat_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'Draft', ?)");
         $insertReim->execute([
             $userId,
             $tanggalPengeluaran,
             $perihal,
             $nominal,
+            '', 
+            $hasilDrive['file_id'] ?? null, 
             $hasilDrive['link'],
             $suratId,
         ]);
         $reimburseId = (int) $pdo->lastInsertId();
 
-        $insertApproval = $pdo->prepare("INSERT INTO Approval
-            (jenis_pengajuan, ref_id, requester_id, approver_id, level, status)
-            VALUES ('Reimburse', ?, ?, NULL, 1, 'Menunggu')");
-        $insertApproval->execute([$reimburseId, $userId]);
-        $approvalId = (int) $pdo->lastInsertId();
-
-        $pdo->prepare("UPDATE Reimburse SET approval_id = ? WHERE id = ?")
-            ->execute([$approvalId, $reimburseId]);
+        // Belum membuat baris Approval di sini -- Approval baru dibuat saat
+        // user benar-benar menekan tombol "Ajukan" (lihat arp_ajukan_reimburse()).
+        // Selama masih 'Draft', reimburse ini bisa diedit bebas & belum masuk
+        // antrean approval atasan.
 
         $pdo->commit();
 
@@ -2708,16 +2706,226 @@ function arp_proses_pengajuan_reimburse(PDO $pdo, array $kodeRow, int $userId, a
             $pdo,
             'Reimburse',
             'Tambah',
-            "Mengajukan reimburse sebesar Rp" . number_format($nominal, 0, ',', '.') . " (surat {$nomorSurat})",
+            "Membuat draft reimburse sebesar Rp" . number_format($nominal, 0, ',', '.') . " (surat {$nomorSurat})",
             null,
             ['nominal' => $nominal, 'nomor_surat' => $nomorSurat]
         );
 
-        return ['ok' => true, 'msg' => "Pengajuan reimbursement berhasil dikirim! Nomor surat: {$nomorSurat}.", 'reimburse_id' => $reimburseId, 'nomor' => $nomorSurat];
+        return ['ok' => true, 'msg' => "Draft reimbursement tersimpan (surat {$nomorSurat}). Klik \"Ajukan\" pada baris ini untuk mengirim ke atasan.", 'reimburse_id' => $reimburseId, 'nomor' => $nomorSurat];
     } catch (\Throwable $e) {
         if ($pdo->inTransaction())
             $pdo->rollBack();
         error_log('Gagal generate surat reimburse: ' . $e->getMessage());
         return ['ok' => false, 'msg' => 'Gagal membuat surat: ' . $e->getMessage()];
+    }
+}
+
+// ==========================================
+// AJUKAN REIMBURSE: ubah draft (status 'Draft') menjadi resmi diajukan
+// ke atasan (status 'Menunggu') + buat baris Approval baru supaya muncul
+// di Approval Center direksi (tab "Pengajuan Umum"). approver_id sengaja
+// NULL dulu -- baru diisi saat direksi memutuskan (lihat direksi/approval.php).
+// Hanya pemilik reimburse yang boleh mengajukan, dan hanya kalau statusnya
+// masih 'Draft' (belum pernah diajukan sebelumnya).
+// ==========================================
+function arp_ajukan_reimburse(PDO $pdo, int $reimburseId, int $userId): array
+{
+    try {
+        $pdo->beginTransaction();
+
+        $stmt = $pdo->prepare("SELECT * FROM Reimburse WHERE id = :id AND user_id = :user_id FOR UPDATE");
+        $stmt->execute(['id' => $reimburseId, 'user_id' => $userId]);
+        $reim = $stmt->fetch();
+
+        if (!$reim) {
+            $pdo->rollBack();
+            return ['ok' => false, 'msg' => 'Data pengajuan reimburse tidak ditemukan.'];
+        }
+        if ($reim['status'] !== 'Draft') {
+            $pdo->rollBack();
+            return ['ok' => false, 'msg' => 'Reimburse ini sudah pernah diajukan sebelumnya.'];
+        }
+
+        $appStmt = $pdo->prepare("
+            INSERT INTO Approval (jenis_pengajuan, ref_id, requester_id, approver_id, level, status, tgl_aksi)
+            VALUES ('Reimburse', :ref_id, :requester, NULL, 1, 'Menunggu', NOW())
+        ");
+        $appStmt->execute([
+            'ref_id' => $reimburseId,
+            'requester' => $userId,
+        ]);
+        $approvalId = (int) $pdo->lastInsertId();
+
+        $updStmt = $pdo->prepare("UPDATE Reimburse SET status = 'Menunggu', approval_id = :approval_id WHERE id = :id");
+        $updStmt->execute(['approval_id' => $approvalId, 'id' => $reimburseId]);
+
+        $pdo->commit();
+
+        catatAudit(
+            $pdo,
+            'Reimburse',
+            'Ajukan',
+            "Mengajukan reimburse #{$reimburseId} ke atasan",
+            ['status' => 'Draft'],
+            ['status' => 'Menunggu'],
+            $userId
+        );
+
+        return ['ok' => true, 'msg' => 'Reimburse berhasil diajukan ke atasan.'];
+    } catch (\Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log('Gagal mengajukan reimburse #' . $reimburseId . ': ' . $e->getMessage());
+        return ['ok' => false, 'msg' => 'Gagal mengajukan reimburse: ' . $e->getMessage()];
+    }
+}
+
+// ==========================================
+// EDIT REIMBURSE (STATUS 'Draft' SAJA): perbarui isi surat (field dinamis +
+// rincian item) TANPA membuat surat/dokumen baru. Dokumen Word yang sudah
+// ada di Google Drive (drive_file_id yang sama) di-generate ulang isinya
+// lalu ditimpa balik (arp_timpa_konten_drive) ke file yang sama -- nomor
+// surat TIDAK berubah. Hanya pemilik reimburse yang boleh mengedit, dan
+// HANYA selama statusnya masih 'Draft' (belum diajukan ke atasan).
+// ==========================================
+function arp_proses_edit_reimburse(PDO $pdo, array $kodeRow, int $reimburseId, int $userId, array $dataFormPost, array $itemsPost): array
+{
+    $items = [];
+    foreach ($itemsPost as $baris) {
+        $baris = array_map('trim', (array) $baris);
+        $adaIsi = false;
+        foreach ($baris as $v) {
+            if ($v !== '') { $adaIsi = true; break; }
+        }
+        if ($adaIsi) $items[] = $baris;
+    }
+    if (empty($items)) {
+        return ['ok' => false, 'msg' => 'Isi minimal satu baris rincian pengeluaran.'];
+    }
+
+    $ringkasanDisertakan = [
+        'ppn' => false,
+        'pph_23' => false,
+        'diskon' => false,
+        'grand_total' => false,
+        'dp' => false,
+        'total_bayar' => true,
+        'sisa_pelunasan' => false,
+    ];
+    $hitung = hitungRingkasanTotalSurat($items, $ringkasanDisertakan);
+    if (!$hitung['ada_subtotal'] || $hitung['total'] <= 0) {
+        return ['ok' => false, 'msg' => 'Isi Qty & Harga pada rincian pengeluaran dengan benar (harus lebih dari 0).'];
+    }
+    $nominal = (float) $hitung['total'];
+
+    $dataFormDocx = [];
+    $dataFormMentah = [];
+    foreach ($dataFormPost as $fieldName => $fieldValue) {
+        $fieldValue = trim((string) $fieldValue);
+        $dataFormMentah[$fieldName] = $fieldValue;
+        if (preg_match('/tanggal|tgl/i', $fieldName) && $fieldValue !== '') {
+            $fieldValue = formatTanggalIndonesia($fieldValue);
+        }
+        $dataFormDocx[$fieldName] = $fieldValue;
+    }
+
+    $tanggalPengeluaran = null;
+    foreach ($dataFormMentah as $namaField => $nilai) {
+        if ($tanggalPengeluaran === null && preg_match('/tanggal|tgl/i', $namaField) && $nilai !== '') {
+            $tanggalPengeluaran = $nilai;
+        }
+    }
+    $tanggalPengeluaran = $tanggalPengeluaran ?: date('Y-m-d');
+
+    try {
+        $pdo->beginTransaction();
+
+        $stmtReim = $pdo->prepare("
+            SELECT r.*, s.id AS surat_id_join, s.nomor AS nomor_surat, s.drive_file_id AS surat_drive_file_id
+            FROM Reimburse r
+            LEFT JOIN Surat s ON r.surat_id = s.id
+            WHERE r.id = :id AND r.user_id = :user_id
+            FOR UPDATE
+        ");
+        $stmtReim->execute(['id' => $reimburseId, 'user_id' => $userId]);
+        $reim = $stmtReim->fetch();
+
+        if (!$reim) {
+            $pdo->rollBack();
+            return ['ok' => false, 'msg' => 'Data pengajuan reimburse tidak ditemukan.'];
+        }
+        if ($reim['status'] !== 'Draft') {
+            $pdo->rollBack();
+            return ['ok' => false, 'msg' => 'Reimburse ini sudah diajukan/diproses sehingga tidak bisa diedit lagi.'];
+        }
+
+        $driveFileId = $reim['drive_file_id'] ?: $reim['surat_drive_file_id'];
+        $nomorSurat = $reim['nomor_surat'];
+        if (!$driveFileId || !$nomorSurat) {
+            $pdo->rollBack();
+            return ['ok' => false, 'msg' => 'Data surat terkait reimburse ini tidak lengkap, tidak bisa diedit.'];
+        }
+
+        $stmtUser = $pdo->prepare("SELECT nama_lengkap FROM Users WHERE id = ?");
+        $stmtUser->execute([$userId]);
+        $namaUser = $stmtUser->fetchColumn() ?: '-';
+
+        // Generate ULANG isi dokumen (nomor surat TETAP, tidak membuat surat baru)
+        $fileHasilRelatif = arp_dengan_template_sementara($kodeRow['drive_file_id'], function ($pathTemplateLokal) use ($dataFormDocx, $items, $nomorSurat, $kodeRow, $ringkasanDisertakan, $namaUser) {
+            return generateSuratDocx($pathTemplateLokal, $dataFormDocx, $items, $nomorSurat, [], $kodeRow['nama'], $namaUser, $ringkasanDisertakan);
+        });
+
+        $pathAbsolut = __DIR__ . '/../' . $fileHasilRelatif;
+
+        // TIMPA (bukan upload baru) file yang sudah ada di Drive dengan file_id yang sama
+        $berhasilTimpa = arp_timpa_konten_drive(
+            $driveFileId,
+            $pathAbsolut,
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        );
+
+        if (is_file($pathAbsolut)) {
+            @unlink($pathAbsolut);
+        }
+
+        if (!$berhasilTimpa) {
+            throw new RuntimeException('Gagal memperbarui file surat di Google Drive: ' . arp_drive_last_error());
+        }
+
+        $perihalManual = trim((string) ($dataFormMentah['perihal'] ?? ''));
+        $perihal = $perihalManual !== '' ? $perihalManual : ('Pengajuan Reimbursement - ' . $namaUser);
+
+        if (!empty($reim['surat_id'])) {
+            $updSurat = $pdo->prepare("UPDATE Surat SET perihal = ?, isi_data = ? WHERE id = ?");
+            $updSurat->execute([
+                $perihal,
+                json_encode(array_merge($dataFormMentah, ['__items' => $items]), JSON_UNESCAPED_UNICODE),
+                $reim['surat_id'],
+            ]);
+        }
+
+        $updReim = $pdo->prepare("UPDATE Reimburse SET tanggal_pengeluaran = ?, keterangan = ?, nominal = ? WHERE id = ?");
+        $updReim->execute([$tanggalPengeluaran, $perihal, $nominal, $reimburseId]);
+
+        $pdo->commit();
+
+        catatAudit(
+            $pdo,
+            'Reimburse',
+            'Edit',
+            "Mengubah draft reimburse #{$reimburseId} (surat {$nomorSurat}) menjadi Rp" . number_format($nominal, 0, ',', '.'),
+            ['nominal' => $reim['nominal']],
+            ['nominal' => $nominal],
+            $userId
+        );
+
+        return ['ok' => true, 'msg' => "Perubahan reimbursement (surat {$nomorSurat}) berhasil disimpan."];
+    } catch (\Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log('Gagal mengedit reimburse #' . $reimburseId . ': ' . $e->getMessage());
+        return ['ok' => false, 'msg' => 'Gagal menyimpan perubahan: ' . $e->getMessage()];
     }
 }

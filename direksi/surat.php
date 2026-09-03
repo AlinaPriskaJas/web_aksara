@@ -537,12 +537,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
                 $_POST['no_urut_manual'] ?? null
             );
             $_SESSION['flash'] = $hasilReim['ok']
-                ? ['type' => 'success', 'msg' => $hasilReim['msg'] . ' Pengajuan Reimbursement Harian dikelola di menu Reimburse, bukan di Surat Keluar.']
+                ? ['type' => 'success', 'msg' => $hasilReim['msg']]
                 : ['type' => 'error', 'msg' => $hasilReim['msg']];
-            suratRedirect('buat', ['kode_id' => $kodeIdPost, 'template_id' => $templateIdPost]);
+            header('Location: reimburse.php');
+            exit;
         }
         try {
-                        $stmt = $pdo->prepare("SELECT k.*, t.id AS template_id, t.drive_file_id, t.format
+            $stmt = $pdo->prepare("SELECT k.*, t.id AS template_id, t.drive_file_id, t.format
                                     FROM Kode_Surat k
                                     JOIN Kode_Template kt ON kt.kode_id = k.id AND kt.template_id = ?
                                     JOIN Template_Master t ON t.id = kt.template_id
@@ -680,9 +681,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
             ];
 
 
-            $fileHasilRelatif = arp_dengan_template_sementara($kode['drive_file_id'], function ($pathTemplateLokal) use (
-                $dataForm, $items, $nomorSurat, $blocksData, $kode, $ringkasanDisertakan
-            ) {
+            $fileHasilRelatif = arp_dengan_template_sementara($kode['drive_file_id'], function ($pathTemplateLokal) use ($dataForm, $items, $nomorSurat, $blocksData, $kode, $ringkasanDisertakan) {
                 return generateSuratDocx($pathTemplateLokal, $dataForm, $items, $nomorSurat, $blocksData, $kode['nama'], null, $ringkasanDisertakan);
             });
 
@@ -760,14 +759,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
 
             // Arsipkan ke Dokumen Digital supaya otomatis muncul di halaman Digital Sign.
             arp_arsipkan_dokumen($pdo, [
-                'nama_dokumen'  => $nomorSurat . ' - ' . $perihalSimpan,
-                'kategori'      => 'Lainnya',
-                'file_path'     => $fileHasilTersimpan,
+                'nama_dokumen' => $nomorSurat . ' - ' . $perihalSimpan,
+                'kategori' => 'Lainnya',
+                'file_path' => $fileHasilTersimpan,
                 'drive_file_id' => $hasilDriveKeluar['file_id'] ?? null,
-                'drive_link'    => $fileHasilTersimpan,
-                'modul_sumber'  => 'Surat Keluar',
-                'ref_id'        => $suratIdBaru,
-                'visibilitas'   => 'Internal',
+                'drive_link' => $fileHasilTersimpan,
+                'modul_sumber' => 'Surat Keluar',
+                'ref_id' => $suratIdBaru,
+                'visibilitas' => 'Internal',
                 'diupload_oleh' => $current_user_id,
             ]);
 
@@ -954,13 +953,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'kirim_s
             // dibuat, lihat arp_arsipkan_dokumen() di titik "Buat Surat").
             if (!empty($surat['file_hasil'])) {
                 arp_arsipkan_dokumen($pdo, [
-                    'nama_dokumen'  => $surat['nomor'] . ' - ' . $surat['perihal'],
-                    'kategori'      => 'Lainnya',
-                    'file_path'     => $surat['file_hasil'],
-                    'modul_sumber'  => 'Surat Keluar',
-                    'ref_id'        => $suratId,
-                    'klien_id'      => $klienTerkirim['klien_id'],
-                    'visibilitas'   => 'Client',
+                    'nama_dokumen' => $surat['nomor'] . ' - ' . $surat['perihal'],
+                    'kategori' => 'Lainnya',
+                    'file_path' => $surat['file_hasil'],
+                    'modul_sumber' => 'Surat Keluar',
+                    'ref_id' => $suratId,
+                    'klien_id' => $klienTerkirim['klien_id'],
+                    'visibilitas' => 'Client',
                     'diupload_oleh' => $current_user_id,
                 ]);
             }
@@ -1441,7 +1440,8 @@ include "../includes/topbar.php";
                                                         </span>
                                                     <?php else: ?>
                                                         <a href="edit_surat.php?id=<?= (int) $s['id'] ?>&auto_revisi=1"
-                                                            class="btn-secondary-custom" data-arp-loading="Memuat halaman revisi surat..."
+                                                            class="btn-secondary-custom"
+                                                            data-arp-loading="Memuat halaman revisi surat..."
                                                             style="height:28px; padding:0 10px; font-size:0.75rem; display:inline-flex; align-items:center; gap:4px; text-decoration:none;">
                                                             <i class="bi bi-arrow-counterclockwise"></i> Revisi
                                                         </a>

@@ -964,12 +964,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'catat_s
         // hanya kalau ada berkas lampirannya.
         if ($fileRelatif) {
             arp_arsipkan_dokumen($pdo, [
-                'nama_dokumen'  => $nomorSuratInput . ' - ' . $perihal,
-                'kategori'      => 'Lainnya',
-                'file_path'     => $fileRelatif,
-                'modul_sumber'  => 'Surat Masuk',
-                'ref_id'        => $suratMasukIdBaru,
-                'visibilitas'   => 'Internal',
+                'nama_dokumen' => $nomorSuratInput . ' - ' . $perihal,
+                'kategori' => 'Lainnya',
+                'file_path' => $fileRelatif,
+                'modul_sumber' => 'Surat Masuk',
+                'ref_id' => $suratMasukIdBaru,
+                'visibilitas' => 'Internal',
                 'diupload_oleh' => $current_user_id,
             ]);
         }
@@ -1003,7 +1003,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
     if (!$isPreviewOnly) {
         $kodeIdPost = (int) ($_POST['kode_id'] ?? 0);
         $templateIdPost = (int) ($_POST['template_id'] ?? 0);
-         $kodeReimburseCek = arp_muat_template_reimburse($pdo);
+        $kodeReimburseCek = arp_muat_template_reimburse($pdo);
         if ($kodeReimburseCek && (int) $kodeReimburseCek['id'] === $kodeIdPost) {
             $hasilReim = arp_proses_pengajuan_reimburse(
                 $pdo,
@@ -1014,9 +1014,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
                 $_POST['no_urut_manual'] ?? null
             );
             $_SESSION['flash'] = $hasilReim['ok']
-                ? ['type' => 'success', 'msg' => $hasilReim['msg'] . ' Pengajuan Reimbursement Harian dikelola di menu Reimburse, bukan di Surat Keluar.']
+                ? ['type' => 'success', 'msg' => $hasilReim['msg']]
                 : ['type' => 'error', 'msg' => $hasilReim['msg']];
-            suratRedirect('buat', ['kode_id' => $kodeIdPost, 'template_id' => $templateIdPost]);
+            header('Location: reimburse.php');
+            exit;
         }
         try {
             $stmt = $pdo->prepare("SELECT k.*, t.id AS template_id, t.drive_file_id, t.format
@@ -1236,14 +1237,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
 
             // Arsipkan ke Dokumen Digital supaya otomatis muncul di halaman Digital Sign.
             arp_arsipkan_dokumen($pdo, [
-                'nama_dokumen'  => $nomorSurat . ' - ' . $perihalSimpan,
-                'kategori'      => 'Lainnya',
-                'file_path'     => $fileHasilTersimpan,
+                'nama_dokumen' => $nomorSurat . ' - ' . $perihalSimpan,
+                'kategori' => 'Lainnya',
+                'file_path' => $fileHasilTersimpan,
                 'drive_file_id' => $hasilDriveKeluar['file_id'] ?? null,
-                'drive_link'    => $fileHasilTersimpan,
-                'modul_sumber'  => 'Surat Keluar',
-                'ref_id'        => $suratIdBaru,
-                'visibilitas'   => 'Internal',
+                'drive_link' => $fileHasilTersimpan,
+                'modul_sumber' => 'Surat Keluar',
+                'ref_id' => $suratIdBaru,
+                'visibilitas' => 'Internal',
                 'diupload_oleh' => $current_user_id,
             ]);
 
@@ -1760,13 +1761,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'kirim_s
             // dibuat, lihat arp_arsipkan_dokumen() di titik "Buat Surat").
             if (!empty($surat['file_hasil'])) {
                 arp_arsipkan_dokumen($pdo, [
-                    'nama_dokumen'  => $surat['nomor'] . ' - ' . $surat['perihal'],
-                    'kategori'      => 'Lainnya',
-                    'file_path'     => $surat['file_hasil'],
-                    'modul_sumber'  => 'Surat Keluar',
-                    'ref_id'        => $suratId,
-                    'klien_id'      => $klienTerkirim['klien_id'],
-                    'visibilitas'   => 'Client',
+                    'nama_dokumen' => $surat['nomor'] . ' - ' . $surat['perihal'],
+                    'kategori' => 'Lainnya',
+                    'file_path' => $surat['file_hasil'],
+                    'modul_sumber' => 'Surat Keluar',
+                    'ref_id' => $suratId,
+                    'klien_id' => $klienTerkirim['klien_id'],
+                    'visibilitas' => 'Client',
                     'diupload_oleh' => $current_user_id,
                 ]);
             }
@@ -1876,7 +1877,7 @@ $kodeIdReimburseDikecualikan = $kodeReimburseUntukFilter ? (int) $kodeReimburseU
 $daftar_surat_keluar = array_values(array_filter(
     $daftar_surat_semua,
     fn($s) => $s['arah'] === 'Keluar'
-        && ($kodeIdReimburseDikecualikan === 0 || (int) $s['kode_id'] !== $kodeIdReimburseDikecualikan)
+    && ($kodeIdReimburseDikecualikan === 0 || (int) $s['kode_id'] !== $kodeIdReimburseDikecualikan)
 ));
 $daftar_surat_masuk = array_values(array_filter($daftar_surat_semua, fn($s) => $s['arah'] === 'Masuk'));
 
@@ -2251,7 +2252,8 @@ include "../includes/topbar.php";
                                                     </span>
                                                 <?php else: ?>
                                                     <a href="edit_surat.php?id=<?= (int) $s['id'] ?>&auto_revisi=1"
-                                                        class="btn-secondary-custom" data-arp-loading="Memuat halaman revisi surat..."
+                                                        class="btn-secondary-custom"
+                                                        data-arp-loading="Memuat halaman revisi surat..."
                                                         style="height:28px; padding:0 10px; font-size:0.75rem; display:inline-flex; align-items:center; gap:4px; text-decoration:none;">
                                                         <i class="bi bi-arrow-counterclockwise"></i> Revisi
                                                     </a>
@@ -4266,7 +4268,7 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
                 <p class="text-secondary text-xs mb-3">Mengubah kode/nama di sini akan berlaku untuk SEMUA template
                     lain yang memakai kombinasi kode ini juga (jika ada).</p>
 
-                
+
 
                 <div class="d-flex justify-content-end gap-2 mt-4">
                     <button type="button" class="btn-secondary-custom"
@@ -4344,7 +4346,7 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
                 }
 
                 // ----- Render daftar field placeholder (fields + table_fields) -----
-                
+
 
                 formEl.style.display = 'block';
             })
