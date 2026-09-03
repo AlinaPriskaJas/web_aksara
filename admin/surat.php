@@ -1003,6 +1003,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
     if (!$isPreviewOnly) {
         $kodeIdPost = (int) ($_POST['kode_id'] ?? 0);
         $templateIdPost = (int) ($_POST['template_id'] ?? 0);
+         $kodeReimburseCek = arp_muat_template_reimburse($pdo);
+        if ($kodeReimburseCek && (int) $kodeReimburseCek['id'] === $kodeIdPost) {
+            $hasilReim = arp_proses_pengajuan_reimburse(
+                $pdo,
+                $kodeReimburseCek,
+                $current_user_id,
+                $_POST['dinamis'] ?? [],
+                $_POST['items'] ?? [],
+                $_POST['no_urut_manual'] ?? null
+            );
+            $_SESSION['flash'] = $hasilReim['ok']
+                ? ['type' => 'success', 'msg' => $hasilReim['msg'] . ' Pengajuan Reimbursement Harian dikelola di menu Reimburse, bukan di Surat Keluar.']
+                : ['type' => 'error', 'msg' => $hasilReim['msg']];
+            suratRedirect('buat', ['kode_id' => $kodeIdPost, 'template_id' => $templateIdPost]);
+        }
         try {
             $stmt = $pdo->prepare("SELECT k.*, t.id AS template_id, t.drive_file_id, t.format
                                     FROM Kode_Surat k
@@ -1855,7 +1870,14 @@ $daftar_surat_semua = $pdo->query("
     ORDER BY root_tgl_dibuat DESC, root_id DESC, s.revisi_ke DESC
 ")->fetchAll();
 
-$daftar_surat_keluar = array_values(array_filter($daftar_surat_semua, fn($s) => $s['arah'] === 'Keluar'));
+$kodeReimburseUntukFilter = arp_muat_template_reimburse($pdo);
+$kodeIdReimburseDikecualikan = $kodeReimburseUntukFilter ? (int) $kodeReimburseUntukFilter['id'] : 0;
+
+$daftar_surat_keluar = array_values(array_filter(
+    $daftar_surat_semua,
+    fn($s) => $s['arah'] === 'Keluar'
+        && ($kodeIdReimburseDikecualikan === 0 || (int) $s['kode_id'] !== $kodeIdReimburseDikecualikan)
+));
 $daftar_surat_masuk = array_values(array_filter($daftar_surat_semua, fn($s) => $s['arah'] === 'Masuk'));
 
 // ==========================================

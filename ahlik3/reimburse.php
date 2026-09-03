@@ -72,6 +72,7 @@ if ($kodeReimburse) {
 }
 if (empty($fields_reimburse['fields'])) {
     $fields_reimburse['fields'] = [
+        ['field' => 'perihal', 'label' => 'Perihal'],
         ['field' => 'tanggal_pengeluaran', 'label' => 'Tanggal Pengeluaran'],
         ['field' => 'kategori', 'label' => 'Kategori Pengeluaran'],
         ['field' => 'keterangan', 'label' => 'Keterangan Tambahan'],
@@ -173,6 +174,7 @@ $totalDibayarkanSaya = $stmtTotalDibayarkan->fetchColumn() ?: 0;
                     <tr>
                         <th>No</th>
                         <th>Tanggal Pengajuan</th>
+                        <th>Perihal</th>
                         <th>Nominal</th>
                         <th>Surat</th>
                         <th>Status</th>
@@ -181,7 +183,7 @@ $totalDibayarkanSaya = $stmtTotalDibayarkan->fetchColumn() ?: 0;
                 <tbody>
                     <?php if (count($reimbursements) === 0): ?>
                         <tr>
-                            <td colspan="5" class="text-center py-4 text-muted">
+                            <td colspan="6" class="text-center py-4 text-muted">
                                 <i class="bi bi-receipt-cutoff d-block mb-2" style="font-size:2rem;"></i>
                                 Belum ada pengajuan reimbursement.
                             </td>
@@ -191,6 +193,7 @@ $totalDibayarkanSaya = $stmtTotalDibayarkan->fetchColumn() ?: 0;
                             <tr>
                                 <td><?= $no + 1 ?></td>
                                 <td><?= date('d-m-Y', strtotime($r['tanggal_pengeluaran'])) ?></td>
+                                <td><?= htmlspecialchars($r['keterangan'] ?? '-') ?></td>
                                 <td><strong>Rp <?= number_format($r['nominal'], 0, ',', '.') ?></strong></td>
                                 <td>
                                     <?php
@@ -306,7 +309,7 @@ $totalDibayarkanSaya = $stmtTotalDibayarkan->fetchColumn() ?: 0;
                                         <input type="text" name="items[0][<?= htmlspecialchars($kolom['field']) ?>]"
                                             data-kolom="<?= htmlspecialchars($kolom['field']) ?>"
                                             <?= $isHarga ? 'data-tipe="harga"' : '' ?>
-                                            class="form-control-custom" required>
+                                            class="form-control-custom">
                                     </td>
                                 <?php endforeach; ?>
                                 <td class="subtotal-baris" style="text-align:right; font-family:monospace;">-</td>
@@ -429,7 +432,7 @@ $totalDibayarkanSaya = $stmtTotalDibayarkan->fetchColumn() ?: 0;
         kolomList.forEach(function (k) {
             var isHarga = /harga/i.test(k);
             html += '<td><input type="text" name="items[' + idx + '][' + k + ']" data-kolom="' + k + '"' +
-                (isHarga ? ' data-tipe="harga"' : '') + ' class="form-control-custom" required></td>';
+                (isHarga ? ' data-tipe="harga"' : '') + ' class="form-control-custom"></td>';
         });
         html += '<td class="subtotal-baris" style="text-align:right; font-family:monospace;">-</td>';
         html += '<td style="text-align:center;"><button type="button" class="btn btn-outline-danger btn-sm tombol-hapus-baris-reimburse"><i class="bi bi-x-lg"></i></button></td>';

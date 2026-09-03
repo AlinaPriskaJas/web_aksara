@@ -2541,14 +2541,17 @@ function arp_tempel_ttd_ke_surat(PDO $conn, int $surat_id, int $direksi_id): boo
 function arp_muat_template_reimburse(PDO $pdo): ?array
 {
     $stmt = $pdo->prepare("
-        SELECT k.*, t.id AS template_id, t.nama AS nama_template,
-               t.drive_file_id, t.drive_link, t.format, t.fields_json
-        FROM Template_Master t
-        JOIN Kode_Template kt ON kt.template_id = t.id
-        JOIN Kode_Surat k ON k.id = kt.kode_id
-        WHERE t.nama LIKE '%Reimburs%' AND t.format = 'word_pdf' AND t.drive_file_id IS NOT NULL
+        SELECT k.*, t.id AS template_id, t.nama AS nama_template, t.drive_file_id,
+                t.drive_link, t.format, t.fields_json
+        FROM Template_Master AS t
+        JOIN Kode_Template AS kt ON kt.template_id = t.id
+        JOIN Kode_Surat AS k ON k.id = kt.kode_id
+        WHERE t.nama = 'Reimbursement Harian'
+        AND t.format = 'word_pdf'
+        AND t.drive_file_id IS NOT NULL
         ORDER BY t.id DESC
-        LIMIT 1
+        LIMIT 1;
+        
     ");
     $stmt->execute();
     $row = $stmt->fetch();
@@ -2657,7 +2660,8 @@ function arp_proses_pengajuan_reimburse(PDO $pdo, array $kodeRow, int $userId, a
             throw new RuntimeException('Gagal mengunggah surat ke Google Drive: ' . arp_drive_last_error());
         }
 
-        $perihal = 'Pengajuan Reimbursement - ' . $namaUser;
+        $perihalManual = trim((string) ($dataFormMentah['perihal'] ?? ''));
+        $perihal = $perihalManual !== '' ? $perihalManual : ('Pengajuan Reimbursement - ' . $namaUser);
 
         $insertSurat = $pdo->prepare("INSERT INTO Surat
         (nomor, kode_id, template_id, perihal, status, arah, tujuan, dibuat_oleh, tgl_dibuat, file_hasil, drive_file_id, drive_link, isi_data)
@@ -2688,6 +2692,15 @@ function arp_proses_pengajuan_reimburse(PDO $pdo, array $kodeRow, int $userId, a
             $suratId,
         ]);
         $reimburseId = (int) $pdo->lastInsertId();
+
+        $insertApproval = $pdo->prepare("INSERT INTO Approval
+            (jenis_pengajuan, ref_id, requester_id, approver_id, level, status)
+            VALUES ('Reimburse', ?, ?, NULL, 1, 'Menunggu')");
+        $insertApproval->execute([$reimburseId, $userId]);
+        $approvalId = (int) $pdo->lastInsertId();
+
+        $pdo->prepare("UPDATE Reimburse SET approval_id = ? WHERE id = ?")
+            ->execute([$approvalId, $reimburseId]);
 
         $pdo->commit();
 

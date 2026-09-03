@@ -260,6 +260,7 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
                                 <tr>
                                     <th>No</th>
                                     <th>Tanggal Pengajuan</th>
+                                    <th>Perihal</th>
                                     <th>Nominal</th>
                                     <th>Surat</th>
                                     <th>Status</th>
@@ -268,7 +269,7 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
                             <tbody>
                                 <?php if (count($my_reimbursements) === 0): ?>
                                     <tr>
-                                        <td colspan="5" class="text-center py-4 text-muted">
+                                        <td colspan="6" class="text-center py-4 text-muted">
                                             <i class="bi bi-receipt-cutoff d-block mb-2" style="font-size:2rem;"></i>
                                             Belum ada pengajuan reimbursement.
                                         </td>
@@ -278,6 +279,7 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
                                         <tr>
                                             <td><?= $no + 1 ?></td>
                                             <td><?= date('d-m-Y', strtotime($r['tanggal_pengeluaran'])) ?></td>
+                                            <td><?= htmlspecialchars($r['keterangan'] ?? '-') ?></td>
                                             <td><strong>Rp <?= number_format($r['nominal'], 0, ',', '.') ?></strong></td>
                                             <td>
                                                 <?php
@@ -340,6 +342,7 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
                                     <th>No</th>
                                     <th>Nama Pengajuan</th>
                                     <th>Tanggal Pengajuan</th>
+                                    <th>Perihal</th>
                                     <th>Nominal</th>
                                     <th>Status</th>
                                     <th style="text-align: center;">Tindakan</th>
@@ -348,7 +351,7 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
                             <tbody>
                                 <?php if (count($reimbursements) === 0): ?>
                                     <tr>
-                                        <td colspan="6" class="text-center py-3 text-muted">Belum ada pengajuan reimburse.
+                                        <td colspan="7" class="text-center py-3 text-muted">Belum ada pengajuan reimburse.
                                         </td>
                                     </tr>
                                 <?php else: ?>
@@ -360,6 +363,7 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
                                                 <small class="text-secondary"><?= htmlspecialchars($r['email']) ?></small>
                                             </td>
                                             <td><?= date('d-m-Y', strtotime($r['tanggal_pengeluaran'])) ?></td>
+                                            <td><?= htmlspecialchars($r['keterangan'] ?? '-') ?></td>
                                             <td><strong>Rp <?= number_format($r['nominal'], 0, ',', '.') ?></strong></td>
                                             <td>
                                                 <?php
@@ -493,7 +497,7 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
                                         <input type="text" name="items[0][<?= htmlspecialchars($kolom['field']) ?>]"
                                             data-kolom="<?= htmlspecialchars($kolom['field']) ?>"
                                             <?= $isHarga ? 'data-tipe="harga"' : '' ?>
-                                            class="form-control-custom" required>
+                                            class="form-control-custom">
                                     </td>
                                 <?php endforeach; ?>
                                 <td class="subtotal-baris" style="text-align:right; font-family:monospace;">-</td>
@@ -618,7 +622,7 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
         kolomList.forEach(function (k) {
             var isHarga = /harga/i.test(k);
             html += '<td><input type="text" name="items[' + idx + '][' + k + ']" data-kolom="' + k + '"' +
-                (isHarga ? ' data-tipe="harga"' : '') + ' class="form-control-custom" required></td>';
+                (isHarga ? ' data-tipe="harga"' : '') + ' class="form-control-custom"></td>';
         });
         html += '<td class="subtotal-baris" style="text-align:right; font-family:monospace;">-</td>';
         html += '<td style="text-align:center;"><button type="button" class="btn btn-outline-danger btn-sm tombol-hapus-baris-reimburse"><i class="bi bi-x-lg"></i></button></td>';
