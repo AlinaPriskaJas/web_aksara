@@ -1,5 +1,5 @@
 <?php
-// ahli_k3/cuti.php
+// ahli/cuti.php
 
 // Pastikan perhitungan tanggal/bulan (untuk akrual saldo cuti) selalu
 // mengikuti waktu Indonesia, bukan timezone default server (mis. UTC).
@@ -27,6 +27,49 @@ $success_msg = "";
 $error_msg = "";
 $current_year = (int) date('Y');
 $current_month = (int) date('n'); // 1-12, dipakai untuk akrual bulanan
+
+$fieldsCutiTemplate = arp_ambil_fields_template_cuti($conn);
+$fieldsDinamisCuti = $fieldsCutiTemplate['fields'] ?? [];
+$fieldsTabelCuti = $fieldsCutiTemplate['table_fields'] ?? [];
+$fieldWajibBakuCuti = ['nama_pemohon', 'alasan_cuti', 'jumlah_hari', 'tanggal_mulai', 'tanggal_selesai', 'tahun', 'nama_penandatangan'];
+$fieldsDinamisCuti = array_values(array_filter($fieldsDinamisCuti, fn($f) => !in_array($f['field'], $fieldWajibBakuCuti, true)));
+// ==========================================
+// KELOMPOKKAN field dinamis form Cuti Tahunan jadi 2 bagian sesuai
+// template "Permohonan Cuti Dan Pengalihan Tugas":
+//  - "pemohon"      : data pihak yang mengajukan cuti
+//  - "serah_terima" : data pihak yang menerima pengalihan tugas
+// Field lain yang tidak dikenali (mis. nama_mengetahui) masuk ke "lainnya"
+// supaya tetap tampil, tidak hilang, walau tidak masuk 2 kelompok di atas.
+// ==========================================
+function kelompokkanFieldPemohonSerahTerima(array $fieldsDinamis): array
+{
+    $urutanPemohon = ['tanggal_surat', 'nama_karyawan', 'nama_penerima', 'jabatan_karyawan', 'divisi_karyawan', 'sub_divisi_karyawan'];
+    $urutanSerahTerima = ['tanggal_serah_terima', 'nama_penerima_tugas', 'jabatan_penerima_tugas', 'sub_divisi_penerima_tugas', 'divisi_penerima_tugas'];
+
+    $peta = [];
+    foreach ($fieldsDinamis as $f) {
+        $peta[$f['field']] = $f;
+    }
+
+    $ambilUrut = function (array $urutan) use (&$peta) {
+        $hasil = [];
+        foreach ($urutan as $namaField) {
+            if (isset($peta[$namaField])) {
+                $hasil[] = $peta[$namaField];
+                unset($peta[$namaField]);
+            }
+        }
+        return $hasil;
+    };
+
+    $pemohon = $ambilUrut($urutanPemohon);
+    $serahTerima = $ambilUrut($urutanSerahTerima);
+    $lainnya = array_values($peta);
+
+    return ['pemohon' => $pemohon, 'serah_terima' => $serahTerima, 'lainnya' => $lainnya];
+}
+
+$kelompokFieldCuti = kelompokkanFieldPemohonSerahTerima($fieldsDinamisCuti);
 
 /**
  * Ambil nama lengkap user yang sedang login (dipakai di kolom "Nama").
@@ -221,42 +264,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'batal
             $tgl_selesai = '';
 
             // Field tambahan khusus Cuti Tahunan (dipakai untuk mencetak Surat Cuti)
-            $jabatan_karyawan = null;
-            $divisi_karyawan = null;
-            $sub_divisi_karyawan = null;
-            $alamat_cuti = null;
-            $nama_penerima = null;
-            $nama_mengetahui = null;
-            $tanggal_serah_terima = null;
-            $nama_penerima_tugas = null;
-            $jabatan_penerima_tugas = null;
-            $sub_divisi_penerima_tugas = null;
-            $divisi_penerima_tugas = null;
-            $serah_terima_items = [];
-
+            $isiDataDinamis = [];
+            $itemsDariForm = [];
             if ($form_type === 'tahunan') {
-                $jabatan_karyawan = trim($_POST['jabatan_karyawan'] ?? '') ?: null;
-                $divisi_karyawan = trim($_POST['divisi_karyawan'] ?? '') ?: null;
-                $sub_divisi_karyawan = trim($_POST['sub_divisi_karyawan'] ?? '') ?: null;
-                $alamat_cuti = trim($_POST['alamat_cuti'] ?? '') ?: null;
-                $nama_penerima = trim($_POST['nama_penerima'] ?? '') ?: null;
-                $nama_mengetahui = trim($_POST['nama_mengetahui'] ?? '') ?: null;
-                $tanggal_serah_terima = trim($_POST['tanggal_serah_terima'] ?? '') ?: null;
-                $nama_penerima_tugas = trim($_POST['nama_penerima_tugas'] ?? '') ?: null;
-                $jabatan_penerima_tugas = trim($_POST['jabatan_penerima_tugas'] ?? '') ?: null;
-                $sub_divisi_penerima_tugas = trim($_POST['sub_divisi_penerima_tugas'] ?? '') ?: null;
-                $divisi_penerima_tugas = trim($_POST['divisi_penerima_tugas'] ?? '') ?: null;
-
-                $item_deskripsi_list = $_POST['item_deskripsi'] ?? [];
-                $item_status_list = $_POST['item_status'] ?? [];
-                foreach ($item_deskripsi_list as $idx_item => $deskripsi_item) {
-                    $deskripsi_item = trim($deskripsi_item);
-                    if ($deskripsi_item === '')
-                        continue;
-                    $serah_terima_items[] = [
-                        'deskripsi' => $deskripsi_item,
-                        'status' => trim($item_status_list[$idx_item] ?? ''),
-                    ];
+                foreach ($_POST['dinamis'] ?? [] as $namaField => $nilai) {
+                    $isiDataDinamis[$namaField] = trim((string) $nilai);
+                }
+                foreach ($_POST['items'] ?? [] as $baris) {
+                    $baris = array_map('trim', (array) $baris);
+                    $adaIsi = false;
+                    foreach ($baris as $v) {
+                        if ($v !== '') {
+                            $adaIsi = true;
+                            break;
+                        }
+                    }
+                    if ($adaIsi)
+                        $itemsDariForm[] = $baris;
                 }
             }
 
@@ -299,6 +323,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'batal
             }
 
             if (empty($error_msg)) {
+                // PENTING: dokumen pendukung disimpan ke Cuti.lampiran (BUKAN
+                // drive_file_id/drive_link), karena kolom itu khusus untuk hasil Surat
+                // Cuti & Pengalihan Tugas yang digenerate sistem.
                 $lampiran = $cutiRow['lampiran']; // pertahankan dokumen lama kecuali diganti
 
                 if (isset($_FILES['lampiran']) && $_FILES['lampiran']['error'] === UPLOAD_ERR_OK) {
@@ -317,46 +344,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'batal
                 }
 
                 if (empty($error_msg)) {
-                    $updCuti = $conn->prepare("UPDATE Cuti SET tgl_mulai = :start, tgl_selesai = :end, total_durasi = :duration, alasan = :alasan, lampiran = :lampiran, jabatan_karyawan = :jabatan_karyawan, divisi_karyawan = :divisi_karyawan, sub_divisi_karyawan = :sub_divisi_karyawan, alamat_cuti = :alamat_cuti, nama_penerima = :nama_penerima, nama_mengetahui = :nama_mengetahui, tanggal_serah_terima = :tanggal_serah_terima, nama_penerima_tugas = :nama_penerima_tugas, jabatan_penerima_tugas = :jabatan_penerima_tugas, sub_divisi_penerima_tugas = :sub_divisi_penerima_tugas, divisi_penerima_tugas = :divisi_penerima_tugas WHERE id = :id AND user_id = :user_id");
+                    $isiDataUntukSimpan = null;
+                    if ($form_type === 'tahunan') {
+                        $isiDataDinamis['tgl_mulai'] = $tgl_mulai;
+                        $isiDataDinamis['tgl_selesai'] = $tgl_selesai;
+                        $isiDataDinamis['alasan'] = $alasan;
+                        if (!empty($itemsDariForm)) {
+                            $isiDataDinamis['__items'] = $itemsDariForm;
+                        }
+                        $isiDataUntukSimpan = json_encode($isiDataDinamis, JSON_UNESCAPED_UNICODE);
+                    }
+
+                    $updCuti = $conn->prepare("UPDATE Cuti SET tgl_mulai = :start, tgl_selesai = :end, total_durasi = :duration, alasan = :alasan, lampiran = :lampiran, isi_data = COALESCE(:isi_data, isi_data) WHERE id = :id AND user_id = :user_id");
                     $updCuti->execute([
                         'start' => $tgl_mulai,
                         'end' => $tgl_selesai,
                         'duration' => $duration,
                         'alasan' => $alasan,
                         'lampiran' => $lampiran,
-                        'jabatan_karyawan' => $jabatan_karyawan,
-                        'divisi_karyawan' => $divisi_karyawan,
-                        'sub_divisi_karyawan' => $sub_divisi_karyawan,
-                        'alamat_cuti' => $alamat_cuti,
-                        'nama_penerima' => $nama_penerima,
-                        'nama_mengetahui' => $nama_mengetahui,
-                        'tanggal_serah_terima' => $tanggal_serah_terima,
-                        'nama_penerima_tugas' => $nama_penerima_tugas,
-                        'jabatan_penerima_tugas' => $jabatan_penerima_tugas,
-                        'sub_divisi_penerima_tugas' => $sub_divisi_penerima_tugas,
-                        'divisi_penerima_tugas' => $divisi_penerima_tugas,
+                        'isi_data' => $isiDataUntukSimpan,
                         'id' => $cuti_id,
                         'user_id' => $current_user_id
                     ]);
+                    $success_msg = "Pengajuan " . $jenisMap[$form_type] . " berhasil diperbarui.";
 
                     if ($form_type === 'tahunan') {
-                        $delItem = $conn->prepare("DELETE FROM Cuti_Serah_Terima WHERE cuti_id = :cuti_id");
-                        $delItem->execute(['cuti_id' => $cuti_id]);
-
-                        if (!empty($serah_terima_items)) {
-                            $stmtItem = $conn->prepare("INSERT INTO Cuti_Serah_Terima (cuti_id, urutan, deskripsi, status) VALUES (:cuti_id, :urutan, :deskripsi, :status)");
-                            foreach ($serah_terima_items as $urutan_item => $item) {
-                                $stmtItem->execute([
-                                    'cuti_id' => $cuti_id,
-                                    'urutan' => $urutan_item + 1,
-                                    'deskripsi' => $item['deskripsi'],
-                                    'status' => $item['status'],
-                                ]);
-                            }
-                        }
+                        arp_generate_dan_unggah_surat_cuti_draft($conn, (int) $cuti_id);
                     }
-
-                    $success_msg = "Pengajuan " . $jenisMap[$form_type] . " berhasil diperbarui.";
                 }
             }
         }
@@ -379,43 +393,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'batal
         $tgl_mulai = '';
         $tgl_selesai = '';
 
-        // Field tambahan khusus Cuti Tahunan (dipakai untuk mencetak Surat Cuti)
-        $jabatan_karyawan = null;
-        $divisi_karyawan = null;
-        $sub_divisi_karyawan = null;
-        $alamat_cuti = null;
-        $nama_penerima = null;
-        $nama_mengetahui = null;
-        $tanggal_serah_terima = null;
-        $nama_penerima_tugas = null;
-        $jabatan_penerima_tugas = null;
-        $sub_divisi_penerima_tugas = null;
-        $divisi_penerima_tugas = null;
-        $serah_terima_items = [];
-
+        $isiDataDinamis = [];
+        $itemsDariForm = [];
         if ($form_type === 'tahunan') {
-            $jabatan_karyawan = trim($_POST['jabatan_karyawan'] ?? '') ?: null;
-            $divisi_karyawan = trim($_POST['divisi_karyawan'] ?? '') ?: null;
-            $sub_divisi_karyawan = trim($_POST['sub_divisi_karyawan'] ?? '') ?: null;
-            $alamat_cuti = trim($_POST['alamat_cuti'] ?? '') ?: null;
-            $nama_penerima = trim($_POST['nama_penerima'] ?? '') ?: null;
-            $nama_mengetahui = trim($_POST['nama_mengetahui'] ?? '') ?: null;
-            $tanggal_serah_terima = trim($_POST['tanggal_serah_terima'] ?? '') ?: null;
-            $nama_penerima_tugas = trim($_POST['nama_penerima_tugas'] ?? '') ?: null;
-            $jabatan_penerima_tugas = trim($_POST['jabatan_penerima_tugas'] ?? '') ?: null;
-            $sub_divisi_penerima_tugas = trim($_POST['sub_divisi_penerima_tugas'] ?? '') ?: null;
-            $divisi_penerima_tugas = trim($_POST['divisi_penerima_tugas'] ?? '') ?: null;
-
-            $item_deskripsi_list = $_POST['item_deskripsi'] ?? [];
-            $item_status_list = $_POST['item_status'] ?? [];
-            foreach ($item_deskripsi_list as $idx_item => $deskripsi_item) {
-                $deskripsi_item = trim($deskripsi_item);
-                if ($deskripsi_item === '')
-                    continue;
-                $serah_terima_items[] = [
-                    'deskripsi' => $deskripsi_item,
-                    'status' => trim($item_status_list[$idx_item] ?? ''),
-                ];
+            foreach ($_POST['dinamis'] ?? [] as $namaField => $nilai) {
+                $isiDataDinamis[$namaField] = trim((string) $nilai);
+            }
+            foreach ($_POST['items'] ?? [] as $baris) {
+                $baris = array_map('trim', (array) $baris);
+                $adaIsi = false;
+                foreach ($baris as $v) {
+                    if ($v !== '') {
+                        $adaIsi = true;
+                        break;
+                    }
+                }
+                if ($adaIsi)
+                    $itemsDariForm[] = $baris;
             }
         }
 
@@ -454,7 +448,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'batal
         }
 
         if (empty($error_msg)) {
-            // Handle optional dokumen pendukung upload
+            // Handle optional dokumen pendukung upload.
+            // PENTING: disimpan ke kolom Cuti.lampiran (BUKAN drive_file_id/drive_link),
+            // karena drive_file_id/drive_link sekarang khusus dipakai untuk hasil
+            // Surat Cuti & Pengalihan Tugas yang digenerate sistem (lihat
+            // includes/cuti_surat_helper.php).
             $lampiran = "";
             if (isset($_FILES['lampiran']) && $_FILES['lampiran']['error'] === UPLOAD_ERR_OK) {
                 $file = $_FILES['lampiran'];
@@ -479,7 +477,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'batal
                     $stmtApp->execute(['requester' => $current_user_id]);
                     $approval_id = $conn->lastInsertId();
 
-                    $stmtCuti = $conn->prepare("INSERT INTO Cuti (user_id, jenis_cuti, tgl_mulai, tgl_selesai, total_durasi, alasan, lampiran, status, approval_id, jabatan_karyawan, divisi_karyawan, sub_divisi_karyawan, alamat_cuti, nama_penerima, nama_mengetahui, tanggal_serah_terima, nama_penerima_tugas, jabatan_penerima_tugas, sub_divisi_penerima_tugas, divisi_penerima_tugas) VALUES (:user_id, :jenis, :start, :end, :duration, :alasan, :lampiran, 'Menunggu', :app_id, :jabatan_karyawan, :divisi_karyawan, :sub_divisi_karyawan, :alamat_cuti, :nama_penerima, :nama_mengetahui, :tanggal_serah_terima, :nama_penerima_tugas, :jabatan_penerima_tugas, :sub_divisi_penerima_tugas, :divisi_penerima_tugas)");
+                    $isiDataUntukInsert = null;
+                    if ($form_type === 'tahunan') {
+                        $isiDataDinamis['tgl_mulai'] = $tgl_mulai;
+                        $isiDataDinamis['tgl_selesai'] = $tgl_selesai;
+                        $isiDataDinamis['alasan'] = $alasan;
+                        if (!empty($itemsDariForm)) {
+                            $isiDataDinamis['__items'] = $itemsDariForm;
+                        }
+                        $isiDataUntukInsert = json_encode($isiDataDinamis, JSON_UNESCAPED_UNICODE);
+                    }
+
+                    $stmtCuti = $conn->prepare("INSERT INTO Cuti (user_id, jenis_cuti, tgl_mulai, tgl_selesai, total_durasi, alasan, lampiran, status, approval_id, isi_data) VALUES (:user_id, :jenis, :start, :end, :duration, :alasan, :lampiran, 'Menunggu', :app_id, :isi_data)");
                     $stmtCuti->execute([
                         'user_id' => $current_user_id,
                         'jenis' => $jenis_cuti,
@@ -489,34 +498,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'batal
                         'alasan' => $alasan,
                         'lampiran' => $lampiran,
                         'app_id' => $approval_id,
-                        'jabatan_karyawan' => $jabatan_karyawan,
-                        'divisi_karyawan' => $divisi_karyawan,
-                        'sub_divisi_karyawan' => $sub_divisi_karyawan,
-                        'alamat_cuti' => $alamat_cuti,
-                        'nama_penerima' => $nama_penerima,
-                        'nama_mengetahui' => $nama_mengetahui,
-                        'tanggal_serah_terima' => $tanggal_serah_terima,
-                        'nama_penerima_tugas' => $nama_penerima_tugas,
-                        'jabatan_penerima_tugas' => $jabatan_penerima_tugas,
-                        'sub_divisi_penerima_tugas' => $sub_divisi_penerima_tugas,
-                        'divisi_penerima_tugas' => $divisi_penerima_tugas,
+                        'isi_data' => $isiDataUntukInsert,
                     ]);
 
                     $cuti_id = $conn->lastInsertId();
                     $updApp = $conn->prepare("UPDATE Approval SET ref_id = :cuti_id WHERE id = :app_id");
                     $updApp->execute(['cuti_id' => $cuti_id, 'app_id' => $approval_id]);
 
-                    if ($form_type === 'tahunan' && !empty($serah_terima_items)) {
-                        $stmtItem = $conn->prepare("INSERT INTO Cuti_Serah_Terima (cuti_id, urutan, deskripsi, status) VALUES (:cuti_id, :urutan, :deskripsi, :status)");
-                        foreach ($serah_terima_items as $urutan_item => $item) {
-                            $stmtItem->execute([
-                                'cuti_id' => $cuti_id,
-                                'urutan' => $urutan_item + 1,
-                                'deskripsi' => $item['deskripsi'],
-                                'status' => $item['status'],
-                            ]);
-                        }
-                    }
 
                     // ================== NOTIFIKASI KE DIREKSI (APPROVER) ==================
                     $stmtDireksi = $conn->prepare("SELECT id FROM Users WHERE role = 'direksi'");
@@ -611,20 +599,13 @@ $leavesSakit = fetch_leaves($conn, $current_user_id, 'Izin Sakit');
 
 // Lampirkan daftar "Uraian Tugas" (Serah Terima Tugas) ke tiap baris Cuti Tahunan,
 // dipakai untuk mengisi ulang form Ubah & untuk mencetak Surat Cuti.
-try {
-    $stmtItemAll = $conn->prepare("SELECT * FROM Cuti_Serah_Terima WHERE cuti_id = :cuti_id ORDER BY urutan ASC");
-    foreach ($leavesTahunan as &$leaveTahunanRow) {
-        $stmtItemAll->execute(['cuti_id' => $leaveTahunanRow['id']]);
-        $leaveTahunanRow['items'] = $stmtItemAll->fetchAll();
-    }
-    unset($leaveTahunanRow);
-} catch (PDOException $e) {
-    // Tabel Cuti_Serah_Terima belum ada (migration belum dijalankan) -> abaikan, biarkan 'items' kosong
-    foreach ($leavesTahunan as &$leaveTahunanRow) {
-        $leaveTahunanRow['items'] = [];
-    }
-    unset($leaveTahunanRow);
+foreach ($leavesTahunan as &$leaveTahunanRow) {
+    $leaveTahunanRow['isi_data_decoded'] = !empty($leaveTahunanRow['isi_data'])
+        ? (json_decode($leaveTahunanRow['isi_data'], true) ?: [])
+        : [];
 }
+unset($leaveTahunanRow);
+
 // BARU: lampirkan link Surat Cuti (dari tabel Surat, bukan kolom di Cuti)
 foreach ($leavesTahunan as &$leaveTahunanRow) {
     $leaveTahunanRow['surat_cuti_link'] = arp_ambil_link_surat_cuti($conn, (int) $leaveTahunanRow['id']);
@@ -732,7 +713,7 @@ $dipakaiSakit = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year)
                                     data-table-search="tabelCutiTahunan"
                                     onkeyup="handleTableSearch('tabelCutiTahunan')">
                             </div>
-                            <button class="btn-primary-custom" onclick="openModal('modalCutiTahunan')">
+                            <button class="btn-primary-custom" onclick="bukaModalAjukanCutiTahunan()">
                                 <i class="bi bi-calendar-plus me-1"></i>Ajukan Cuti Tahunan
                             </button>
                         </div>
@@ -777,8 +758,9 @@ $dipakaiSakit = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year)
                                             </td>
                                             <td class="col-keterangan"><?= htmlspecialchars($l['alasan'] ?: '-') ?></td>
                                             <td>
-                                                <?php if (!empty($l['lampiran'])): ?>
-                                                    <?php $hrefLampiran = str_starts_with($l['lampiran'], 'http') ? $l['lampiran'] : '../' . $l['lampiran']; ?>
+                                                <?php $linkLampiran = $l['lampiran'] ?? null; ?>
+                                                <?php if (!empty($linkLampiran)): ?>
+                                                    <?php $hrefLampiran = str_starts_with($linkLampiran, 'http') ? $linkLampiran : '../' . $linkLampiran; ?>
                                                     <a href="<?= htmlspecialchars($hrefLampiran) ?>" target="_blank"
                                                         class="btn btn-outline-secondary btn-sm py-1"
                                                         style="font-size:0.75rem; border-radius: 8px;">
@@ -808,18 +790,7 @@ $dipakaiSakit = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year)
                                                                 "tgl_mulai" => $l["tgl_mulai"],
                                                                 "tgl_selesai" => $l["tgl_selesai"],
                                                                 "alasan" => $l["alasan"],
-                                                                "jabatan_karyawan" => $l["jabatan_karyawan"],
-                                                                "divisi_karyawan" => $l["divisi_karyawan"],
-                                                                "sub_divisi_karyawan" => $l["sub_divisi_karyawan"],
-                                                                "alamat_cuti" => $l["alamat_cuti"],
-                                                                "nama_penerima" => $l["nama_penerima"],
-                                                                "nama_mengetahui" => $l["nama_mengetahui"],
-                                                                "tanggal_serah_terima" => $l["tanggal_serah_terima"],
-                                                                "nama_penerima_tugas" => $l["nama_penerima_tugas"],
-                                                                "jabatan_penerima_tugas" => $l["jabatan_penerima_tugas"],
-                                                                "sub_divisi_penerima_tugas" => $l["sub_divisi_penerima_tugas"],
-                                                                "divisi_penerima_tugas" => $l["divisi_penerima_tugas"],
-                                                                "items" => $l["items"],
+                                                                "isi_data" => $l["isi_data_decoded"],
                                                             ], JSON_HEX_APOS | JSON_HEX_QUOT) ?>)'>
                                                             <i class="bi bi-pencil-square"></i> Ubah
                                                         </button>
@@ -910,8 +881,9 @@ $dipakaiSakit = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year)
                                             </td>
                                             <td class="col-keterangan"><?= htmlspecialchars($l['alasan'] ?: '-') ?></td>
                                             <td>
-                                                <?php if (!empty($l['lampiran'])): ?>
-                                                    <?php $hrefLampiran = str_starts_with($l['lampiran'], 'http') ? $l['lampiran'] : '../' . $l['lampiran']; ?>
+                                                <?php $linkLampiran = $l['lampiran'] ?? null; ?>
+                                                <?php if (!empty($linkLampiran)): ?>
+                                                    <?php $hrefLampiran = str_starts_with($linkLampiran, 'http') ? $linkLampiran : '../' . $linkLampiran; ?>
                                                     <a href="<?= htmlspecialchars($hrefLampiran) ?>" target="_blank"
                                                         class="btn btn-outline-secondary btn-sm py-1"
                                                         style="font-size:0.75rem; border-radius: 8px;">
@@ -1010,8 +982,9 @@ $dipakaiSakit = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year)
                                             </td>
                                             <td class="col-keterangan"><?= htmlspecialchars($l['alasan'] ?: '-') ?></td>
                                             <td>
-                                                <?php if (!empty($l['lampiran'])): ?>
-                                                    <?php $hrefLampiran = str_starts_with($l['lampiran'], 'http') ? $l['lampiran'] : '../' . $l['lampiran']; ?>
+                                                <?php $linkLampiran = $l['lampiran'] ?? null; ?>
+                                                <?php if (!empty($linkLampiran)): ?>
+                                                    <?php $hrefLampiran = str_starts_with($linkLampiran, 'http') ? $linkLampiran : '../' . $linkLampiran; ?>
                                                     <a href="<?= htmlspecialchars($hrefLampiran) ?>" target="_blank"
                                                         class="btn btn-outline-secondary btn-sm py-1"
                                                         style="font-size:0.75rem; border-radius: 8px;">
@@ -1131,98 +1104,97 @@ $dipakaiSakit = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year)
                         disabled style="background: var(--bg-glass); font-weight:600;">
                 </div>
                 <div class="mb-3">
-                    <label class="form-label fw-semibold fs-7 mb-2">Keterangan</label>
+                    <label class="form-label fw-semibold fs-7 mb-2">Alasan</label>
                     <textarea name="alasan" class="textarea-custom"
-                        placeholder="Tuliskan keterangan detail keperluan Anda..."></textarea>
+                        placeholder="Tuliskan alasan detail keperluan Anda..."></textarea>
                 </div>
+                <?php if (!empty($fieldsDinamisCuti) || !empty($fieldsTabelCuti)): ?>
+                    <hr class="my-3">
+
+                    <?php if (!empty($kelompokFieldCuti['pemohon'])): ?>
+                        <p class="fw-semibold fs-7 mb-3 text-primary">Data Pemohon Cuti</p>
+                        <div class="row g-2 mb-3">
+                            <?php foreach ($kelompokFieldCuti['pemohon'] as $f): ?>
+                                <?php $isTanggalField = (bool) preg_match('/tanggal|tgl/i', $f['field']); ?>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-semibold fs-7 mb-2"><?= e($f['label']) ?></label>
+                                    <input type="<?= $isTanggalField ? 'date' : 'text' ?>" name="dinamis[<?= e($f['field']) ?>]"
+                                        id="tahunanDinamis_<?= e($f['field']) ?>" class="form-control-custom">
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
+
+                    <?php if (!empty($kelompokFieldCuti['serah_terima'])): ?>
+                        <p class="fw-semibold fs-7 mb-3 text-primary">Data Serah Terima Tugas</p>
+                        <div class="row g-2 mb-3">
+                            <?php foreach ($kelompokFieldCuti['serah_terima'] as $f): ?>
+                                <?php $isTanggalField = (bool) preg_match('/tanggal|tgl/i', $f['field']); ?>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-semibold fs-7 mb-2"><?= e($f['label']) ?></label>
+                                    <input type="<?= $isTanggalField ? 'date' : 'text' ?>" name="dinamis[<?= e($f['field']) ?>]"
+                                        id="tahunanDinamis_<?= e($f['field']) ?>" class="form-control-custom">
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
+
+                    <?php if (!empty($kelompokFieldCuti['lainnya'])): ?>
+                        <p class="fw-semibold fs-7 mb-3 text-primary">Data Lainnya</p>
+                        <div class="row g-2 mb-3">
+                            <?php foreach ($kelompokFieldCuti['lainnya'] as $f): ?>
+                                <?php $isTanggalField = (bool) preg_match('/tanggal|tgl/i', $f['field']); ?>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-semibold fs-7 mb-2"><?= e($f['label']) ?></label>
+                                    <input type="<?= $isTanggalField ? 'date' : 'text' ?>" name="dinamis[<?= e($f['field']) ?>]"
+                                        id="tahunanDinamis_<?= e($f['field']) ?>" class="form-control-custom">
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
+
+                    <?php if (!empty($fieldsTabelCuti)): ?>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold fs-7 mb-2">Uraian Tugas yang Diserahkan</label>
+                            <div class="table-responsive-custom">
+                                <table class="table-custom" id="tahunanTabelItem">
+                                    <thead>
+                                        <tr>
+                                            <th style="width:36px;">No</th>
+                                            <?php foreach ($fieldsTabelCuti as $kolom): ?>
+                                                <th><?= e($kolom['label']) ?></th>
+                                            <?php endforeach; ?>
+                                            <th style="width:36px;"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tahunanTugasBody"></tbody>
+                                </table>
+                            </div>
+                            <button type="button" class="btn btn-outline-primary btn-sm mt-2"
+                                onclick="tambahBarisTugasDinamis('tahunanTugasBody')">
+                                <i class="bi bi-plus-lg"></i> Tambah Baris
+                            </button>
+                        </div>
+                    <?php endif; ?>
+                <?php endif; ?>
+
                 <div class="mb-4">
                     <label class="form-label fw-semibold fs-7 mb-2">Unggah Dokumen Pendukung</label>
                     <div class="upload-dropzone" id="dzCutiTahunanNew">
                         <div class="upload-dropzone-icon"><i class="bi bi-cloud-arrow-up"></i></div>
                         <div>
-                            <span class="fw-semibold" style="color: var(--primary);">Tarik &amp; lepas file di sini</span>
+                            <span class="fw-semibold" style="color: var(--primary);">Tarik &amp; lepas file di
+                                sini</span>
                             atau <span class="fw-semibold text-decoration-underline">Pilih File</span>
                         </div>
                         <span class="fs-7 text-muted">Format: PDF, JPG, PNG (Opsional)</span>
-                        <input type="file" name="lampiran" id="inputCutiTahunanNew" class="d-none" accept=".pdf,.jpg,.jpeg,.png">
+                        <input type="file" name="lampiran" id="inputCutiTahunanNew" class="d-none"
+                            accept=".pdf,.jpg,.jpeg,.png">
                         <div class="upload-dropzone-filelist" id="fileListCutiTahunanNew"></div>
                     </div>
                 </div>
 
-                <hr class="my-3">
-                <p class="fw-semibold fs-7 mb-3">Data untuk Surat Cuti &amp; Pengalihan Tugas <span class="text-muted fw-normal">(diisi supaya bisa dicetak jadi surat)</span></p>
-                <div class="row g-2 mb-3">
-                    <div class="col-4">
-                        <label class="form-label fw-semibold fs-7 mb-2">Jabatan</label>
-                        <input type="text" name="jabatan_karyawan" id="tahunanJabatan" class="form-control-custom">
-                    </div>
-                    <div class="col-4">
-                        <label class="form-label fw-semibold fs-7 mb-2">Divisi</label>
-                        <input type="text" name="divisi_karyawan" id="tahunanDivisi" class="form-control-custom">
-                    </div>
-                    <div class="col-4">
-                        <label class="form-label fw-semibold fs-7 mb-2">Sub Divisi</label>
-                        <input type="text" name="sub_divisi_karyawan" id="tahunanSubDivisi" class="form-control-custom">
-                    </div>
-                </div>
-                <div class="row g-2 mb-3">
-                    <div class="col-6">
-                        <label class="form-label fw-semibold fs-7 mb-2">Surat Ditujukan Kepada Yth</label>
-                        <input type="text" name="nama_penerima" id="tahunanNamaPenerima" class="form-control-custom"
-                            placeholder="mis. Direksi PT. Aksara Riksa Perdana">
-                    </div>
-                    <div class="col-6">
-                        <label class="form-label fw-semibold fs-7 mb-2">Alamat Selama Cuti</label>
-                        <input type="text" name="alamat_cuti" id="tahunanAlamatCuti" class="form-control-custom">
-                    </div>
-                </div>
-
-                <p class="fw-semibold fs-7 mb-3 mt-3">Serah Terima Tugas</p>
-                <div class="row g-2 mb-3">
-                    <div class="col-4">
-                        <label class="form-label fw-semibold fs-7 mb-2">Tanggal Serah Terima</label>
-                        <input type="date" name="tanggal_serah_terima" id="tahunanTglSerahTerima" class="form-control-custom">
-                    </div>
-                    <div class="col-4">
-                        <label class="form-label fw-semibold fs-7 mb-2">Nama Penerima Tugas</label>
-                        <input type="text" name="nama_penerima_tugas" id="tahunanNamaPenerimaTugas" class="form-control-custom">
-                    </div>
-                    <div class="col-4">
-                        <label class="form-label fw-semibold fs-7 mb-2">Jabatan Penerima Tugas</label>
-                        <input type="text" name="jabatan_penerima_tugas" id="tahunanJabatanPenerimaTugas" class="form-control-custom">
-                    </div>
-                </div>
-                <div class="row g-2 mb-3">
-                    <div class="col-6">
-                        <label class="form-label fw-semibold fs-7 mb-2">Sub Divisi Penerima Tugas</label>
-                        <input type="text" name="sub_divisi_penerima_tugas" id="tahunanSubDivisiPenerimaTugas" class="form-control-custom">
-                    </div>
-                    <div class="col-6">
-                        <label class="form-label fw-semibold fs-7 mb-2">Divisi Penerima Tugas</label>
-                        <input type="text" name="divisi_penerima_tugas" id="tahunanDivisiPenerimaTugas" class="form-control-custom">
-                    </div>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label fw-semibold fs-7 mb-2">Uraian Tugas yang Diserahkan</label>
-                    <table class="table table-sm align-middle mb-2" style="font-size:0.8rem;">
-                        <thead>
-                            <tr>
-                                <th style="width:45%;">Uraian Tugas</th>
-                                <th style="width:40%;">Status</th>
-                                <th style="width:15%;"></th>
-                            </tr>
-                        </thead>
-                        <tbody id="tahunanTugasBody"></tbody>
-                    </table>
-                    <button type="button" class="btn-secondary-custom" style="font-size:0.75rem;"
-                        onclick="tambahBarisTugas('tahunanTugasBody')"><i class="bi bi-plus-lg me-1"></i> Tambah Baris</button>
-                </div>
-                <div class="mb-4">
-                    <label class="form-label fw-semibold fs-7 mb-2">Mengetahui (Atasan / HRD)</label>
-                    <input type="text" name="nama_mengetahui" id="tahunanNamaMengetahui" class="form-control-custom">
-                </div>
-
-                <div class="d-flex gap-2">
+                <div class="d-flex gap-2 mt-3">
                     <button type="button" class="btn-secondary-custom flex-grow-1"
                         onclick="closeModal('modalCutiTahunan')">Batal</button>
                     <button type="submit" class="btn-primary-custom flex-grow-1"><i class="bi bi-send me-1"></i> Kirim
@@ -1232,7 +1204,6 @@ $dipakaiSakit = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year)
         </div>
     </div>
 </div>
-
 <!-- ===== MODAL: Ajukan Cuti Khusus ===== -->
 <div id="modalCutiKhusus" class="arp-modal-overlay" onclick="closeModalOutside(event, 'modalCutiKhusus')">
     <div class="arp-modal-box">
@@ -1263,20 +1234,22 @@ $dipakaiSakit = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year)
                         disabled style="background: var(--bg-glass); font-weight:600;">
                 </div>
                 <div class="mb-3">
-                    <label class="form-label fw-semibold fs-7 mb-2">Keterangan</label>
+                    <label class="form-label fw-semibold fs-7 mb-2">Alasan</label>
                     <textarea name="alasan" class="textarea-custom"
-                        placeholder="Tuliskan keterangan detail keperluan Anda..."></textarea>
+                        placeholder="Tuliskan alasan detail keperluan Anda..."></textarea>
                 </div>
                 <div class="mb-4">
                     <label class="form-label fw-semibold fs-7 mb-2">Unggah Dokumen Pendukung</label>
                     <div class="upload-dropzone" id="dzCutiKhususNew">
                         <div class="upload-dropzone-icon"><i class="bi bi-cloud-arrow-up"></i></div>
                         <div>
-                            <span class="fw-semibold" style="color: var(--primary);">Tarik &amp; lepas file di sini</span>
+                            <span class="fw-semibold" style="color: var(--primary);">Tarik &amp; lepas file di
+                                sini</span>
                             atau <span class="fw-semibold text-decoration-underline">Pilih File</span>
                         </div>
                         <span class="fs-7 text-muted">Format: PDF, JPG, PNG (Opsional)</span>
-                        <input type="file" name="lampiran" id="inputCutiKhususNew" class="d-none" accept=".pdf,.jpg,.jpeg,.png">
+                        <input type="file" name="lampiran" id="inputCutiKhususNew" class="d-none"
+                            accept=".pdf,.jpg,.jpeg,.png">
                         <div class="upload-dropzone-filelist" id="fileListCutiKhususNew"></div>
                     </div>
                 </div>
@@ -1312,7 +1285,7 @@ $dipakaiSakit = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year)
                     <input type="number" name="total_hari" class="form-control-custom" min="1" value="1" required>
                 </div>
                 <div class="mb-3">
-                    <label class="form-label fw-semibold fs-7 mb-2">Keterangan</label>
+                    <label class="form-label fw-semibold fs-7 mb-2">Alasan</label>
                     <textarea name="alasan" class="textarea-custom"
                         placeholder="Tuliskan keterangan sakit Anda..."></textarea>
                 </div>
@@ -1321,11 +1294,13 @@ $dipakaiSakit = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year)
                     <div class="upload-dropzone" id="dzCutiSakitNew">
                         <div class="upload-dropzone-icon"><i class="bi bi-cloud-arrow-up"></i></div>
                         <div>
-                            <span class="fw-semibold" style="color: var(--primary);">Tarik &amp; lepas file di sini</span>
+                            <span class="fw-semibold" style="color: var(--primary);">Tarik &amp; lepas file di
+                                sini</span>
                             atau <span class="fw-semibold text-decoration-underline">Pilih File</span>
                         </div>
                         <span class="fs-7 text-muted">Format: PDF, JPG, PNG (Opsional)</span>
-                        <input type="file" name="lampiran" id="inputCutiSakitNew" class="d-none" accept=".pdf,.jpg,.jpeg,.png">
+                        <input type="file" name="lampiran" id="inputCutiSakitNew" class="d-none"
+                            accept=".pdf,.jpg,.jpeg,.png">
                         <div class="upload-dropzone-filelist" id="fileListCutiSakitNew"></div>
                     </div>
                 </div>
@@ -1373,96 +1348,96 @@ $dipakaiSakit = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year)
                         disabled style="background: var(--bg-glass); font-weight:600;">
                 </div>
                 <div class="mb-3">
-                    <label class="form-label fw-semibold fs-7 mb-2">Keterangan</label>
+                    <label class="form-label fw-semibold fs-7 mb-2">Alasan</label>
                     <textarea name="alasan" id="editTahunanAlasan" class="textarea-custom"></textarea>
                 </div>
+
+                <?php if (!empty($fieldsDinamisCuti) || !empty($fieldsTabelCuti)): ?>
+                    <hr class="my-3">
+
+                    <?php if (!empty($kelompokFieldCuti['pemohon'])): ?>
+                        <p class="fw-semibold fs-7 mb-3 text-primary">Data Pemohon Cuti</p>
+                        <div class="row g-2 mb-3">
+                            <?php foreach ($kelompokFieldCuti['pemohon'] as $f): ?>
+                                <?php $isTanggalField = (bool) preg_match('/tanggal|tgl/i', $f['field']); ?>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-semibold fs-7 mb-2"><?= e($f['label']) ?></label>
+                                    <input type="<?= $isTanggalField ? 'date' : 'text' ?>" name="dinamis[<?= e($f['field']) ?>]"
+                                        id="tahunanDinamis_<?= e($f['field']) ?>" class="form-control-custom">
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
+
+                    <?php if (!empty($kelompokFieldCuti['serah_terima'])): ?>
+                        <p class="fw-semibold fs-7 mb-3 text-primary">Data Serah Terima Tugas</p>
+                        <div class="row g-2 mb-3">
+                            <?php foreach ($kelompokFieldCuti['serah_terima'] as $f): ?>
+                                <?php $isTanggalField = (bool) preg_match('/tanggal|tgl/i', $f['field']); ?>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-semibold fs-7 mb-2"><?= e($f['label']) ?></label>
+                                    <input type="<?= $isTanggalField ? 'date' : 'text' ?>" name="dinamis[<?= e($f['field']) ?>]"
+                                        id="tahunanDinamis_<?= e($f['field']) ?>" class="form-control-custom">
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
+
+                    <?php if (!empty($kelompokFieldCuti['lainnya'])): ?>
+                        <p class="fw-semibold fs-7 mb-3 text-primary">Data Lainnya</p>
+                        <div class="row g-2 mb-3">
+                            <?php foreach ($kelompokFieldCuti['lainnya'] as $f): ?>
+                                <?php $isTanggalField = (bool) preg_match('/tanggal|tgl/i', $f['field']); ?>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-semibold fs-7 mb-2"><?= e($f['label']) ?></label>
+                                    <input type="<?= $isTanggalField ? 'date' : 'text' ?>" name="dinamis[<?= e($f['field']) ?>]"
+                                        id="tahunanDinamis_<?= e($f['field']) ?>" class="form-control-custom">
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
+
+                    <?php if (!empty($fieldsTabelCuti)): ?>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold fs-7 mb-2">Uraian Tugas yang Diserahkan</label>
+                            <div class="table-responsive-custom">
+                                <table class="table-custom" id="editTahunanTabelItem">
+                                    <thead>
+                                        <tr>
+                                            <th style="width:36px;">No</th>
+                                            <?php foreach ($fieldsTabelCuti as $kolom): ?>
+                                                <th><?= e($kolom['label']) ?></th>
+                                            <?php endforeach; ?>
+                                            <th style="width:36px;"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="editTahunanTugasBody"></tbody>
+                                </table>
+                            </div>
+                            <button type="button" class="btn btn-outline-primary btn-sm mt-2"
+                                onclick="tambahBarisTugasDinamis('editTahunanTugasBody')">
+                                <i class="bi bi-plus-lg"></i> Tambah Baris
+                            </button>
+                        </div>
+                    <?php endif; ?>
+                <?php endif; ?>
                 <div class="mb-4">
                     <label class="form-label fw-semibold fs-7 mb-2">Ganti Dokumen Pendukung</label>
                     <div class="upload-dropzone" id="dzCutiTahunanEdit">
                         <div class="upload-dropzone-icon"><i class="bi bi-cloud-arrow-up"></i></div>
                         <div>
-                            <span class="fw-semibold" style="color: var(--primary);">Tarik &amp; lepas file di sini</span>
+                            <span class="fw-semibold" style="color: var(--primary);">Tarik &amp; lepas file di
+                                sini</span>
                             atau <span class="fw-semibold text-decoration-underline">Pilih File</span>
                         </div>
                         <span class="fs-7 text-muted">Format: PDF, JPG, PNG (Opsional)</span>
-                        <input type="file" name="lampiran" id="inputCutiTahunanEdit" class="d-none" accept=".pdf,.jpg,.jpeg,.png">
+                        <input type="file" name="lampiran" id="inputCutiTahunanEdit" class="d-none"
+                            accept=".pdf,.jpg,.jpeg,.png">
                         <div class="upload-dropzone-filelist" id="fileListCutiTahunanEdit"></div>
                     </div>
                 </div>
 
-                <hr class="my-3">
-                <p class="fw-semibold fs-7 mb-3">Data untuk Surat Cuti &amp; Pengalihan Tugas <span class="text-muted fw-normal">(diisi supaya bisa dicetak jadi surat)</span></p>
-                <div class="row g-2 mb-3">
-                    <div class="col-4">
-                        <label class="form-label fw-semibold fs-7 mb-2">Jabatan</label>
-                        <input type="text" name="jabatan_karyawan" id="editTahunanJabatan" class="form-control-custom">
-                    </div>
-                    <div class="col-4">
-                        <label class="form-label fw-semibold fs-7 mb-2">Divisi</label>
-                        <input type="text" name="divisi_karyawan" id="editTahunanDivisi" class="form-control-custom">
-                    </div>
-                    <div class="col-4">
-                        <label class="form-label fw-semibold fs-7 mb-2">Sub Divisi</label>
-                        <input type="text" name="sub_divisi_karyawan" id="editTahunanSubDivisi" class="form-control-custom">
-                    </div>
-                </div>
-                <div class="row g-2 mb-3">
-                    <div class="col-6">
-                        <label class="form-label fw-semibold fs-7 mb-2">Surat Ditujukan Kepada Yth</label>
-                        <input type="text" name="nama_penerima" id="editTahunanNamaPenerima" class="form-control-custom">
-                    </div>
-                    <div class="col-6">
-                        <label class="form-label fw-semibold fs-7 mb-2">Alamat Selama Cuti</label>
-                        <input type="text" name="alamat_cuti" id="editTahunanAlamatCuti" class="form-control-custom">
-                    </div>
-                </div>
-
-                <p class="fw-semibold fs-7 mb-3 mt-3">Serah Terima Tugas</p>
-                <div class="row g-2 mb-3">
-                    <div class="col-4">
-                        <label class="form-label fw-semibold fs-7 mb-2">Tanggal Serah Terima</label>
-                        <input type="date" name="tanggal_serah_terima" id="editTahunanTglSerahTerima" class="form-control-custom">
-                    </div>
-                    <div class="col-4">
-                        <label class="form-label fw-semibold fs-7 mb-2">Nama Penerima Tugas</label>
-                        <input type="text" name="nama_penerima_tugas" id="editTahunanNamaPenerimaTugas" class="form-control-custom">
-                    </div>
-                    <div class="col-4">
-                        <label class="form-label fw-semibold fs-7 mb-2">Jabatan Penerima Tugas</label>
-                        <input type="text" name="jabatan_penerima_tugas" id="editTahunanJabatanPenerimaTugas" class="form-control-custom">
-                    </div>
-                </div>
-                <div class="row g-2 mb-3">
-                    <div class="col-6">
-                        <label class="form-label fw-semibold fs-7 mb-2">Sub Divisi Penerima Tugas</label>
-                        <input type="text" name="sub_divisi_penerima_tugas" id="editTahunanSubDivisiPenerimaTugas" class="form-control-custom">
-                    </div>
-                    <div class="col-6">
-                        <label class="form-label fw-semibold fs-7 mb-2">Divisi Penerima Tugas</label>
-                        <input type="text" name="divisi_penerima_tugas" id="editTahunanDivisiPenerimaTugas" class="form-control-custom">
-                    </div>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label fw-semibold fs-7 mb-2">Uraian Tugas yang Diserahkan</label>
-                    <table class="table table-sm align-middle mb-2" style="font-size:0.8rem;">
-                        <thead>
-                            <tr>
-                                <th style="width:45%;">Uraian Tugas</th>
-                                <th style="width:40%;">Status</th>
-                                <th style="width:15%;"></th>
-                            </tr>
-                        </thead>
-                        <tbody id="editTahunanTugasBody"></tbody>
-                    </table>
-                    <button type="button" class="btn-secondary-custom" style="font-size:0.75rem;"
-                        onclick="tambahBarisTugas('editTahunanTugasBody')"><i class="bi bi-plus-lg me-1"></i> Tambah Baris</button>
-                </div>
-                <div class="mb-4">
-                    <label class="form-label fw-semibold fs-7 mb-2">Mengetahui (Atasan / HRD)</label>
-                    <input type="text" name="nama_mengetahui" id="editTahunanNamaMengetahui" class="form-control-custom">
-                </div>
-
-                <div class="d-flex gap-2">
+                <div class="d-flex gap-2 mt-3">
                     <button type="button" class="btn-secondary-custom flex-grow-1"
                         onclick="closeModal('modalEditTahunan')">Batal</button>
                     <button type="submit" class="btn-primary-custom flex-grow-1"><i class="bi bi-save me-1"></i> Simpan
@@ -1506,7 +1481,7 @@ $dipakaiSakit = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year)
                         disabled style="background: var(--bg-glass); font-weight:600;">
                 </div>
                 <div class="mb-3">
-                    <label class="form-label fw-semibold fs-7 mb-2">Keterangan</label>
+                    <label class="form-label fw-semibold fs-7 mb-2">Alasan</label>
                     <textarea name="alasan" id="editKhususAlasan" class="textarea-custom"></textarea>
                 </div>
                 <div class="mb-4">
@@ -1514,11 +1489,13 @@ $dipakaiSakit = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year)
                     <div class="upload-dropzone" id="dzCutiKhususEdit">
                         <div class="upload-dropzone-icon"><i class="bi bi-cloud-arrow-up"></i></div>
                         <div>
-                            <span class="fw-semibold" style="color: var(--primary);">Tarik &amp; lepas file di sini</span>
+                            <span class="fw-semibold" style="color: var(--primary);">Tarik &amp; lepas file di
+                                sini</span>
                             atau <span class="fw-semibold text-decoration-underline">Pilih File</span>
                         </div>
                         <span class="fs-7 text-muted">Format: PDF, JPG, PNG (Opsional)</span>
-                        <input type="file" name="lampiran" id="inputCutiKhususEdit" class="d-none" accept=".pdf,.jpg,.jpeg,.png">
+                        <input type="file" name="lampiran" id="inputCutiKhususEdit" class="d-none"
+                            accept=".pdf,.jpg,.jpeg,.png">
                         <div class="upload-dropzone-filelist" id="fileListCutiKhususEdit"></div>
                     </div>
                 </div>
@@ -1558,7 +1535,7 @@ $dipakaiSakit = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year)
                         required>
                 </div>
                 <div class="mb-3">
-                    <label class="form-label fw-semibold fs-7 mb-2">Keterangan</label>
+                    <label class="form-label fw-semibold fs-7 mb-2">Alasan</label>
                     <textarea name="alasan" id="editSakitAlasan" class="textarea-custom"></textarea>
                 </div>
                 <div class="mb-4">
@@ -1566,11 +1543,13 @@ $dipakaiSakit = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year)
                     <div class="upload-dropzone" id="dzCutiSakitEdit">
                         <div class="upload-dropzone-icon"><i class="bi bi-cloud-arrow-up"></i></div>
                         <div>
-                            <span class="fw-semibold" style="color: var(--primary);">Tarik &amp; lepas file di sini</span>
+                            <span class="fw-semibold" style="color: var(--primary);">Tarik &amp; lepas file di
+                                sini</span>
                             atau <span class="fw-semibold text-decoration-underline">Pilih File</span>
                         </div>
                         <span class="fs-7 text-muted">Format: PDF, JPG, PNG (Opsional)</span>
-                        <input type="file" name="lampiran" id="inputCutiSakitEdit" class="d-none" accept=".pdf,.jpg,.jpeg,.png">
+                        <input type="file" name="lampiran" id="inputCutiSakitEdit" class="d-none"
+                            accept=".pdf,.jpg,.jpeg,.png">
                         <div class="upload-dropzone-filelist" id="fileListCutiSakitEdit"></div>
                     </div>
                 </div>
@@ -1585,17 +1564,12 @@ $dipakaiSakit = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year)
     </div>
 </div>
 
+<script id="data-fields-tabel-cuti" type="application/json">
+<?php echo json_encode($fieldsTabelCuti, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG); ?>
+</script>
 
 <script>
-    document.addEventListener('DOMContentLoaded', function () {
-        initTablePagination('tabelCutiTahunan', 10);
-        initTablePagination('tabelCutiKhusus', 10);
-        initTablePagination('tabelIzinSakit', 10);
-        initTablePagination('tabelSaldoCuti', 10);
-        <?php if ($error_msg && in_array($active_tab, ['tahunan', 'khusus', 'sakit'])): ?>
-            openModal('modal<?= ucfirst($active_tab === 'sakit' ? 'IzinSakit' : 'Cuti' . ucfirst($active_tab)) ?>');
-        <?php endif; ?>
-    });
+    var fieldsTabelCutiJs = JSON.parse(document.getElementById('data-fields-tabel-cuti')?.textContent || '[]');
 
     function hitungDurasi(prefix) {
         const mulaiEl = document.getElementById(prefix + 'TglMulai');
@@ -1610,15 +1584,50 @@ $dipakaiSakit = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year)
         const selisihHari = Math.round((selesai - mulai) / (1000 * 60 * 60 * 24)) + 1;
         outputEl.value = (selisihHari > 0 ? selisihHari : 0) + ' Hari';
     }
-    function tambahBarisTugas(tbodyId, deskripsi, status) {
+
+    function renomorBarisTugas(tbodyId) {
         const tbody = document.getElementById(tbodyId);
+        if (!tbody) return;
+        tbody.querySelectorAll('tr').forEach(function (tr, idx) {
+            const noCell = tr.querySelector('.tugas-no-cell');
+            if (noCell) noCell.textContent = idx + 1;
+        });
+    }
+
+    function bukaModalAjukanCutiTahunan() {
+        // Pastikan selalu ada minimal 1 baris tugas saat modal dibuka,
+        // supaya ${item_no}/${item_deskripsi}/${item_status} tidak kosong
+        // di Word kalau user lupa klik "Tambah Baris".
+        const tbody = document.getElementById('tahunanTugasBody');
+        if (tbody && fieldsTabelCutiJs.length > 0 && tbody.children.length === 0) {
+            tambahBarisTugasDinamis('tahunanTugasBody');
+        }
+        openModal('modalCutiTahunan');
+    }
+
+    function tambahBarisTugasDinamis(tbodyId, dataBaris) {
+        const tbody = document.getElementById(tbodyId);
+        if (!tbody) return;
+
+        // Index unik per baris. Kalau pakai items[][field] utk tiap kolom,
+        // PHP akan menaikkan index array SECARA TERPISAH per nama-field,
+        // sehingga field2 dalam satu baris bisa "pecah" ke index array
+        // yang berbeda. Solusinya: index baris harus eksplisit & sama
+        // untuk semua kolom pada baris tsb.
+        const rowIndex = tbody.dataset.nextRowIndex ? parseInt(tbody.dataset.nextRowIndex, 10) : 0;
+        tbody.dataset.nextRowIndex = rowIndex + 1;
+
         const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td><input type="text" name="item_deskripsi[]" class="form-control-custom form-control-sm" value="${(deskripsi || '').replace(/"/g, '&quot;')}"></td>
-            <td><input type="text" name="item_status[]" class="form-control-custom form-control-sm" value="${(status || '').replace(/"/g, '&quot;')}" placeholder="mis. Selesai / Dilanjutkan"></td>
-            <td><button type="button" class="btn btn-outline-danger btn-sm py-1" style="font-size:0.7rem;" onclick="this.closest('tr').remove()"><i class="bi bi-trash"></i></button></td>
-        `;
+        tr.className = 'baris-item';
+        let html = '<td class="tugas-no-cell nomor-baris fw-semibold"></td>';
+        fieldsTabelCutiJs.forEach(function (kolom) {
+            const nilai = (dataBaris && dataBaris[kolom.field]) ? String(dataBaris[kolom.field]).replace(/"/g, '&quot;') : '';
+            html += '<td><input type="text" name="items[' + rowIndex + '][' + kolom.field + ']" class="form-control-custom" value="' + nilai + '" placeholder="' + kolom.label + '"></td>';
+        });
+        html += '<td style="text-align:center;"><button type="button" class="btn btn-outline-danger btn-sm tombol-hapus-baris" onclick="this.closest(\'tr\').remove(); renomorBarisTugas(\'' + tbodyId + '\')"><i class="bi bi-x-lg"></i></button></td>';
+        tr.innerHTML = html;
         tbody.appendChild(tr);
+        renomorBarisTugas(tbodyId);
     }
 
     function openEditCuti(prefix, data) {
@@ -1635,23 +1644,24 @@ $dipakaiSakit = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year)
         }
 
         if (prefix === 'Tahunan') {
-            document.getElementById('editTahunanJabatan').value = data.jabatan_karyawan || '';
-            document.getElementById('editTahunanDivisi').value = data.divisi_karyawan || '';
-            document.getElementById('editTahunanSubDivisi').value = data.sub_divisi_karyawan || '';
-            document.getElementById('editTahunanNamaPenerima').value = data.nama_penerima || '';
-            document.getElementById('editTahunanAlamatCuti').value = data.alamat_cuti || '';
-            document.getElementById('editTahunanTglSerahTerima').value = data.tanggal_serah_terima || '';
-            document.getElementById('editTahunanNamaPenerimaTugas').value = data.nama_penerima_tugas || '';
-            document.getElementById('editTahunanJabatanPenerimaTugas').value = data.jabatan_penerima_tugas || '';
-            document.getElementById('editTahunanSubDivisiPenerimaTugas').value = data.sub_divisi_penerima_tugas || '';
-            document.getElementById('editTahunanDivisiPenerimaTugas').value = data.divisi_penerima_tugas || '';
-            document.getElementById('editTahunanNamaMengetahui').value = data.nama_mengetahui || '';
+            const isiData = data.isi_data || {};
+            // Isi ulang field dinamis
+            fieldsTabelCutiJs; // no-op, hanya referensi
+            document.querySelectorAll('#modalEditTahunan input[name^="dinamis["]').forEach(function (input) {
+                const m = input.name.match(/dinamis\[(.+)\]/);
+                if (m && isiData[m[1]] !== undefined) {
+                    input.value = isiData[m[1]];
+                }
+            });
 
             const tbody = document.getElementById('editTahunanTugasBody');
-            tbody.innerHTML = '';
-            (data.items || []).forEach(function (item) {
-                tambahBarisTugas('editTahunanTugasBody', item.deskripsi, item.status);
-            });
+            if (tbody) {
+                tbody.innerHTML = '';
+                tbody.dataset.nextRowIndex = '0';   // tambahkan baris ini
+                (isiData.__items || []).forEach(function (item) {
+                    tambahBarisTugasDinamis('editTahunanTugasBody', item);
+                });
+            }
         }
 
         openModal('modalEdit' + prefix);

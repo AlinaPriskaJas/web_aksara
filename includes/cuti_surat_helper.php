@@ -1,26 +1,12 @@
 <?php
 // includes/cuti_surat_helper.php
 //
-// Helper untuk membangun & mengelola "Surat Cuti & Pengalihan Tugas" untuk
-// Cuti Tahunan, memakai template generik dari Template_Master (nama:
-// "Form Cuti Dan Pengalihan Tugas", terhubung ke Kode_Surat lewat
-// Kode_Template) -- BUKAN lagi file lokal di storage/templates/.
-//
-// Surat yang dihasilkan disimpan sebagai baris biasa di tabel Surat (arah
-// 'Keluar'), SAMA seperti surat-surat lain yang dibuat lewat admin/surat.php.
-// Tidak ada kolom baru di tabel Cuti -- keterkaitan Cuti <-> Surat disimpan
-// di dalam Surat.isi_data (JSON) sebagai isi_data.cuti_id, lalu dicari balik
-// lewat JSON_EXTRACT saat dibutuhkan (lihat arp_ambil_surat_untuk_cuti()).
-//
-// Dipakai oleh:
-// - admin/cuti.php               -> saat pengajuan Cuti Tahunan dikirim, buat
-//                                    DRAFT surat (arp_generate_dan_unggah_surat_cuti_draft)
-//                                    supaya direksi bisa lihat filenya di Drive.
-// - direksi/approval.php         -> saat Cuti Tahunan Disetujui, timpa surat
-//                                    yang sama jadi versi final (nama penyetuju
-//                                    terisi); saat Ditolak, hapus surat & filenya.
-// - includes/generate_cuti_surat.php -> tombol "Cetak Surat Cuti" (unduh
-//                                    manual) + self-heal kalau belum ada.
+// PERUBAHAN: Surat Cuti & Pengalihan Tugas TIDAK LAGI dicatat sebagai baris
+// di tabel Surat (surat.php). Hasil generate (docx) diunggah ke Google Drive
+// dan link-nya disimpan LANGSUNG di kolom Cuti.drive_file_id & Cuti.drive_link
+// (BUKAN ke kolom Cuti.lampiran). Nomor surat disimpan di
+// Cuti.isi_data['__nomor_surat_cuti'] supaya nomornya tetap konsisten walau
+// suratnya digenerate ulang (draft -> final, atau saat pengajuan diedit).
 
 require_once __DIR__ . '/functions.php';
 
@@ -35,7 +21,7 @@ function arp_ambil_kode_template_cuti(PDO $conn): ?array
 {
     $stmt = $conn->prepare("
         SELECT k.id AS kode_id, k.kode, k.nama AS nama_kode,
-               t.id AS template_id, t.drive_file_id, t.drive_link, t.format
+               t.id AS template_id, t.drive_file_id, t.drive_link, t.format, t.fields_json
         FROM Kode_Surat k
         JOIN Kode_Template kt ON kt.kode_id = k.id
         JOIN Template_Master t ON t.id = kt.template_id
@@ -49,40 +35,44 @@ function arp_ambil_kode_template_cuti(PDO $conn): ?array
 }
 
 /**
- * Cari baris Surat yang sudah pernah dibuat untuk satu pengajuan Cuti
- * tertentu (ditandai lewat isi_data.cuti_id), kalau ada.
+ * Ambil daftar field ${...} (fields, table_fields, blocks) dari template
+ * Cuti secara LIVE dari Google Drive, dipakai untuk membangun form "Ajukan
+ * Cuti Tahunan" secara dinamis mengikuti isi template Word.
  */
-function arp_ambil_surat_untuk_cuti(PDO $conn, int $cuti_id): ?array
+function arp_ambil_fields_template_cuti(PDO $conn): array
+{
+    $kodeTemplate = arp_ambil_kode_template_cuti($conn);
+    $kosong = ['fields' => [], 'table_fields' => [], 'blocks' => [], 'invoice_fields' => []];
+    if (!$kodeTemplate) {
+        return $kosong;
+    }
+    return muatFieldsTemplateLive($conn, $kodeTemplate);
+}
+
+/**
+ * BARU: Link Surat Cuti sekarang diambil LANGSUNG dari Cuti.drive_link
+ * (bukan lagi dicari lewat tabel Surat).
+ */
+function arp_ambil_link_surat_cuti(PDO $conn, int $cuti_id): ?string
 {
     try {
-        $stmt = $conn->prepare("
-            SELECT * FROM Surat
-            WHERE JSON_UNQUOTE(JSON_EXTRACT(isi_data, '$.cuti_id')) = :cuti_id
-            ORDER BY id DESC
-            LIMIT 1
-        ");
-        $stmt->execute(['cuti_id' => $cuti_id]);
-        $row = $stmt->fetch();
-        return $row ?: null;
+        $stmt = $conn->prepare("SELECT drive_link FROM Cuti WHERE id = :id LIMIT 1");
+        $stmt->execute(['id' => $cuti_id]);
+        $link = $stmt->fetchColumn();
+        return ($link !== false && $link !== null && $link !== '') ? $link : null;
     } catch (Throwable $e) {
         return null;
     }
 }
 
 /**
- * Ambil link Drive Surat Cuti untuk satu pengajuan, kalau sudah ada.
- * Dipakai di admin/cuti.php & direksi/approval.php untuk kolom "Surat Cuti".
- */
-function arp_ambil_link_surat_cuti(PDO $conn, int $cuti_id): ?string
-{
-    $s = arp_ambil_surat_untuk_cuti($conn, $cuti_id);
-    return ($s && !empty($s['drive_link'])) ? $s['drive_link'] : null;
-}
-
-/**
- * Susun data (Cuti + Cuti_Serah_Terima) menjadi bentuk yang siap dipakai
- * generateSuratDocx() (lihat includes/functions.php): $dataForm untuk field
- * biasa, $items untuk tabel "Uraian Tugas yang Diserahkan".
+ * Susun data untuk generateSuratDocx() SEPENUHNYA dari Cuti.isi_data (JSON
+ * hasil form dinamis). Tetap menyediakan beberapa field wajib standar
+ * (tanggal_mulai, tanggal_selesai, jumlah_hari, alasan_cuti, tanggal_surat)
+ * yang selalu diisi otomatis dari kolom baku tabel Cuti.
+ *
+ * $items diambil dari isi_data['__items'] (tabel item_..., kalau template
+ * punya tabel semacam "Uraian Tugas yang Diserahkan").
  */
 function arp_bangun_data_surat_cuti(PDO $conn, int $cuti_id): array
 {
@@ -106,47 +96,60 @@ function arp_bangun_data_surat_cuti(PDO $conn, int $cuti_id): array
         throw new RuntimeException('Surat Cuti & Pengalihan Tugas hanya tersedia untuk Cuti Tahunan.');
     }
 
-    try {
-        $stmtItem = $conn->prepare("SELECT * FROM Cuti_Serah_Terima WHERE cuti_id = :cuti_id ORDER BY urutan ASC");
-        $stmtItem->execute(['cuti_id' => $cuti_id]);
-        $itemsMentah = $stmtItem->fetchAll();
-    } catch (PDOException $e) {
-        $itemsMentah = [];
+    $isiData = [];
+    if (!empty($cuti['isi_data'])) {
+        $isiData = json_decode($cuti['isi_data'], true) ?: [];
     }
 
     $items = [];
-    foreach ($itemsMentah as $it) {
-        $items[] = ['deskripsi' => $it['deskripsi'], 'status' => $it['status'] ?: '-'];
+    if (!empty($isiData['__items']) && is_array($isiData['__items'])) {
+        foreach ($isiData['__items'] as $baris) {
+            if (is_array($baris)) {
+                $items[] = $baris;
+            }
+        }
     }
 
     $namaKaryawan = $cuti['nama_pemohon_user'] ?? '-';
     $namaPenyetuju = $cuti['nama_penyetuju_user'] ?: '-';
-    $tahun = date('Y', strtotime($cuti['tgl_mulai']));
 
-    $dataForm = [
-        'tanggal_surat' => formatTanggalIndonesia(date('Y-m-d')),
-        'nama_penerima' => $cuti['nama_penerima'] ?: '-',
-        'nama_karyawan' => $namaKaryawan,
-        'nama_pemohon' => $namaKaryawan,
-        'jabatan_karyawan' => $cuti['jabatan_karyawan'] ?: '-',
-        'divisi_karyawan' => $cuti['divisi_karyawan'] ?: '-',
-        'sub_divisi_karyawan' => $cuti['sub_divisi_karyawan'] ?: '-',  
-        'alasan_cuti' => $cuti['alasan'] ?: '-',
-        'jumlah_hari' => (string) $cuti['total_durasi'],
-        'tanggal_mulai' => formatTanggalIndonesia($cuti['tgl_mulai']),
-        'tanggal_selesai' => formatTanggalIndonesia($cuti['tgl_selesai']),
-        'tahun' => $tahun,
-        'tanggal_serah_terima' => $cuti['tanggal_serah_terima'] ? formatTanggalIndonesia($cuti['tanggal_serah_terima']) : '-',
-        'nama_penerima_tugas' => $cuti['nama_penerima_tugas'] ?: '-',
-        'jabatan_penerima_tugas' => $cuti['jabatan_penerima_tugas'] ?: '-',
-        'sub_divisi_penerima_tugas' => $cuti['sub_divisi_penerima_tugas'] ?: '-',
-        'divisi_penerima_tugas' => $cuti['divisi_penerima_tugas'] ?: '-',
-        'nama_mengetahui' => $cuti['nama_mengetahui'] ?: '-',
-        'nama_penandatangan' => $namaPenyetuju,
-    ];
+    // Kunci internal yang TIDAK boleh ikut jadi field ${...} di dokumen.
+    // '__nomor_surat_cuti' ditambahkan di sini (dipakai internal saja untuk
+    // menjaga konsistensi nomor surat, bukan untuk placeholder Word).
+    $kunciInternal = ['__items', '__ringkasan', '__blok', '__nomor_surat_cuti', 'cuti_id', 'sumber'];
+
+    $dataForm = [];
+    foreach ($isiData as $k => $v) {
+        if (in_array($k, $kunciInternal, true)) {
+            continue;
+        }
+        if (is_string($v) && preg_match('/tanggal|tgl/i', (string) $k) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $v)) {
+            $dataForm[$k] = formatTanggalIndonesia($v);
+        } else {
+            $dataForm[$k] = $v;
+        }
+    }
+
+    // Field wajib baku -- selalu diambil dari kolom asli tabel Cuti supaya
+    // akurat & tidak bisa "digeser" isinya lewat form dinamis.
+    $dataForm['nama_pemohon'] = $namaKaryawan;
+    $dataForm['alasan_cuti'] = $cuti['alasan'] ?: '-';
+    $dataForm['jumlah_hari'] = (string) $cuti['total_durasi'];
+    $dataForm['tanggal_mulai'] = formatTanggalIndonesia($cuti['tgl_mulai']);
+    $dataForm['tanggal_selesai'] = formatTanggalIndonesia($cuti['tgl_selesai']);
+    $dataForm['tahun'] = date('Y', strtotime($cuti['tgl_mulai']));
+    $dataForm['nama_penandatangan'] = $namaPenyetuju;
+
+    if (empty($dataForm['tanggal_surat'])) {
+        $dataForm['tanggal_surat'] = formatTanggalIndonesia(date('Y-m-d'));
+    }
+    if (empty($dataForm['nama_karyawan'])) {
+        $dataForm['nama_karyawan'] = $namaKaryawan;
+    }
 
     return [
         'cuti' => $cuti,
+        'isiDataMentah' => $isiData, // dipakai untuk resolve/simpan nomor surat
         'dataForm' => $dataForm,
         'items' => $items,
         'namaKaryawan' => $namaKaryawan,
@@ -154,19 +157,28 @@ function arp_bangun_data_surat_cuti(PDO $conn, int $cuti_id): array
 }
 
 /**
- * Bangun file .docx Surat Cuti & Pengalihan Tugas (LOKAL, belum diunggah)
- * untuk keperluan UNDUH LANGSUNG (tombol "Cetak Surat Cuti") atau PRATINJAU.
- *
- * @return array{docx_path:string, nama_file_dasar:string, nama_karyawan:string}
- * @throws RuntimeException kalau data tidak valid atau template tidak terhubung.
+ * Ambil nomor surat yang sudah pernah dibuat untuk pengajuan ini (tersimpan
+ * di isi_data['__nomor_surat_cuti']), atau generate nomor baru kalau belum
+ * pernah ada. Ini menggantikan mekanisme lama yang mengambil nomor dari
+ * baris Surat yang sudah ada.
+ */
+function arp_resolve_nomor_surat_cuti(PDO $conn, array $isiDataMentah, int $kodeId): string
+{
+    if (!empty($isiDataMentah['__nomor_surat_cuti'])) {
+        return (string) $isiDataMentah['__nomor_surat_cuti'];
+    }
+    return resolveNomorSurat($conn, $kodeId);
+}
+
+/**
+ * Bangun file .docx Surat Cuti & Pengalihan Tugas (LOKAL, belum diunggah).
+ * Dipakai untuk "Cetak Surat Cuti" / pratinjau on-the-fly.
  */
 function arp_generate_surat_cuti_docx(PDO $conn, int $cuti_id, bool $wajib_disetujui = true): array
 {
     $bahan = arp_bangun_data_surat_cuti($conn, $cuti_id);
     $cuti = $bahan['cuti'];
 
-    // $wajib_disetujui = false dipakai untuk PRATINJAU (direksi boleh lihat
-    // isi surat sebelum approve/reject, walau status masih Menunggu).
     if ($wajib_disetujui && $cuti['status'] !== 'Disetujui') {
         throw new RuntimeException('Surat hanya bisa dibuat untuk pengajuan yang sudah Disetujui.');
     }
@@ -176,10 +188,7 @@ function arp_generate_surat_cuti_docx(PDO $conn, int $cuti_id, bool $wajib_diset
         throw new RuntimeException('Template "Form Cuti Dan Pengalihan Tugas" belum terhubung ke Google Drive. Upload dulu lewat menu Persuratan > Upload Template.');
     }
 
-    // Pakai nomor surat yang SAMA kalau sebelumnya sudah pernah dibuat untuk
-    // pengajuan ini (supaya nomor tidak berubah-ubah tiap kali dicetak ulang).
-    $suratLama = arp_ambil_surat_untuk_cuti($conn, $cuti_id);
-    $nomorSurat = $suratLama['nomor'] ?? resolveNomorSurat($conn, (int) $kodeTemplate['kode_id']);
+    $nomorSurat = arp_resolve_nomor_surat_cuti($conn, $bahan['isiDataMentah'], (int) $kodeTemplate['kode_id']);
 
     $fileHasilRelatif = arp_dengan_template_sementara(
         $kodeTemplate['drive_file_id'],
@@ -206,23 +215,11 @@ function arp_generate_surat_cuti_docx(PDO $conn, int $cuti_id, bool $wajib_diset
 }
 
 /**
- * Bangun surat, lalu SIMPAN sebagai baris di tabel Surat (arah Keluar) &
- * unggah/perbarui filenya di Google Drive.
+ * Bangun surat, lalu unggah/perbarui filenya di Google Drive, dan simpan
+ * link-nya LANGSUNG ke Cuti.drive_file_id & Cuti.drive_link.
  *
- * - Kalau pengajuan ini BELUM pernah punya Surat -> upload baru + INSERT.
- * - Kalau SUDAH pernah (mis. draft yang dibuat waktu pengajuan) -> file yang
- *   SAMA di Drive ditimpa isinya (arp_timpa_konten_drive, mekanisme yang sama
- *   dipakai untuk edit template), lalu baris Surat di-UPDATE. Ini supaya
- *   link yang sudah dilihat/dibagikan sebelumnya (draft) tetap valid begitu
- *   surat jadi versi final saat disetujui -- tidak ada file yatim menumpuk
- *   di Drive.
- *
- * PENTING: fungsi ini SENGAJA tidak pernah melempar exception -- dipanggil
- * dari direksi/approval.php maupun halaman pengajuan cuti SESUDAH transaksi
- * database di-commit. Kegagalan apa pun di sini dicatat lewat
- * arp_drive_last_error() saja.
- *
- * @return string|null Link Drive kalau berhasil, null kalau gagal.
+ * TIDAK lagi menyentuh kolom Cuti.lampiran, dan TIDAK lagi
+ * membuat/mengubah baris apa pun di tabel Surat.
  */
 function arp_generate_dan_unggah_surat_cuti(PDO $conn, int $cuti_id, bool $wajib_disetujui = true): ?string
 {
@@ -241,8 +238,7 @@ function arp_generate_dan_unggah_surat_cuti(PDO $conn, int $cuti_id, bool $wajib
             return null;
         }
 
-        $suratLama = arp_ambil_surat_untuk_cuti($conn, $cuti_id);
-        $nomorSurat = $suratLama['nomor'] ?? resolveNomorSurat($conn, (int) $kodeTemplate['kode_id']);
+        $nomorSurat = arp_resolve_nomor_surat_cuti($conn, $bahan['isiDataMentah'], (int) $kodeTemplate['kode_id']);
 
         $fileHasilRelatif = arp_dengan_template_sementara(
             $kodeTemplate['drive_file_id'],
@@ -262,17 +258,17 @@ function arp_generate_dan_unggah_surat_cuti(PDO $conn, int $cuti_id, bool $wajib
         $pathLokalPenuh = rtrim($basePath, '/\\') . '/' . $fileHasilRelatif;
 
         $namaKaryawan = $bahan['namaKaryawan'];
-        $perihal = 'Permohonan Cuti & Pengalihan Tugas - ' . $namaKaryawan;
-        $statusSurat = $wajib_disetujui ? 'Disetujui' : 'Draft';
-        $isiData = json_encode(
-            array_merge($bahan['dataForm'], ['cuti_id' => $cuti_id, 'sumber' => 'cuti']),
-            JSON_UNESCAPED_UNICODE
-        );
 
-        // ---------- Sudah ada Surat sebelumnya -> timpa file yang sama ----------
-        if ($suratLama && !empty($suratLama['drive_file_id'])) {
+        // Simpan nomor surat ke isi_data supaya tetap sama di generate berikutnya
+        // (mis. saat status berubah dari draft -> final, atau saat diedit).
+        $isiDataBaru = $bahan['isiDataMentah'];
+        $isiDataBaru['__nomor_surat_cuti'] = $nomorSurat;
+        $isiDataJson = json_encode($isiDataBaru, JSON_UNESCAPED_UNICODE);
+
+        // ---------- Sudah pernah diunggah -> timpa file yang sama di Drive ----------
+        if (!empty($cuti['drive_file_id'])) {
             $berhasil = arp_timpa_konten_drive(
-                $suratLama['drive_file_id'],
+                $cuti['drive_file_id'],
                 $pathLokalPenuh,
                 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
             );
@@ -283,30 +279,27 @@ function arp_generate_dan_unggah_surat_cuti(PDO $conn, int $cuti_id, bool $wajib
             }
 
             try {
-                $upd = $conn->prepare("UPDATE Surat SET status = :status, tujuan = :tujuan, perihal = :perihal, isi_data = :isi_data WHERE id = :id");
+                $upd = $conn->prepare("UPDATE Cuti SET isi_data = :isi_data WHERE id = :id");
                 $upd->execute([
-                    'status' => $statusSurat,
-                    'tujuan' => $bahan['dataForm']['nama_penerima'],
-                    'perihal' => $perihal,
-                    'isi_data' => $isiData,
-                    'id' => $suratLama['id'],
+                    'isi_data' => $isiDataJson,
+                    'id' => $cuti_id,
                 ]);
             } catch (Throwable $e) {
                 arp_drive_set_last_error('Surat berhasil ditimpa di Drive tapi gagal disimpan ke database: ' . $e->getMessage());
                 return null;
             }
 
-            return $suratLama['drive_link'];
+            return $cuti['drive_link'];
         }
 
-        // ---------- Belum ada Surat -> upload baru + INSERT baris Surat ----------
+        // ---------- Belum pernah diunggah -> upload baru ----------
         $namaFileDrive = arp_nama_file_tanggal_pengirim($namaKaryawan, 'docx');
         $hasilDrive = arp_upload_ke_drive(
             $pathLokalPenuh,
             $namaFileDrive,
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
             $cuti_id,
-            'Surat Cuti'
+            'Surat_Cuti'
         );
         @unlink($pathLokalPenuh);
 
@@ -315,23 +308,12 @@ function arp_generate_dan_unggah_surat_cuti(PDO $conn, int $cuti_id, bool $wajib
         }
 
         try {
-            $nomorAgenda = generateNomorAgenda($conn, 'Keluar');
-            $insert = $conn->prepare("INSERT INTO Surat
-                (nomor_agenda, nomor, kode_id, template_id, perihal, status, arah, tujuan, dibuat_oleh, tgl_dibuat, file_hasil, drive_file_id, drive_link, isi_data)
-                VALUES (:nomor_agenda, :nomor, :kode_id, :template_id, :perihal, :status, 'Keluar', :tujuan, :dibuat_oleh, CURDATE(), :file_hasil, :drive_file_id, :drive_link, :isi_data)");
-            $insert->execute([
-                'nomor_agenda' => $nomorAgenda,
-                'nomor' => $nomorSurat,
-                'kode_id' => $kodeTemplate['kode_id'],
-                'template_id' => $kodeTemplate['template_id'],
-                'perihal' => $perihal,
-                'status' => $statusSurat,
-                'tujuan' => $bahan['dataForm']['nama_penerima'],
-                'dibuat_oleh' => $cuti['user_id'],
-                'file_hasil' => $hasilDrive['link'],
+            $upd = $conn->prepare("UPDATE Cuti SET drive_file_id = :drive_file_id, drive_link = :drive_link, isi_data = :isi_data WHERE id = :id");
+            $upd->execute([
                 'drive_file_id' => $hasilDrive['file_id'] ?? null,
                 'drive_link' => $hasilDrive['link'],
-                'isi_data' => $isiData,
+                'isi_data' => $isiDataJson,
+                'id' => $cuti_id,
             ]);
         } catch (Throwable $e) {
             arp_drive_set_last_error('Surat berhasil diunggah ke Drive tapi gagal disimpan ke database: ' . $e->getMessage());
@@ -345,11 +327,6 @@ function arp_generate_dan_unggah_surat_cuti(PDO $conn, int $cuti_id, bool $wajib
     }
 }
 
-/**
- * Bangun & unggah DRAFT Surat Cuti begitu pemohon MENGAJUKAN Cuti Tahunan
- * (status masih "Menunggu") -- supaya direksi bisa langsung membuka filenya
- * di Drive saat meninjau. Best-effort, tidak pernah melempar exception.
- */
 function arp_generate_dan_unggah_surat_cuti_draft(PDO $conn, int $cuti_id): ?string
 {
     try {
@@ -362,24 +339,27 @@ function arp_generate_dan_unggah_surat_cuti_draft(PDO $conn, int $cuti_id): ?str
 }
 
 /**
- * Hapus Surat Cuti (draft/final) dari Drive & database saat direksi MENOLAK
- * pengajuan Cuti Tahunan -- suratnya sudah tidak relevan lagi.
- * Best-effort, tidak pernah melempar exception.
+ * Hapus file Surat Cuti dari Google Drive & bersihkan Cuti.drive_file_id /
+ * Cuti.drive_link (dipanggil mis. saat pengajuan Cuti Tahunan ditolak).
  */
 function arp_hapus_surat_cuti_drive(PDO $conn, int $cuti_id): void
 {
     try {
-        $surat = arp_ambil_surat_untuk_cuti($conn, $cuti_id);
-        if (!$surat) {
+        $stmt = $conn->prepare("SELECT drive_file_id FROM Cuti WHERE id = :id LIMIT 1");
+        $stmt->execute(['id' => $cuti_id]);
+        $driveFileId = $stmt->fetchColumn();
+
+        if (empty($driveFileId)) {
             return;
         }
-        if (!empty($surat['drive_file_id'])) {
-            $berhasil = arp_hapus_file_drive($surat['drive_file_id']);
-            if (!$berhasil) {
-                error_log('Gagal menghapus Surat Cuti (file_id=' . $surat['drive_file_id'] . ') dari Drive untuk Cuti #' . $cuti_id . '.');
-            }
+
+        $berhasil = arp_hapus_file_drive($driveFileId);
+        if (!$berhasil) {
+            error_log('Gagal menghapus Surat Cuti (file_id=' . $driveFileId . ') dari Drive untuk Cuti #' . $cuti_id . '.');
         }
-        $conn->prepare("DELETE FROM Surat WHERE id = :id")->execute(['id' => $surat['id']]);
+
+        $conn->prepare("UPDATE Cuti SET drive_file_id = NULL, drive_link = NULL WHERE id = :id")
+            ->execute(['id' => $cuti_id]);
     } catch (Throwable $e) {
         error_log('Gagal membersihkan Surat Cuti untuk Cuti #' . $cuti_id . ' (ditolak): ' . $e->getMessage());
     }

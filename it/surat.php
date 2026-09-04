@@ -1500,6 +1500,27 @@ $daftar_kode_dengan_template = array_values(array_filter(
     fn($k) => !empty($template_per_kode[$k['id']])
 ));
 
+// BARU: "Permohonan Cuti Dan Pengalihan Tugas" dikecualikan dari tab "Buat
+// Surat" -- surat ini WAJIB dibuat lewat pengajuan Cuti Tahunan (cuti.php),
+// karena datanya (jumlah hari, saldo cuti, dst) harus divalidasi dari
+// pengajuan asli dan link filenya disimpan khusus di Cuti.drive_link_surat,
+// bukan di tabel Surat. Kalau dibuat manual di sini, surat jadi "nyasar":
+// tidak terhubung ke pengajuan cuti mana pun.
+$kodeCutiUntukFilter = null;
+try {
+    $stmtKodeCuti = $pdo->prepare("SELECT id FROM Kode_Surat WHERE nama = 'Permohonan Cuti Dan Pengalihan Tugas' LIMIT 1");
+    $stmtKodeCuti->execute();
+    $kodeCutiUntukFilter = $stmtKodeCuti->fetchColumn();
+} catch (Throwable $e) {
+    $kodeCutiUntukFilter = null;
+}
+$kodeIdCutiDikecualikan = $kodeCutiUntukFilter ? (int) $kodeCutiUntukFilter : 0;
+
+$daftar_kode_dengan_template = array_values(array_filter(
+    $daftar_kode_dengan_template,
+    fn($k) => $kodeIdCutiDikecualikan === 0 || (int) $k['id'] !== $kodeIdCutiDikecualikan
+));
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generate_surat') {
     $kodeIdTerpilih = (int) ($_POST['kode_id'] ?? 0);
     $templateIdTerpilih = (int) ($_POST['template_id'] ?? 0);
