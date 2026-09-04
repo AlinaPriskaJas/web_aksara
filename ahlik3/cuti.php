@@ -45,20 +45,59 @@ function get_current_user_name($conn, $user_id)
 $current_user_name = get_current_user_name($conn, $current_user_id);
 
 /**
- * Pastikan baris Cuti_Saldo untuk (user, tahun) ada, dan jatah_tahunan
- * terakru otomatis +1 begitu tanggal 1 bulan berjalan tiba (bulan berjalan
- * langsung dihitung): Januari = 1, Juli = 7, Agustus = 8, dst (maks. 12).
- * Untuk tahun yang sudah lewat, jatah penuh 12. Nilai selalu disinkronkan
- * ulang (bisa naik/turun) supaya data lama yang tidak akurat ikut terkoreksi.
+ * Ambil tanggal user mendaftar (Users.created_at) -- dipakai sebagai titik
+ * awal akrual saldo Cuti Tahunan (lihat ensure_saldo_cuti()), bukan dihitung
+ * dari Januari. Fallback ke waktu sekarang kalau baris user tidak ketemu
+ * (mis. data korup) supaya akrual tetap dimulai dari suatu titik yang wajar.
  */
-function ensure_saldo_cuti($conn, $user_id, $tahun, $bulanSekarang, $tahunSekarang)
+function get_user_created_at($conn, $user_id)
 {
-    if ($tahun < $tahunSekarang) {
+    try {
+        $stmt = $conn->prepare("SELECT created_at FROM Users WHERE id = :id LIMIT 1");
+        $stmt->execute(['id' => $user_id]);
+        $row = $stmt->fetch();
+        return ($row && !empty($row['created_at'])) ? $row['created_at'] : date('Y-m-d H:i:s');
+    } catch (PDOException $e) {
+        return date('Y-m-d H:i:s');
+    }
+}
+$current_user_created_at = get_user_created_at($conn, $current_user_id);
+
+/**
+ * Pastikan baris Cuti_Saldo untuk (user, tahun) ada, dan jatah_tahunan
+ * terakru otomatis +1 setiap tanggal 1 bulan berjalan -- TAPI dimulai dari
+ * bulan user MENDAFTAR (Users.created_at), bukan selalu dari Januari:
+ *   - Kalau daftar tepat tanggal 1 suatu bulan, bulan itu langsung dihitung
+ *     (jatah = 1 di bulan itu juga).
+ *   - Kalau daftar SETELAH tanggal 1 (mis. tanggal 8), bulan pendaftaran itu
+ *     belum dapat jatah sama sekali -- akrual baru mulai di tanggal 1 bulan
+ *     BERIKUTNYA.
+ * Untuk tahun-tahun setelah tahun pendaftaran, akrual kembali normal dari
+ * Januari (karyawan sudah terdaftar penuh setahun). Untuk tahun sebelum user
+ * terdaftar, jatah 0. Untuk tahun yang sudah lewat (dan user sudah terdaftar
+ * saat itu), jatah penuh 12. Nilai selalu disinkronkan ulang (bisa naik/turun)
+ * supaya data lama yang tidak akurat ikut terkoreksi.
+ */
+function ensure_saldo_cuti($conn, $user_id, $tahun, $bulanSekarang, $tahunSekarang, $tanggalDaftar)
+{
+    $waktuDaftar = strtotime($tanggalDaftar) ?: time();
+    $tahunDaftar = (int) date('Y', $waktuDaftar);
+    $bulanDaftar = (int) date('n', $waktuDaftar);
+    $hariDaftar = (int) date('j', $waktuDaftar);
+
+    if ($tahun < $tahunDaftar) {
+        // Tahun sebelum user ini terdaftar -> belum ada jatah sama sekali.
+        $targetJatah = 0;
+    } elseif ($tahun < $tahunSekarang) {
         $targetJatah = 12;
     } elseif ($tahun > $tahunSekarang) {
         $targetJatah = 0;
+    } elseif ($tahun === $tahunDaftar) {
+        // Tahun pendaftaran: akrual dihitung mulai dari BULAN mendaftar.
+        $bonusBulanDaftar = ($hariDaftar <= 1) ? 1 : 0;
+        $targetJatah = max(0, min(12, ($bulanSekarang - $bulanDaftar) + $bonusBulanDaftar));
     } else {
-        // Bulan berjalan langsung dihitung: Jan=1, Jul=7, Agu=8, ...
+        // Tahun berjalan, tapi bukan tahun pendaftaran -> akrual normal dari Januari.
         $targetJatah = max(0, min(12, $bulanSekarang));
     }
 
@@ -99,7 +138,7 @@ function tab_from_jenis($jenis_cuti)
 
 // Fetch / init saldo cuti tahunan (dengan akrual bulanan)
 try {
-    $balance = ensure_saldo_cuti($conn, $current_user_id, $current_year, $current_month, $current_year);
+    $balance = ensure_saldo_cuti($conn, $current_user_id, $current_year, $current_month, $current_year, $current_user_created_at);
 } catch (PDOException $e) {
     $balance = ['jatah_tahunan' => $current_month, 'terpakai' => 0, 'sisa' => $current_month];
 }
@@ -545,7 +584,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'batal
                     );
                     $success_msg = "Pengajuan " . $jenis_cuti . " berhasil dikirim! Menunggu persetujuan Direksi.";
 
-                    $balance = ensure_saldo_cuti($conn, $current_user_id, $current_year, $current_month, $current_year);
+                    $balance = ensure_saldo_cuti($conn, $current_user_id, $current_year, $current_month, $current_year, $current_user_created_at);
                 } catch (PDOException $e) {
                     $conn->rollBack();
                     $error_msg = "Gagal memproses pengajuan cuti: " . $e->getMessage();

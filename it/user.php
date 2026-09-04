@@ -67,21 +67,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $nama_lengkap = trim($_POST['nama_lengkap']);
         $email = trim($_POST['email']);
         $role = $_POST['role'];
+        $tanggal_terdaftar = trim($_POST['created_at'] ?? '');
 
         // Ambil data lama untuk audit
         $stmtLama = $conn->prepare("SELECT * FROM Users WHERE id = :id");
         $stmtLama->execute(['id' => $user_id]);
         $userLama = $stmtLama->fetch();
 
-        if (empty($nama_lengkap) || empty($email) || !in_array($role, $valid_roles)) {
+        if (empty($nama_lengkap) || empty($email) || !in_array($role, $valid_roles) || empty($tanggal_terdaftar)) {
             $error_msg = "Semua field wajib diisi dengan benar!";
         } else {
             try {
-                $stmt = $conn->prepare("UPDATE Users SET nama_lengkap = :nama, email = :email, role = :role WHERE id = :id");
+                $stmt = $conn->prepare("UPDATE Users SET nama_lengkap = :nama, email = :email, role = :role, created_at = :created_at WHERE id = :id");
                 $stmt->execute([
                     'nama' => $nama_lengkap,
                     'email' => $email,
                     'role' => $role,
+                    'created_at' => $tanggal_terdaftar,
                     'id' => $user_id
                 ]);
                 catatAudit(
@@ -90,7 +92,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'Ubah',
                     "Mengubah data user #{$user_id}",
                     $userLama ?: null,
-                    ['nama_lengkap' => $nama_lengkap, 'email' => $email, 'role' => $role]
+                    ['nama_lengkap' => $nama_lengkap, 'email' => $email, 'role' => $role, 'created_at' => $tanggal_terdaftar]
                 );
                 $success_msg = "Data pengguna berhasil diperbarui.";
             } catch (PDOException $e) {
@@ -363,6 +365,10 @@ foreach ($users as $u) {
                         <option value="client">Client</option>
                     </select>
                 </div>
+                <div class="mb-4">
+                    <label class="form-label fw-semibold mb-2">Tanggal Terdaftar *</label>
+                    <input type="date" name="created_at" id="editCreatedAt" class="form-control-custom" required>
+                </div>
                 <div class="d-flex gap-2 justify-content-end">
                     <button type="button" class="btn-secondary-custom"
                         onclick="closeModal('modalEditUser')">Batal</button>
@@ -412,6 +418,9 @@ foreach ($users as $u) {
         document.getElementById('editNamaLengkap').value = user.nama_lengkap;
         document.getElementById('editEmail').value = user.email;
         document.getElementById('editRole').value = user.role;
+        // created_at dari DB formatnya "YYYY-MM-DD HH:MM:SS" -- input type=date
+        // cuma butuh bagian tanggalnya (10 karakter pertama).
+        document.getElementById('editCreatedAt').value = user.created_at ? user.created_at.substring(0, 10) : '';
         openModal('modalEditUser');
     }
 

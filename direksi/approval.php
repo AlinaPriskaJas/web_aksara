@@ -519,21 +519,11 @@ function ambil_file_ref(PDO $conn, string $jenis, int $ref_id): ?string
 
 // Untuk jenis "Cuti": kolom "Aksi" di tab Pengajuan Umum tidak lagi menampilkan
 // dokumen pendukung/lampiran, melainkan Surat Cuti & Pengalihan Tugas yang
-// otomatis dibuat & diunggah ke Drive saat pengajuan Disetujui (lihat
-// arp_generate_dan_unggah_surat_cuti() di atas). Linknya diambil dari
-// Cuti.surat_cuti_link -- kalau belum ada (mis. belum disetujui / masih
-// gagal upload), tombolnya tidak ditampilkan.
-function ambil_surat_cuti_link(PDO $conn, int $ref_id): ?string
-{
-    try {
-        $s = $conn->prepare("SELECT surat_cuti_link FROM Cuti WHERE id = :id");
-        $s->execute([':id' => $ref_id]);
-        $v = $s->fetchColumn();
-        return $v !== false && $v !== null && $v !== '' ? (string) $v : null;
-    } catch (PDOException $e) {
-        return null;
-    }
-}
+// otomatis dibuat & diunggah ke Drive saat pengajuan diajukan/disetujui (lihat
+// arp_generate_dan_unggah_surat_cuti_draft() / arp_generate_dan_unggah_surat_cuti()
+// di includes/cuti_surat_helper.php). Linknya diambil lewat arp_ambil_link_surat_cuti()
+// (baca dari Surat.drive_link) -- BUKAN dari kolom Cuti.surat_cuti_link, yang
+// ternyata tidak pernah diisi di manapun sehingga selalu kosong.
 
 // Untuk pengajuan jenis "Cuti", kolom Jenis di tabel Approval Center cuma
 // nunjukin "Cuti" secara umum (sesuai ENUM Approval.jenis_pengajuan) —
@@ -824,16 +814,17 @@ include "../includes/topbar.php";
                                                 // Drive (Cuti.surat_cuti_link); kalau masih Menunggu, pakai
                                                 // pratinjau (dibuat on-the-fly dari data pengajuan) supaya direksi
                                                 // tahu isi suratnya SEBELUM memutuskan approve/reject.
-                                                $suratCutiLinkUmum = ambil_surat_cuti_link($conn, (int) $a['ref_id']);
+                                                $suratCutiLinkUmum = arp_ambil_link_surat_cuti($conn, (int) $a['ref_id']);
                                                 $hrefSuratCutiUmum = $suratCutiLinkUmum
                                                     ?: '../includes/generate_cuti_surat.php?id=' . (int) $a['ref_id'];
                                                 ?>
-                                                <a href="<?= htmlspecialchars($hrefSuratCutiUmum) ?>" target="_blank"
+                                                <button type="button"
                                                     class="btn btn-outline-success btn-sm py-1"
-                                                    style="font-size:0.75rem; border-radius: 8px;">
+                                                    style="font-size:0.75rem; border-radius: 8px;"
+                                                    onclick="openFileModal('<?= htmlspecialchars($hrefSuratCutiUmum, ENT_QUOTES) ?>', 'Surat Cuti')">
                                                     <i class="bi bi-file-earmark-text"></i>
                                                     <?= $suratCutiLinkUmum ? 'Lihat' : 'Lihat (Pratinjau)' ?>
-                                                </a>
+                                                </button>
                                             <?php elseif ($a['jenis_pengajuan'] === 'Cuti'):
                                                 // Cuti Khusus / Izin Sakit tidak punya Surat Cuti -- tampilkan
                                                 // dokumen pendukung/lampiran seperti biasa.
@@ -1111,7 +1102,7 @@ include "../includes/topbar.php";
     // dirinya sedang di-frame dan otomatis window.open() dirinya sendiri ke tab baru --
     // itulah yang membuat tab baru muncul di background saat file Drive dibuka di modal.
     function ambilFileIdDrive(url) {
-        if (!url) return null;
+        if (!url || url.indexOf('drive.google.com') === -1) return null;
         let m = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
         if (m) return m[1];
         m = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
@@ -1154,6 +1145,7 @@ include "../includes/topbar.php";
 
         const ext = tentukanEkstensiFile(fileUrl, label);
         const gambarExt = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
+        const driveFileId = ambilFileIdDrive(fileUrl);
 
         if (gambarExt.includes(ext)) {
             body.innerHTML = `<img id="modalLihatFileImg" src="${fileUrl}" alt="Lampiran" style="max-width:100%; height:auto; display:block; margin:0 auto;">`;
@@ -1164,11 +1156,18 @@ include "../includes/topbar.php";
             body.innerHTML = `<iframe id="modalLihatFileFrame" src="${embedUrl}" style="width:100%; height:70vh; border:0;"></iframe>`;
             printBtn.style.display = 'inline-flex';
             printBtn.onclick = function () { cetakPdfLampiran(fileUrl); };
+        } else if (driveFileId) {
+            // Berkas tersimpan di Google Drive (mis. Surat Cuti .docx) -- endpoint
+            // .../preview milik Drive bisa nampilin isi dokumen (Word, Excel, dll)
+            // langsung di iframe tanpa perlu diunduh dulu.
+            const embedUrl = 'https://drive.google.com/file/d/' + driveFileId + '/preview';
+            body.innerHTML = `<iframe id="modalLihatFileFrame" src="${embedUrl}" style="width:100%; height:70vh; border:0;"></iframe>`;
+            printBtn.style.display = 'none';
         } else {
             body.innerHTML = `
                 <div class="text-center py-4">
                     <i class="bi bi-file-earmark-text" style="font-size:2.5rem;"></i>
-                    <p class="text-secondary mt-2 mb-0">Pratinjau tidak tersedia untuk tipe berkas ini (mis. Word).<br>Silakan gunakan tombol "Buka di Tab Baru", lalu cetak dari aplikasi/pembacanya (mis. Word, Google Docs).</p>
+                    <p class="text-secondary mt-2 mb-0">Pratinjau tidak tersedia untuk tipe berkas ini.<br>Silakan gunakan tombol "Buka di Tab Baru" untuk melihatnya.</p>
                 </div>`;
         }
 
