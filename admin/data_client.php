@@ -212,6 +212,64 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
     exit;
 }
 
+// ================== PROSES: TAMBAH CLIENT BARU (langsung dari tab "Daftar Client", tanpa akun/user) ==================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['aksi'] === 'tambah_klien') {
+    $nama_perusahaan = trim($_POST['nama_perusahaan'] ?? '');
+    $alamat          = trim($_POST['alamat'] ?? '');
+    $status          = in_array($_POST['status'] ?? 'Aktif', ['Aktif', 'Non-aktif'], true) ? $_POST['status'] : 'Aktif';
+    $pic_nama        = trim($_POST['pic_nama'] ?? '');
+    $jabatan_pic     = trim($_POST['jabatan_pic'] ?? '');
+    $pic_whatsapp    = trim($_POST['pic_whatsapp'] ?? '');
+    $pic_email       = trim($_POST['pic_email'] ?? '');
+
+    if ($nama_perusahaan === '') {
+        $flash = ['type' => 'danger', 'message' => 'Nama perusahaan wajib diisi.'];
+    } else {
+        try {
+            $conn->beginTransaction();
+
+            // Generate kode_klien otomatis: KLN-0001, KLN-0002, dst.
+            $stmt = $conn->query("SELECT COUNT(*) FROM Data_Klien");
+            $urutan = (int) $stmt->fetchColumn() + 1;
+            $kode_klien = 'KLN-' . str_pad((string) $urutan, 4, '0', STR_PAD_LEFT);
+
+            $cekKode = $conn->prepare("SELECT COUNT(*) FROM Data_Klien WHERE kode_klien = :kode");
+            $cekKode->execute([':kode' => $kode_klien]);
+            while ((int) $cekKode->fetchColumn() > 0) {
+                $urutan++;
+                $kode_klien = 'KLN-' . str_pad((string) $urutan, 4, '0', STR_PAD_LEFT);
+                $cekKode->execute([':kode' => $kode_klien]);
+            }
+
+            $stmt = $conn->prepare("
+                INSERT INTO Data_Klien (kode_klien, nama_perusahaan, alamat, status, pic_nama, jabatan_pic, pic_whatsapp, pic_email)
+                VALUES (:kode_klien, :nama_perusahaan, :alamat, :status, :pic_nama, :jabatan_pic, :pic_whatsapp, :pic_email)
+            ");
+            $stmt->execute([
+                ':kode_klien'      => $kode_klien,
+                ':nama_perusahaan' => $nama_perusahaan,
+                ':alamat'          => $alamat,
+                ':status'          => $status,
+                ':pic_nama'        => $pic_nama,
+                ':jabatan_pic'     => $jabatan_pic,
+                ':pic_whatsapp'    => $pic_whatsapp,
+                ':pic_email'       => $pic_email,
+            ]);
+
+            $conn->commit();
+            $flash = ['type' => 'success', 'message' => "Client baru \"$nama_perusahaan\" ($kode_klien) berhasil ditambahkan."];
+        } catch (PDOException $e) {
+            if ($conn->inTransaction()) {
+                $conn->rollBack();
+            }
+            $flash = ['type' => 'danger', 'message' => 'Gagal menambahkan client: ' . $e->getMessage()];
+        }
+    }
+    $_SESSION['data_klien_flash'] = $flash;
+    header("Location: data_client.php?tab=daftar");
+    exit;
+}
+
 // ================== PROSES: IMPORT DATA KLIEN DARI FILE (.xlsx / .csv) ==================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['aksi'] === 'import_klien') {
     require_once "../includes/functions.php";
@@ -377,6 +435,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
                 $flash = [
                     'type'    => ($berhasil > 0 || $diperbarui > 0) ? 'success' : 'danger',
                     'message' => "Import selesai: {$berhasil} baru ditambahkan, {$diperbarui} data lama dilengkapi, {$duplikat} duplikat dilewati (sudah lengkap), {$gagal} gagal dari {$total} baris data.",
+                    'detail'  => $daftarError, // catatan per-baris (kosong/duplikat/dilengkapi/dsb), selalu ditampilkan ke admin
                 ];
             } catch (\Throwable $e) {
                 if ($conn->inTransaction()) {
@@ -445,7 +504,7 @@ try {
     $semua_klien = [];
 }
 
-$active_tab_klien = (($_GET['tab'] ?? '') === 'daftar') ? 'tabPanelDaftarKlien' : 'tabPanelAkunKlien';
+$active_tab_klien = (($_GET['tab'] ?? '') === 'akun') ? 'tabPanelAkunKlien' : 'tabPanelDaftarKlien';
 
 include "../includes/header.php";
 include "../includes/sidebar.php";
@@ -534,7 +593,18 @@ include "../includes/topbar.php";
     <?php if ($flash): ?>
         <div class="alert alert-<?= $flash['type'] === 'success' ? 'success' : 'danger' ?>-custom mb-3">
             <i class="bi <?= $flash['type'] === 'success' ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill' ?> fs-5"></i>
-            <div><?= htmlspecialchars($flash['message']) ?></div>
+            <div class="w-100">
+                <div><?= htmlspecialchars($flash['message']) ?></div>
+                <?php if (!empty($flash['detail'])): ?>
+                    <!-- Catatan detail per-baris hasil import (kenapa gagal/duplikat/dilengkapi) -->
+                    <!-- Selalu ditampilkan penuh setiap ada proses import, tidak hanya ringkasan angka. -->
+                    <ul class="fs-7 mt-2 mb-0 ps-3" style="max-height: 220px; overflow-y: auto;">
+                        <?php foreach ($flash['detail'] as $catatan): ?>
+                            <li><?= htmlspecialchars($catatan) ?></li>
+                        <?php endforeach; ?>
+                    </ul>
+                <?php endif; ?>
+            </div>
         </div>
     <?php endif; ?>
 
@@ -572,13 +642,13 @@ include "../includes/topbar.php";
     <!-- Tab Navigation -->
     <div class="arp-tab-group">
         <div class="arp-tab-nav">
-            <button type="button" class="arp-tab-btn<?= $active_tab_klien === 'tabPanelAkunKlien' ? ' active' : '' ?>"
-                data-tab-target="tabPanelAkunKlien" onclick="switchTab('tabPanelAkunKlien', this)">
-                <i class="bi bi-people-fill me-1"></i> Akun Client
-            </button>
             <button type="button" class="arp-tab-btn<?= $active_tab_klien === 'tabPanelDaftarKlien' ? ' active' : '' ?>"
                 data-tab-target="tabPanelDaftarKlien" onclick="switchTab('tabPanelDaftarKlien', this)">
                 <i class="bi bi-building me-1"></i> Daftar Client
+            </button>
+            <button type="button" class="arp-tab-btn<?= $active_tab_klien === 'tabPanelAkunKlien' ? ' active' : '' ?>"
+                data-tab-target="tabPanelAkunKlien" onclick="switchTab('tabPanelAkunKlien', this)">
+                <i class="bi bi-people-fill me-1"></i> Akun Client
             </button>
         </div>
 
@@ -679,6 +749,10 @@ include "../includes/topbar.php";
                                 <input type="text" class="search-box" placeholder="Cari perusahaan..."
                                     data-table-search="tabelDaftarKlien" onkeyup="handleTableSearch('tabelDaftarKlien')">
                             </div>
+                            <button type="button" class="btn-primary-custom"
+                                onclick="new bootstrap.Modal(document.getElementById('modalTambahKlien')).show()">
+                                <i class="bi bi-plus-lg"></i> Tambah Client
+                            </button>
                             <button type="button" class="btn-primary-custom"
                                 onclick="new bootstrap.Modal(document.getElementById('modalImportKlien')).show()">
                                 <i class="bi bi-file-earmark-arrow-up"></i> Import Data Klien
@@ -938,6 +1012,76 @@ include "../includes/topbar.php";
     </div>
 </div>
 
+<!-- ===== MODAL: Tambah Client Baru (langsung, tanpa akun/user) ===== -->
+<div class="modal fade modal-custom" id="modalTambahKlien" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form action="data_client.php" method="POST">
+                <input type="hidden" name="aksi" value="tambah_klien">
+                <div class="modal-header">
+                    <h5 class="modal-title">Tambah Client Baru</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <ul class="subtab-nav">
+                        <li>
+                            <button type="button" class="subtab-btn active" data-subtab-group="tambah" data-subtab="perusahaan" onclick="gantiSubTab('tambah', 'perusahaan')">
+                                <i class="bi bi-building"></i> Data Perusahaan
+                            </button>
+                        </li>
+                        <li>
+                            <button type="button" class="subtab-btn" data-subtab-group="tambah" data-subtab="pic" onclick="gantiSubTab('tambah', 'pic')">
+                                <i class="bi bi-person-vcard"></i> Data PIC
+                            </button>
+                        </li>
+                    </ul>
+
+                    <div data-subtab-group="tambah" data-subtab-panel="perusahaan" class="subtab-panel">
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold fs-7 mb-2">Nama Perusahaan *</label>
+                            <input type="text" name="nama_perusahaan" class="form-control-custom" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold fs-7 mb-2">Alamat</label>
+                            <textarea class="textarea-custom" name="alamat"></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold fs-7 mb-2">Status</label>
+                            <select class="select-custom" name="status">
+                                <option value="Aktif">Aktif</option>
+                                <option value="Non-aktif">Non-aktif</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div data-subtab-group="tambah" data-subtab-panel="pic" class="subtab-panel" style="display:none;">
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold fs-7 mb-2">Nama PIC</label>
+                            <input type="text" name="pic_nama" class="form-control-custom">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold fs-7 mb-2">Jabatan PIC</label>
+                            <input type="text" name="jabatan_pic" class="form-control-custom">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold fs-7 mb-2">WhatsApp PIC</label>
+                            <input type="text" name="pic_whatsapp" class="form-control-custom">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold fs-7 mb-2">Email PIC</label>
+                            <input type="email" name="pic_email" class="form-control-custom">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary-custom" data-bs-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn-primary-custom">Simpan Client</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <!-- ===== MODAL: Import Data Klien ===== -->
 <div class="modal fade modal-custom" id="modalImportKlien" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
@@ -949,13 +1093,13 @@ include "../includes/topbar.php";
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="alert alert-success-custom text-xs mb-3">
+                    <div class="arp-static-info-box text-xs mb-3">
                         <i class="bi bi-info-circle-fill"></i>
                         <div>
                             File harus punya baris header berikut (urutan bebas, <strong>besar/kecil huruf tidak masalah</strong>):<br>
-                            <strong>NAMA PERUSAHAAN, Nama PIC, Jabatan, No. HP/WhatsApp, Email, Status Client</strong><br>
+                            <strong>Nama Perusahaan, Nama PIC, Jabatan, No. HP/WhatsApp, Email, Status Client</strong><br>
                             Kolom di luar daftar ini otomatis diabaikan. Format file: <strong>.xlsx</strong> atau <strong>.csv</strong>.<br>
-                            Jika nama perusahaan <strong>sudah ada</strong> di Data Klien, sistem <strong>tidak menduplikasi</strong> —
+                            Jika nama perusahaan <strong>sudah ada</strong> di Data Klien, sistem <strong>tidak menduplikasi</strong> 
                             kolom PIC (nama/jabatan/WhatsApp/email) yang di data lama masih kosong akan otomatis dilengkapi dari file ini,
                             tanpa menimpa data yang sudah terisi.
                         </div>
