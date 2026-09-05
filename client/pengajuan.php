@@ -15,7 +15,7 @@ $user_id = $_SESSION['user_id'];
 
 // ================== MODE AJAX: AUTOCOMPLETE NAMA UNIT ==================
 // pengajuan.php?ajax=cari_unit&q=f
-// Mengembalikan jenis_objek_k3 yang cocok LENGKAP dengan nama_kategori (Bidang)-nya,
+// Mengembalikan Jenis_Objek_K3 yang cocok LENGKAP dengan nama_kategori (Bidang)-nya,
 // supaya Bidang tidak perlu dipilih manual oleh client.
 if (isset($_GET['ajax']) && $_GET['ajax'] === 'cari_unit') {
     header('Content-Type: application/json');
@@ -30,8 +30,8 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'cari_unit') {
     try {
         $stmt = $conn->prepare("
             SELECT j.id_jenis, j.nama_objek, k.nama_kategori
-            FROM jenis_objek_k3 j
-            JOIN kategori_objek_k3 k ON k.id_kategori = j.id_kategori
+            FROM Jenis_Objek_K3 j
+            JOIN Kategori_Objek_K3 k ON k.id_kategori = j.id_kategori
             WHERE j.nama_objek LIKE :q
             ORDER BY
                 CASE WHEN j.nama_objek LIKE :qstart THEN 0 ELSE 1 END,
@@ -122,8 +122,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan_pengajuan'])) 
     try {
         $stmt = $conn->prepare("
             SELECT j.nama_objek, k.id_kategori, k.nama_kategori
-            FROM jenis_objek_k3 j
-            JOIN kategori_objek_k3 k ON k.id_kategori = j.id_kategori
+            FROM Jenis_Objek_K3 j
+            JOIN Kategori_Objek_K3 k ON k.id_kategori = j.id_kategori
             WHERE j.id_jenis = :id_jenis
         ");
         $stmt->execute([':id_jenis' => $id_jenis]);

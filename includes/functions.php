@@ -109,7 +109,7 @@ function generateNomorSurat(PDO $pdo, int $kode_id): string
 // GENERATE NOMOR AGENDA OTOMATIS (arsip internal, terpisah untuk
 // Surat Masuk & Surat Keluar, reset tiap tahun).
 // Butuh tabel `agenda_counter` (lihat migrasi SQL):
-//   CREATE TABLE agenda_counter (
+//   CREATE TABLE Agenda_Counter(
 //       id INT PRIMARY KEY AUTO_INCREMENT,
 //       tahun INT NOT NULL,
 //       arah ENUM('Masuk','Keluar') NOT NULL,
@@ -128,7 +128,7 @@ function generateNomorAgenda(PDO $pdo, string $arah): string
 
     // Kunci baris counter tahun ini (kalau sudah ada) supaya aman dari race condition
     // ketika dua surat disimpan hampir bersamaan.
-    $stmt = $pdo->prepare("SELECT counter FROM agenda_counter WHERE tahun = ? AND arah = ? FOR UPDATE");
+    $stmt = $pdo->prepare("SELECT counter FROM Agenda_CounterWHERE tahun = ? AND arah = ? FOR UPDATE");
     $stmt->execute([$tahun, $arah]);
     $counterLama = $stmt->fetchColumn();
 
@@ -136,20 +136,20 @@ function generateNomorAgenda(PDO $pdo, string $arah): string
         // Belum ada baris counter untuk tahun & arah ini -> buat baru mulai dari 1
         $counter = 1;
         try {
-            $pdo->prepare("INSERT INTO agenda_counter (tahun, arah, counter) VALUES (?, ?, ?)")
+            $pdo->prepare("INSERT INTO Agenda_Counter(tahun, arah, counter) VALUES (?, ?, ?)")
                 ->execute([$tahun, $arah, $counter]);
         } catch (\Throwable $e) {
             // Kemungkinan baris sudah dibuat oleh proses lain di antara SELECT & INSERT
             // (race condition) -> ambil ulang & increment lewat UPDATE di bawah.
-            $stmtUlang = $pdo->prepare("SELECT counter FROM agenda_counter WHERE tahun = ? AND arah = ? FOR UPDATE");
+            $stmtUlang = $pdo->prepare("SELECT counter FROM Agenda_CounterWHERE tahun = ? AND arah = ? FOR UPDATE");
             $stmtUlang->execute([$tahun, $arah]);
             $counter = (int) $stmtUlang->fetchColumn() + 1;
-            $pdo->prepare("UPDATE agenda_counter SET counter = ? WHERE tahun = ? AND arah = ?")
+            $pdo->prepare("UPDATE Agenda_CounterSET counter = ? WHERE tahun = ? AND arah = ?")
                 ->execute([$counter, $tahun, $arah]);
         }
     } else {
         $counter = (int) $counterLama + 1;
-        $pdo->prepare("UPDATE agenda_counter SET counter = ? WHERE tahun = ? AND arah = ?")
+        $pdo->prepare("UPDATE Agenda_CounterSET counter = ? WHERE tahun = ? AND arah = ?")
             ->execute([$counter, $tahun, $arah]);
     }
 
@@ -2003,7 +2003,7 @@ function muatFieldsTemplateLive(PDO $pdo, array $kodeRow): array
             $jsonBaru = json_encode($digabung, JSON_UNESCAPED_UNICODE);
             if (!empty($kodeRow['template_id']) && $jsonBaru !== ($kodeRow['fields_json'] ?? null)) {
                 try {
-                    $pdo->prepare("UPDATE template_master SET fields_json = ? WHERE id = ?")
+                    $pdo->prepare("UPDATE Template_Master SET fields_json = ? WHERE id = ?")
                         ->execute([$jsonBaru, (int) $kodeRow['template_id']]);
                 } catch (\Throwable $e) {
                 }
@@ -2680,7 +2680,7 @@ function arp_proses_pengajuan_reimburse(PDO $pdo, array $kodeRow, int $userId, a
         ]);
         $suratId = (int) $pdo->lastInsertId();
 
-                $insertReim = $pdo->prepare("INSERT INTO Reimburse
+        $insertReim = $pdo->prepare("INSERT INTO Reimburse
             (user_id, tanggal_pengeluaran, keterangan, nominal, lampiran_bukti, drive_file_id, drive_link, status, surat_id)
             VALUES (?, ?, ?, ?, ?, ?, ?, 'Draft', ?)");
         $insertReim->execute([
@@ -2688,8 +2688,8 @@ function arp_proses_pengajuan_reimburse(PDO $pdo, array $kodeRow, int $userId, a
             $tanggalPengeluaran,
             $perihal,
             $nominal,
-            '', 
-            $hasilDrive['file_id'] ?? null, 
+            '',
+            $hasilDrive['file_id'] ?? null,
             $hasilDrive['link'],
             $suratId,
         ]);
@@ -2796,9 +2796,13 @@ function arp_proses_edit_reimburse(PDO $pdo, array $kodeRow, int $reimburseId, i
         $baris = array_map('trim', (array) $baris);
         $adaIsi = false;
         foreach ($baris as $v) {
-            if ($v !== '') { $adaIsi = true; break; }
+            if ($v !== '') {
+                $adaIsi = true;
+                break;
+            }
         }
-        if ($adaIsi) $items[] = $baris;
+        if ($adaIsi)
+            $items[] = $baris;
     }
     if (empty($items)) {
         return ['ok' => false, 'msg' => 'Isi minimal satu baris rincian pengeluaran.'];

@@ -39,7 +39,7 @@ try {
 // klasifikasi_objek_k3 & jenis_objek di Pengajuan_Pemeriksaan). Sekarang 1 perusahaan
 // bisa mengajukan BANYAK unit sekaligus, jadi setiap unit disimpan sebagai baris
 // tersendiri di sini, terhubung ke Pengajuan_Pemeriksaan (pengajuan_id) dan ke
-// jenis_objek_k3 (id_jenis) supaya Bidang-nya (kategori_objek_k3) bisa diambil lewat JOIN,
+// Jenis_Objek_K3  (id_jenis) supaya Bidang-nya (kategori_objek_k3) bisa diambil lewat JOIN,
 // bukan disalin manual. Dibuat otomatis (IF NOT EXISTS) agar tidak perlu migrasi manual.
 try {
     $conn->exec("
@@ -53,7 +53,7 @@ try {
             CONSTRAINT fk_pengajuanunit_pengajuan FOREIGN KEY (pengajuan_id)
                 REFERENCES Pengajuan_Pemeriksaan(id) ON DELETE CASCADE,
             CONSTRAINT fk_pengajuanunit_jenis FOREIGN KEY (id_jenis)
-                REFERENCES jenis_objek_k3(id_jenis)
+                REFERENCES Jenis_Objek_K3 (id_jenis)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     ");
 } catch (PDOException $e) {

@@ -52,7 +52,7 @@ function safe_query(PDO $conn, string $sql, array $params = []): array
 
 // ================== STAT CARDS ==================
 $total_klien = safe_count($conn, "SELECT COUNT(*) FROM Data_Klien WHERE status = 'Aktif'");
-$sertifikat_aktif = safe_count($conn, "SELECT COUNT(*) FROM v_sertifikat_ahli_status WHERE status_realtime = 'Aktif'");
+$sertifikat_aktif = safe_count($conn, "SELECT COUNT(*) FROM V_Sertifikat_Ahli_Status WHERE status_realtime = 'Aktif'");
 $menunggu_approval = safe_count($conn, "SELECT COUNT(*) FROM Approval WHERE status = 'Menunggu'");
 $audit_inspeksi = safe_count($conn, "SELECT COUNT(*) FROM Jadwal_Pemeriksaan WHERE status IN ('Terjadwal','Berlangsung')");
 

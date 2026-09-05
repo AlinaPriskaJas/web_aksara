@@ -113,7 +113,7 @@ $pengajuan_terbaru = safe_query($conn, "
 // ================== SERTIFIKAT AHLI PERLU PERHATIAN ==================
 $sertifikat_list = safe_query($conn, "
     SELECT nama_lengkap, bidang_keahlian, tanggal_kedaluwarsa, status_realtime
-    FROM v_sertifikat_ahli_status
+    FROM V_Sertifikat_Ahli_Status
     WHERE status_realtime IN ('Peringatan Awal','Kritis-Expired')
     ORDER BY tanggal_kedaluwarsa ASC
     LIMIT 5

@@ -92,7 +92,7 @@ if ($klien_id) {
         $stmt->execute($params);
         $total_data = (int) $stmt->fetchColumn();
 
-        // Ambil data halaman aktif, join ke Objek_K3 & jenis_objek_k3 untuk nama objek
+        // Ambil data halaman aktif, join ke Objek_K3 & Jenis_Objek_K3 untuk nama objek
         $stmt = $conn->prepare("
             SELECT sk.id, sk.nomor_laporan, sk.tanggal_pemeriksaan, sk.tanggal_expiry,
                    sk.file_sertifikat_pdf,
@@ -100,7 +100,7 @@ if ($klien_id) {
                    $status_case_sql AS status_realtime
             FROM Suket_K3 sk
             LEFT JOIN Objek_K3 ok ON ok.id = sk.objek_id
-            LEFT JOIN jenis_objek_k3 jok ON jok.id_jenis = ok.id_jenis
+            LEFT JOIN Jenis_Objek_K3 jok ON jok.id_jenis = ok.id_jenis
             $where
             ORDER BY sk.created_at DESC
             LIMIT :limit OFFSET :offset

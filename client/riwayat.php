@@ -62,19 +62,19 @@ if ($klien_id) {
             SELECT COUNT(*)
             FROM Laporan_Pemeriksaan lp
             LEFT JOIN Objek_K3 ok ON ok.id = lp.objek_id
-            LEFT JOIN jenis_objek_k3 jok ON jok.id_jenis = ok.id_jenis
+            LEFT JOIN Jenis_Objek_K3 jok ON jok.id_jenis = ok.id_jenis
             $where
         ");
         $stmt->execute($params);
         $total_data = (int) $stmt->fetchColumn();
 
-        // Ambil data halaman aktif, join ke Objek_K3 & jenis_objek_k3 untuk nama objek
+        // Ambil data halaman aktif, join ke Objek_K3 & Jenis_Objek_K3 untuk nama objek
         $stmt = $conn->prepare("
             SELECT lp.id, lp.nomor_laporan, lp.jenis_pemeriksaan, lp.tanggal_pemeriksaan, lp.hasil_pemeriksaan,
                    COALESCE(ok.nama_unit, jok.nama_objek, '-') AS nama_objek
             FROM Laporan_Pemeriksaan lp
             LEFT JOIN Objek_K3 ok ON ok.id = lp.objek_id
-            LEFT JOIN jenis_objek_k3 jok ON jok.id_jenis = ok.id_jenis
+            LEFT JOIN Jenis_Objek_K3 jok ON jok.id_jenis = ok.id_jenis
             $where
             ORDER BY lp.tanggal_pemeriksaan DESC, lp.created_at DESC
             LIMIT :limit OFFSET :offset
