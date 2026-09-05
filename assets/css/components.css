@@ -1,0 +1,1539 @@
+/* Reusable Card */
+.card-box {
+  background-color: var(--card-bg);
+  border-radius: var(--radius);
+  padding: var(--padding);
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border-color);
+  margin-bottom: var(--margin);
+  transition:
+    transform var(--transition),
+    box-shadow var(--transition);
+}
+
+.card-box:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+/* Stat Card */
+.stat-card {
+  background-color: var(--card-bg);
+  border-radius: var(--radius);
+  padding: 24px;
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition:
+    transform var(--transition),
+    box-shadow var(--transition);
+  height: 110px;
+}
+
+.stat-card:hover {
+  transform: translateY(-4px);
+  box-shadow:
+    0 10px 15px -3px rgba(0, 0, 0, 0.05),
+    0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+.stat-card-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.stat-card-value {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.stat-card-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+.stat-card-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  background-color: rgba(27, 99, 196, 0.1);
+  color: var(--primary);
+}
+
+.stat-card-icon.success {
+  background-color: rgba(46, 204, 113, 0.1);
+  color: var(--success);
+}
+
+.stat-card-icon.danger {
+  background-color: rgba(231, 76, 60, 0.1);
+  color: var(--danger);
+}
+
+.stat-card-icon.warning {
+  background-color: rgba(241, 196, 15, 0.1);
+  color: var(--warning);
+}
+
+/* Custom Buttons */
+.btn-primary-custom,
+.btn-secondary-custom,
+.btn-danger-custom {
+  height: var(--btn-height);
+  padding: 0 20px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  border-radius: var(--radius);
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all var(--transition);
+  text-decoration: none !important;
+}
+
+.btn-primary-custom {
+  background-color: var(--primary);
+  color: #ffffff;
+}
+
+.btn-primary-custom:hover {
+  background-color: var(--primary-hover);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.btn-secondary-custom {
+  background-color: var(--secondary);
+  color: #ffffff;
+}
+
+.btn-secondary-custom:hover {
+  background-color: var(--secondary-hover);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.btn-danger-custom {
+  background-color: var(--danger);
+  color: #ffffff;
+}
+
+.btn-danger-custom:hover {
+  background-color: var(--danger-hover);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+/* Custom Forms */
+.form-control-custom,
+.select-custom,
+.textarea-custom {
+  width: 100%;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding: 0 16px;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  background-color: #ffffff;
+  outline: none;
+  transition:
+    border-color var(--transition),
+    box-shadow var(--transition);
+}
+
+.form-control-custom,
+.select-custom {
+  height: var(--input-height);
+}
+
+.textarea-custom {
+  padding: 12px 16px;
+  min-height: 100px;
+  resize: vertical;
+}
+
+.form-control-custom:focus,
+.select-custom:focus,
+.textarea-custom:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(27, 99, 196, 0.15);
+}
+
+/* Custom Search Box */
+.search-box-container {
+  position: relative;
+  width: 100%;
+}
+
+.search-box-container i {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-light);
+  font-size: 1rem;
+  pointer-events: none;
+}
+
+.search-box {
+  width: 100%;
+  height: var(--input-height);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding-left: 40px;
+  padding-right: 16px;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  background-color: #ffffff;
+  outline: none;
+  transition: all var(--transition);
+}
+
+.search-box:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(27, 99, 196, 0.15);
+}
+
+/* Custom Badges */
+.badge-success,
+.badge-danger,
+.badge-warning,
+.badge-secondary {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 20px;
+  text-transform: capitalize;
+}
+
+.badge-success {
+  background-color: rgba(46, 204, 113, 0.15);
+  color: var(--success);
+}
+
+.badge-danger {
+  background-color: rgba(231, 76, 60, 0.15);
+  color: var(--danger);
+}
+
+.badge-warning {
+  background-color: rgba(241, 196, 15, 0.15);
+  color: var(--warning);
+}
+
+.badge-secondary {
+  background-color: rgba(100, 116, 139, 0.15);
+  color: #475569;
+}
+
+/* Custom Alerts */
+.alert-success-custom,
+.alert-danger-custom {
+  padding: 16px 20px;
+  border-radius: var(--radius);
+  margin-bottom: var(--margin);
+  border: 1px solid transparent;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 0.9rem;
+
+  /* Auto-hide fade animation (dikontrol dari assets/js/script.js) */
+  overflow: hidden;
+  max-height: 200px;
+  opacity: 1;
+  transition: opacity 0.4s ease, max-height 0.4s ease, padding 0.4s ease, margin 0.4s ease;
+}
+
+.alert-success-custom.alert-auto-hide,
+.alert-danger-custom.alert-auto-hide {
+  opacity: 0;
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  margin-bottom: 0;
+  border-width: 0;
+}
+
+.alert-success-custom {
+  background-color: rgba(46, 204, 113, 0.1);
+  border-color: rgba(46, 204, 113, 0.2);
+  color: #27ae60;
+}
+
+.alert-danger-custom {
+  background-color: rgba(231, 76, 60, 0.1);
+  border-color: rgba(231, 76, 60, 0.2);
+  color: #c0392b;
+}
+
+/* ==========================================================================
+   Box info statis (TIDAK auto-hide) — dipakai untuk box "Pilih Invoice
+   Sumber" di form Buat Surat Kuitansi. Sengaja TIDAK memakai class
+   .alert-success-custom supaya tidak ikut ter-auto-hide 3 detik oleh
+   script.js (yang mentarget class itu untuk flash message).
+   ========================================================================== */
+.arp-static-info-box {
+  padding: 16px 20px;
+  border-radius: var(--radius);
+  margin-bottom: var(--margin);
+  border: 1px solid rgba(46, 204, 113, 0.2);
+  background-color: rgba(46, 204, 113, 0.1);
+  color: #27ae60;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 0.9rem;
+}
+
+/* Custom Tables */
+.table-responsive-custom {
+  width: 100%;
+  overflow-x: auto;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-color);
+  background-color: var(--card-bg);
+  -webkit-overflow-scrolling: touch;   /* ← baru: scroll halus di HP */
+  scrollbar-width: thin;               /* ← baru: scrollbar tipis (Firefox) */
+  scrollbar-color: #cbd5e1 #f1f5f9;    /* ← baru */
+}
+
+/* Styled thin horizontal scrollbar (consistent everywhere .table-responsive-custom is used) */
+.table-responsive-custom {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 #f1f5f9;
+}
+
+.table-responsive-custom::-webkit-scrollbar {
+  height: 8px;
+}
+
+.table-responsive-custom::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+.table-responsive-custom::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 8px;
+}
+
+.table-responsive-custom::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+.table-custom {
+  width: 100%;
+  min-width: max-content;
+  border-collapse: collapse;
+  margin-bottom: 0;
+  font-size: 0.9rem;
+}
+
+.table-custom th {
+  background-color: #f1f5f9;
+  color: var(--text-primary);
+  font-weight: 600;
+  padding: 14px 18px;
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 2px solid var(--border-color);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.table-custom td {
+  padding: 14px 18px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-color);
+  vertical-align: middle;
+}
+
+/* Kolom Keterangan/Alasan: teks panjang wrap ke bawah & rata kiri-kanan,
+   TIDAK melebarkan tabel ke samping */
+   .table-custom td.col-keterangan {
+    max-width: 260px;
+    white-space: normal;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    text-align: left;
+    line-height: 1.5;
+  }
+
+/* Hover Row */
+.table-custom tbody tr:hover td {
+  background-color: #f8fafc;
+  color: var(--text-primary);
+  transition: background-color var(--transition);
+}
+
+/* Zebra Row style */
+.table-custom tbody tr:nth-of-type(even) td {
+  background-color: rgba(241, 245, 249, 0.3);
+}
+
+.table-custom tbody tr:nth-of-type(even):hover td {
+  background-color: #f8fafc;
+}
+
+/* Rounded corners for table */
+.table-responsive-custom .table-custom tr:last-child td {
+  border-bottom: none;
+}
+
+.btn-primary-custom i,
+.btn-secondary-custom i,
+.btn-danger-custom i {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+/* ============================================================
+   TABLE ROW ACTIONS — reusable pattern (apply anywhere)
+   Keeps view/download/delete/edit buttons in one horizontal row
+   and NEVER lets them stack vertically. Works together with
+   .table-responsive-custom (overflow-x:auto) + .table-custom
+   (min-width:max-content) above: if a row genuinely needs more
+   space than the screen, the whole TABLE scrolls sideways instead
+   of squeezing/wrapping any single column.
+
+   Usage:
+     <th class="col-aksi">Aksi</th>
+     ...
+     <td class="col-aksi">
+         <div class="table-actions">
+             <a class="btn btn-outline-secondary btn-sm py-1">...</a>
+             <form class="d-inline">...</form>
+         </div>
+     </td>
+   ============================================================ */
+.col-aksi {
+  white-space: nowrap;
+}
+
+.table-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+.table-actions form {
+  display: inline-flex;
+}
+
+/* Custom Pagination */
+.pagination-custom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--padding) 0;
+}
+
+.pagination-pages {
+  display: flex;
+  gap: 6px;
+  list-style: none;
+  margin-bottom: 0;
+}
+
+.pagination-item a,
+.pagination-item span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-weight: 500;
+  font-size: 0.85rem;
+  transition: all var(--transition);
+}
+
+.pagination-item a:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background-color: rgba(27, 99, 196, 0.05);
+}
+
+.pagination-item.active span {
+  background-color: var(--primary);
+  color: #ffffff;
+  border-color: var(--primary);
+}
+
+.pagination-item.disabled span {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Modal Custom styling */
+.modal-custom .modal-content {
+  border-radius: var(--radius);
+  border: none;
+  box-shadow:
+    0 20px 25px -5px rgba(0, 0, 0, 0.1),
+    0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+.modal-custom .modal-header {
+  border-bottom: 1px solid var(--border-color);
+  padding: 20px;
+}
+
+.modal-custom .modal-title {
+  font-weight: bold;
+  color: var(--text-primary);
+}
+
+.modal-custom .modal-body {
+  padding: 24px;
+}
+
+.modal-custom .modal-footer {
+  border-top: 1px solid var(--border-color);
+  padding: 16px 20px;
+}
+
+/* Tailwind-style mapping utilities for Brand Logo styling */
+.w-10 {
+  width: 40px;
+}
+.h-10 {
+  height: 40px;
+}
+.w-6 {
+  width: 24px;
+}
+.h-6 {
+  height: 24px;
+}
+.bg-brand-yellow {
+  background-color: var(--brand-yellow) !important;
+}
+.text-brand-green-dark {
+  color: var(--brand-green-dark) !important;
+}
+.rounded-xl {
+  border-radius: var(--radius) !important;
+}
+
+/* === Modal Overlay & Box === */
+.arp-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 1050;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.3s ease,
+    visibility 0.3s ease;
+  backdrop-filter: blur(2px);
+  padding: 1rem;
+}
+
+.arp-modal-overlay.show {
+  opacity: 1;
+  visibility: visible;
+}
+
+.arp-modal-box {
+  background-color: var(--card-bg, #ffffff);
+  width: 100%;
+  max-width: 500px;
+  border-radius: var(--radius, 12px);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  transform: scale(0.95) translateY(-10px);
+  transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  display: flex;
+  flex-direction: column;
+  max-height: 90vh;
+}
+
+.arp-modal-overlay.show .arp-modal-box {
+  transform: scale(1) translateY(0);
+}
+
+.arp-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 20px;
+  border-bottom: 1px solid var(--border-color, #e2e8f0);
+}
+
+.arp-modal-close {
+  background: transparent;
+  border: none;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: var(--text-light, #94a3b8);
+  cursor: pointer;
+  transition: color 0.2s ease;
+  padding: 0;
+  margin-top: -4px;
+}
+
+.arp-modal-close:hover {
+  color: var(--danger, #e74c3c);
+}
+
+.arp-modal-body {
+  padding: 20px;
+  overflow-y: auto;
+}
+
+/* Table Card Toolbar (Title + Search + Action Button) */
+.table-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 1.25rem;
+}
+
+.table-toolbar .table-toolbar-title {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.table-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.table-toolbar-actions .search-box-container {
+  width: 240px;
+  max-width: 100%;
+}
+/* Modifier: stack title on its own row, actions (search/filter/button) below it */
+.table-toolbar-stack {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.table-toolbar-stack .table-toolbar-actions {
+  margin-left: 0;
+  width: 100%;
+}
+
+/* ==========================================================================
+   Tab Navigation (Reusable)
+   Struktur HTML:
+   <div class="arp-tab-group">
+       <div class="arp-tab-nav">
+           <button type="button" class="arp-tab-btn active" data-tab-target="panelA" onclick="switchTab('panelA', this)">Tab A</button>
+           <button type="button" class="arp-tab-btn" data-tab-target="panelB" onclick="switchTab('panelB', this)">Tab B</button>
+       </div>
+       <div class="row g-4">
+           <div class="col-12 arp-tab-panel" id="panelA">...</div>
+           <div class="col-12 arp-tab-panel" id="panelB" style="display:none;">...</div>
+       </div>
+   </div>
+   ========================================================================== */
+.arp-tab-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    border-bottom: 2px solid var(--border-color);
+    margin-bottom: var(--spacing, 20px);
+    overflow-x: visible;
+}
+
+/* Tombol icon "Bukti" di dalam tabel absensi (buka preview foto) */
+.btn-icon-bukti {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color, #e2e8f0);
+    background: var(--bg-glass, #f1f5f9);
+    color: var(--primary, #3b82f6);
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease;
+}
+
+.btn-icon-bukti:hover {
+    background: var(--primary, #3b82f6);
+    color: #fff;
+}
+
+/* Tombol icon "Kembali" — reuse pola .btn-icon-bukti, bentuk bulat */
+.btn-icon-back {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 1px solid var(--border-color, #e2e8f0);
+    background: var(--bg-glass, #f1f5f9);
+    color: var(--text-secondary, #64748b);
+    cursor: pointer;
+    text-decoration: none;
+    flex-shrink: 0;
+    transition: background var(--transition, 0.2s ease), color var(--transition, 0.2s ease);
+}
+
+.btn-icon-back:hover {
+    background: var(--primary, #3b82f6);
+    color: #fff;
+}
+
+/* Gambar bukti foto di dalam modal preview */
+.arp-bukti-foto-preview {
+    max-width: 100%;
+    max-height: 60vh;
+    border-radius: 10px;
+    border: 1px solid var(--border-color, #e2e8f0);
+}
+
+.arp-tab-btn {
+    display: flex;
+    align-items: center;
+    background: transparent;
+    border: none;
+    padding: 12px 20px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+    white-space: nowrap;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+    transition: color var(--transition, 0.2s ease), border-color var(--transition, 0.2s ease);
+}
+
+.arp-tab-btn:hover {
+    color: var(--primary);
+}
+
+.arp-tab-btn.active {
+    color: var(--primary);
+    border-bottom-color: var(--primary);
+}
+
+@media (max-width: 576px) {
+    .arp-tab-btn {
+        padding: 10px 14px;
+    }
+}
+
+/* Dropdown Filter Kategori (Tab Gudang Barang) */
+.arp-dropdown-kategori {
+    position: relative;
+    display: inline-block;
+}
+
+.arp-dropdown-kategori-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: var(--input-height);
+    background: var(--bg-body);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0 14px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: border-color var(--transition), color var(--transition);
+}
+
+.arp-dropdown-kategori-btn:hover,
+.arp-dropdown-kategori-btn.open {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+.arp-dropdown-kategori-btn .bi-chevron-down {
+    transition: transform var(--transition);
+    font-size: 0.75rem;
+}
+
+.arp-dropdown-kategori-btn.open .bi-chevron-down {
+    transform: rotate(180deg);
+}
+
+.arp-dropdown-kategori-menu {
+    display: none;
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 50;
+    min-width: 240px;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    padding: 6px;
+}
+
+.arp-dropdown-kategori-menu.show {
+    display: block;
+}
+
+.arp-dropdown-kategori-item {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    padding: 9px 10px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-decoration: none;
+    cursor: pointer;
+    transition: background var(--transition), color var(--transition);
+}
+
+.arp-dropdown-kategori-item:hover {
+    background: var(--hover-overlay);
+    color: var(--primary);
+}
+
+.arp-dropdown-kategori-item.active {
+    background: rgba(27, 99, 196, 0.08);
+    color: var(--primary);
+}
+
+.arp-dropdown-kategori-item .badge-secondary {
+    margin-left: auto;
+}
+
+/* ==========================================================================
+   Buat Surat — 2 Kolom Grid (Reusable)
+   Dipakai di admin/surat.php, ahlik3/surat.php, it/surat.php pada tab
+   "Buat Surat" (form di kiri, Pratinjau Data ke Template Word di kanan).
+
+   Struktur HTML:
+   <div class="buat-surat-grid">
+       <section class="card-box">...form buat surat...</section>
+       <section class="card-box">...pratinjau data ke template...</section>
+   </div>
+
+   Catatan: "min-width: 0" pada child WAJIB ada — tanpa ini, konten lebar
+   di kolom kiri (mis. tabel Rincian Item) akan memaksa track grid melebar
+   melebihi jatah 1.4fr-nya dan mendorong kolom kanan (Pratinjau) sampai
+   keluar/tidak terlihat.
+   ========================================================================== */
+.buat-surat-grid {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 1.25rem;
+    align-items: start;
+}
+
+.buat-surat-grid > section {
+    min-width: 0;
+}
+
+@media (max-width: 992px) {
+    .buat-surat-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ==========================================================================
+   BUAT SURAT — Field readonly, blok list berulang, preview data, ringkasan
+   total. Dipakai di admin/surat.php, ahlik3/surat.php, it/surat.php pada
+   tab "Buat Surat".
+   ========================================================================== */
+.field-readonly {
+    background: var(--bg-glass);
+    color: var(--text-secondary);
+    cursor: not-allowed;
+}
+
+.blok-box {
+    border: 1px solid var(--border-color, #e5e7eb);
+    border-radius: .5rem;
+    padding: .9rem;
+}
+
+.blok-baris {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+    align-items: center;
+    margin-bottom: .5rem;
+}
+
+.blok-baris .form-control-custom {
+    flex: 1 1 160px;
+    min-width: 0;
+}
+
+.preview-kv td {
+    padding: .45rem .1rem;
+    border-bottom: 1px solid #f3f4f6;
+    vertical-align: top;
+    font-size: .85rem;
+}
+
+.preview-kv td:first-child {
+    color: var(--text-secondary);
+    font-weight: 600;
+    width: 42%;
+}
+
+.ringkasan-total-row {
+    display: flex;
+    justify-content: space-between;
+    padding: .35rem 0;
+    font-size: .85rem;
+}
+
+.ringkasan-total-row.total-bayar {
+    border-top: 1px solid #e5e7eb;
+    margin-top: .25rem;
+    padding-top: .55rem;
+    font-weight: 700;
+    color: var(--success);
+}
+
+.text-xs {
+    font-size: .78rem;
+}
+
+/* ==========================================================================
+   NOMOR SURAT GROUP — kotak "No Urut" (bisa diedit) + suffix otomatis
+   "/KODE/ARP/BULAN/TAHUN" (readonly), disejajarkan jadi satu baris input.
+
+   Dipakai di admin/surat.php, ahlik3/surat.php, it/surat.php pada form
+   "Buat Surat", tab No Urut Surat.
+
+   Struktur HTML:
+   <div class="nomor-surat-group">
+       <input type="text" name="no_urut_manual" class="form-control-custom nomor-surat-input">
+       <div class="form-control-custom nomor-surat-suffix">/KODE/ARP/BULAN/TAHUN</div>
+   </div>
+
+   Catatan: suffix WAJIB pakai <div> (bukan <span>) karena
+   .form-control-custom mengandalkan height & width:100% yang cuma
+   berlaku benar pada elemen block/flex, bukan elemen inline seperti
+   <span> — itu sebabnya dulu kotaknya terlihat tidak sejajar.
+   ========================================================================== */
+.nomor-surat-group {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+}
+
+.nomor-surat-input {
+    flex: 0 0 auto;
+    width: 110px;
+    font-family: monospace;
+}
+
+.nomor-surat-suffix {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    font-family: monospace;
+    white-space: nowrap;
+    overflow-x: auto;
+}
+
+.avatar-initial {
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  user-select: none;
+  border: 2px solid var(--border-color);
+  cursor: pointer;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.avatar-img {
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--border-color);
+  cursor: pointer;
+  transition: border-color var(--transition);
+  flex-shrink: 0;
+}
+
+.avatar-img:hover {
+  border-color: var(--primary);
+}
+
+.profile-avatar-wrap {
+  position: relative;
+  width: 110px;
+  height: 110px;
+  margin: 0 auto 1rem;
+}
+
+.profile-avatar-wrap .avatar-img,
+.profile-avatar-wrap .avatar-initial {
+  width: 110px !important;
+  height: 110px !important;
+  font-size: 2.2rem !important;
+  cursor: default;
+}
+
+.avatar-camera-btn {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  border: 3px solid var(--card-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 0.95rem;
+  transition: background var(--transition);
+}
+
+.avatar-camera-btn:hover {
+  background: var(--primary-hover);
+}
+
+.avatar-remove-link {
+  display: inline-block;
+  margin-top: 0.25rem;
+  font-size: 0.78rem;
+  color: var(--danger);
+  cursor: pointer;
+  text-decoration: underline;
+  background: none;
+  border: none;
+}
+
+/* Extra Badge Variants */
+.badge-info,
+.badge-secondary {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border-radius: 20px;
+    text-transform: capitalize;
+}
+
+.badge-info {
+    background-color: rgba(27, 99, 196, 0.12);
+    color: var(--primary);
+}
+
+.badge-secondary {
+    background-color: rgba(100, 116, 139, 0.12);
+    color: var(--secondary);
+}
+
+/* Upload Dropzone */
+.upload-dropzone {
+  width: 100%;
+  border: 2px dashed var(--border-color);
+  border-radius: var(--radius);
+  background-color: #f8fafc;
+  padding: 28px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 10px;
+  transition: all var(--transition);
+  cursor: pointer;
+}
+
+.upload-dropzone:hover,
+.upload-dropzone.dragover {
+  border-color: var(--primary);
+  background-color: rgba(27, 99, 196, 0.04);
+}
+
+.upload-dropzone-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background-color: #eef2f7;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+}
+
+.upload-dropzone-filelist {
+  width: 100%;
+  text-align: left;
+  margin-top: 4px;
+}
+
+.upload-dropzone-filelist .file-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background-color: #ffffff;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 0.82rem;
+  color: var(--text-primary);
+  margin-top: 8px;
+}
+
+/* Status Summary List (dot + label + count) */
+.status-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.status-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.88rem;
+}
+
+.status-list-item .status-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.status-list-item .status-value {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+.status-dot.dot-warning { background-color: var(--warning); }
+.status-dot.dot-info { background-color: var(--primary); }
+.status-dot.dot-primary { background-color: #f1c40f; }
+.status-dot.dot-success { background-color: var(--success); }
+.status-dot.dot-danger { background-color: var(--danger); }
+
+/* Simple Document / Activity List */
+.doc-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 4px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.doc-list-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.doc-list-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background-color: rgba(27, 99, 196, 0.1);
+  color: var(--primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.doc-list-info {
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.doc-list-title {
+  font-weight: 600;
+  font-size: 0.88rem;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.doc-list-subtitle {
+  font-size: 0.78rem;
+  color: var(--text-light);
+}
+
+/* Illustration Box (used in "nearest schedule" style cards) */
+.illustration-box {
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius);
+  background-color: rgba(241, 196, 15, 0.15);
+  color: var(--warning-hover);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.8rem;
+  flex-shrink: 0;
+}
+
+/* Date input icon wrapper */
+.date-input-wrapper {
+  position: relative;
+}
+
+.date-input-wrapper i {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-light);
+  pointer-events: none;
+}
+
+.date-input-wrapper input[type="date"] {
+  padding-left: 42px;
+}
+
+/* Readonly / disabled form fields */
+.form-control-custom[readonly],
+.form-control-custom:disabled,
+.select-custom:disabled {
+    background-color: #f1f5f9;
+    color: var(--text-secondary);
+    cursor: not-allowed;
+}
+
+.arp-suggestion-box {
+    position: absolute;
+    top: calc(var(--input-height) + 4px);
+    left: 0;
+    right: 0;
+    background: #fff;
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: var(--radius, 8px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+    max-height: 220px;
+    overflow-y: auto;
+    z-index: 2000;
+}
+.arp-suggestion-item {
+    padding: 10px 14px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    border-bottom: 1px solid #f1f5f9;
+}
+.arp-suggestion-item:last-child { border-bottom: none; }
+.arp-suggestion-item:hover {
+    background-color: #f1f5f9;
+    color: var(--primary);
+}
+.arp-suggestion-empty {
+    padding: 10px 14px;
+    font-size: 0.85rem;
+    color: var(--text-secondary, #64748b);
+}
+
+
+/* ===== Kalender Jadwal Riksa (versi besar dengan label tanggal) ===== */
+.cal-nav-btn {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.calendar-weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    text-align: center;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-secondary, #64748b);
+    padding: 10px 0 6px;
+}
+.calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 6px;
+}
+.calendar-day {
+    position: relative;
+    min-height: 56px;
+    border-radius: var(--radius, 10px);
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    cursor: pointer;
+    color: var(--text-primary, #1e293b);
+    background: #f8fafc;
+    overflow: visible;
+    transition: background-color .15s ease, color .15s ease;
+}
+.calendar-day.empty {
+    background: transparent;
+    cursor: default;
+}
+.calendar-day:not(.empty):hover {
+    background: #e2e8f0;
+}
+.calendar-day .day-number {
+    font-size: 0.9rem;
+    font-weight: 700;
+    margin-bottom: 4px;
+}
+.calendar-day.today {
+    border: 1.5px solid var(--primary, #2563eb);
+}
+.calendar-day.today .day-number {
+    color: var(--primary, #2563eb);
+}
+.calendar-day.selected {
+    background: var(--primary, #2563eb) !important;
+}
+.calendar-day.selected .day-number,
+.calendar-day.selected .day-event-item,
+.calendar-day.selected .day-event-more {
+    color: #fff !important;
+}
+.calendar-day .day-events {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    gap: 3px;
+    overflow: hidden;
+}
+.calendar-day .day-event-item {
+    font-size: 0.6rem;
+    line-height: 1.2;
+    background: rgba(37, 99, 235, 0.12);
+    color: var(--primary, #2563eb);
+    padding: 1px 5px;
+    border-radius: 10px;
+    flex: 0 1 auto;
+    max-width: 70px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.calendar-day.selected .day-event-item {
+    background: rgba(255, 255, 255, 0.25);
+}
+.calendar-day .day-event-more {
+    font-size: 0.6rem;
+    color: var(--text-secondary, #64748b);
+}
+.calendar-legend {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.75rem;
+    color: var(--text-secondary, #64748b);
+    margin-top: 10px;
+}
+.legend-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 3px;
+    background: rgba(37, 99, 235, 0.5);
+    display: inline-block;
+}
+
+/* ===== Daftar Riksa Aktif ===== */
+.riksa-subtitle {
+    font-size: 0.85rem;
+    color: var(--text-secondary, #64748b);
+    margin: -4px 0 12px;
+}
+.daftar-riksa-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 560px;
+    overflow-y: auto;
+    padding-right: 2px;
+}
+.riksa-card {
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: var(--radius, 8px);
+    padding: 14px 16px;
+}
+.riksa-jam {
+    font-weight: 700;
+    color: var(--primary, #2563eb);
+    font-size: 0.85rem;
+    margin-bottom: 6px;
+}
+.riksa-client {
+    font-weight: 700;
+    font-size: 0.95rem;
+    text-transform: uppercase;
+    letter-spacing: .2px;
+}
+.riksa-ahli, .riksa-lokasi {
+    font-size: 0.82rem;
+    color: var(--text-secondary, #64748b);
+    margin-top: 2px;
+}
+.riksa-dibuat {
+    font-size: 0.75rem;
+    color: var(--text-secondary, #94a3b8);
+    margin-top: 4px;
+    font-style: italic;
+}
+.riksa-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 10px;
+}
+.riksa-empty {
+    text-align: center;
+    color: var(--text-secondary, #64748b);
+    padding: 40px 10px;
+    font-size: 0.9rem;
+}
+
+.riksa-ahli {
+    display: flex;
+    align-items: flex-start;
+    font-size: 0.82rem;
+    color: var(--text-secondary, #64748b);
+    margin-top: 2px;
+}
+.riksa-label {
+    flex: 0 0 90px;
+    font-weight: 600;
+    color: var(--text-secondary, #64748b);
+}
+
+.riksa-value {
+    flex: 1;
+}
+/* ===== Global Page Loader =====
+   Loader HANYA menutupi area konten (di bawah topbar, di kanan sidebar),
+   supaya sidebar & navbar tetap terlihat stabil selama loading — jadi
+   loading terasa "menyatu di dalam halaman itu", bukan menutupi seluruh
+   layar (termasuk sidebar) yang bikin transisi terasa tiba-tiba/kaget. */
+   .page-loader {
+    position: fixed;
+    top: var(--header-height);
+    left: var(--sidebar-width);
+    right: 0;
+    bottom: 0;
+    z-index: 500; /* di bawah sidebar (1040) & topbar (1030), jadi tidak menutupinya */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-body);
+    opacity: 1;
+    visibility: visible;
+    transition: opacity 0.25s ease, visibility 0.25s ease;
+}
+@media (max-width: 768px) {
+    /* Di mobile, sidebar jadi drawer (tidak makan tempat), jadi loader
+       penuh dari kiri layar, tetap di bawah topbar. */
+    .page-loader {
+        left: 0;
+    }
+}
+.page-loader.is-hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+.page-loader-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+.page-loader-logo {
+  width: 60px;
+  height: 60px;
+  object-fit: contain;
+  animation: page-loader-pulse 1.4s ease-in-out infinite;
+}
+.page-loader-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--border-color);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: page-loader-spin 0.8s linear infinite;
+}
+.page-loader-text {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.2px;
+}
+@keyframes page-loader-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes page-loader-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.06); opacity: 0.85; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .page-loader-logo, .page-loader-spinner { animation: none; }
+}
