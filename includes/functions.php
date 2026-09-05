@@ -109,7 +109,7 @@ function generateNomorSurat(PDO $pdo, int $kode_id): string
 // GENERATE NOMOR AGENDA OTOMATIS (arsip internal, terpisah untuk
 // Surat Masuk & Surat Keluar, reset tiap tahun).
 // Butuh tabel `agenda_counter` (lihat migrasi SQL):
-//   CREATE TABLE Agenda_Counter(
+//   CREATE TABLE Agenda_Counter (
 //       id INT PRIMARY KEY AUTO_INCREMENT,
 //       tahun INT NOT NULL,
 //       arah ENUM('Masuk','Keluar') NOT NULL,
@@ -128,7 +128,7 @@ function generateNomorAgenda(PDO $pdo, string $arah): string
 
     // Kunci baris counter tahun ini (kalau sudah ada) supaya aman dari race condition
     // ketika dua surat disimpan hampir bersamaan.
-    $stmt = $pdo->prepare("SELECT counter FROM Agenda_CounterWHERE tahun = ? AND arah = ? FOR UPDATE");
+    $stmt = $pdo->prepare("SELECT counter FROM Agenda_Counter WHERE tahun = ? AND arah = ? FOR UPDATE");
     $stmt->execute([$tahun, $arah]);
     $counterLama = $stmt->fetchColumn();
 
@@ -136,20 +136,20 @@ function generateNomorAgenda(PDO $pdo, string $arah): string
         // Belum ada baris counter untuk tahun & arah ini -> buat baru mulai dari 1
         $counter = 1;
         try {
-            $pdo->prepare("INSERT INTO Agenda_Counter(tahun, arah, counter) VALUES (?, ?, ?)")
+            $pdo->prepare("INSERT INTO Agenda_Counter (tahun, arah, counter) VALUES (?, ?, ?)")
                 ->execute([$tahun, $arah, $counter]);
         } catch (\Throwable $e) {
             // Kemungkinan baris sudah dibuat oleh proses lain di antara SELECT & INSERT
             // (race condition) -> ambil ulang & increment lewat UPDATE di bawah.
-            $stmtUlang = $pdo->prepare("SELECT counter FROM Agenda_CounterWHERE tahun = ? AND arah = ? FOR UPDATE");
+            $stmtUlang = $pdo->prepare("SELECT counter FROM Agenda_Counter WHERE tahun = ? AND arah = ? FOR UPDATE");
             $stmtUlang->execute([$tahun, $arah]);
             $counter = (int) $stmtUlang->fetchColumn() + 1;
-            $pdo->prepare("UPDATE Agenda_CounterSET counter = ? WHERE tahun = ? AND arah = ?")
+            $pdo->prepare("UPDATE Agenda_Counter SET counter = ? WHERE tahun = ? AND arah = ?")
                 ->execute([$counter, $tahun, $arah]);
         }
     } else {
         $counter = (int) $counterLama + 1;
-        $pdo->prepare("UPDATE Agenda_CounterSET counter = ? WHERE tahun = ? AND arah = ?")
+        $pdo->prepare("UPDATE Agenda_Counter SET counter = ? WHERE tahun = ? AND arah = ?")
             ->execute([$counter, $tahun, $arah]);
     }
 
