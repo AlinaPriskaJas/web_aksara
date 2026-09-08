@@ -19,6 +19,7 @@ if (!defined('BASE_PATH')) {
 require_once "../includes/functions.php";
 require_once "../includes/drive_helper.php";
 require_once "../includes/dokumen_helper.php";
+require_once "../includes/surat_import_helper.php";
 
 $page_title = "Manajemen Surat";
 $current_user_id = $_SESSION['user_id'];
@@ -992,6 +993,361 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'catat_s
     suratRedirect('surat_masuk');
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'edit_metadata_surat') {
+    $tabTujuanEditMeta = 'surat_keluar';
+    try {
+        $suratId = (int) ($_POST['surat_id'] ?? 0);
+
+        $cek = $pdo->prepare("SELECT * FROM Surat WHERE id = ?");
+        $cek->execute([$suratId]);
+        $suratLama = $cek->fetch();
+        if (!$suratLama) {
+            throw new RuntimeException("Surat tidak ditemukan.");
+        }
+        if (!empty($suratLama['template_id'])) {
+            throw new RuntimeException("Surat ini dibuat dari template, gunakan tombol Edit Surat untuk mengubahnya.");
+        }
+
+        $tabTujuanEditMeta = ($suratLama['arah'] === 'Masuk') ? 'surat_masuk' : 'surat_keluar';
+
+        $nomorBaru = trim($_POST['nomor'] ?? '');
+        $kodeIdBaru = (int) ($_POST['kode_id'] ?? 0);
+        $perihalBaru = trim($_POST['perihal'] ?? '') ?: '-';
+        $tujuanBaru = trim($_POST['tujuan'] ?? '') ?: '-';
+        $tanggalBaru = trim($_POST['tgl_dibuat'] ?? '');
+
+        if ($nomorBaru === '') {
+            throw new RuntimeException("Nomor surat wajib diisi.");
+        }
+        if ($kodeIdBaru <= 0) {
+            throw new RuntimeException("Jenis surat wajib dipilih.");
+        }
+        if ($tanggalBaru === '' || !strtotime($tanggalBaru)) {
+            throw new RuntimeException("Tanggal surat tidak valid.");
+        }
+
+        $cekKode = $pdo->prepare("SELECT id FROM Kode_Surat WHERE id = ?");
+        $cekKode->execute([$kodeIdBaru]);
+        if (!$cekKode->fetchColumn()) {
+            throw new RuntimeException("Jenis surat yang dipilih tidak ditemukan.");
+        }
+
+        $cekNomorDup = $pdo->prepare("SELECT id FROM Surat WHERE nomor = ? AND id != ?");
+        $cekNomorDup->execute([$nomorBaru, $suratId]);
+        if ($cekNomorDup->fetch()) {
+            throw new RuntimeException("Nomor surat \"{$nomorBaru}\" sudah dipakai surat lain.");
+        }
+
+        $pdo->prepare("UPDATE Surat SET nomor = ?, kode_id = ?, perihal = ?, tujuan = ?, tgl_dibuat = ?, tanggal_diterima = ? WHERE id = ?")
+            ->execute([
+                $nomorBaru,
+                $kodeIdBaru,
+                $perihalBaru,
+                $tujuanBaru,
+                $tanggalBaru,
+                $suratLama['arah'] === 'Masuk' ? $tanggalBaru : $suratLama['tanggal_diterima'],
+                $suratId,
+            ]);
+
+        catatAudit(
+            $pdo,
+            'Surat',
+            'Edit Data Surat',
+            "Mengubah data surat #{$suratId} ({$nomorBaru})",
+            $suratLama,
+            ['nomor' => $nomorBaru, 'kode_id' => $kodeIdBaru, 'perihal' => $perihalBaru, 'tujuan' => $tujuanBaru, 'tgl_dibuat' => $tanggalBaru]
+        );
+
+        $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Data surat berhasil diperbarui.'];
+    } catch (Throwable $e) {
+        $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Gagal memperbarui data surat: ' . $e->getMessage()];
+    }
+    suratRedirect($tabTujuanEditMeta);
+}
+
+// ==========================================
+// [TAB: SURAT] IMPORT SURAT (BULK) - LANGKAH 1: UPLOAD & BACA OTOMATIS
+// ==========================================
+// Folder sementara tempat menyimpan file yang baru diupload SEBELUM
+// admin menekan "Simpan Semua" di layar preview. Dihapus lagi setelah
+// commit/batal, atau otomatis dibersihkan kalau kadaluarsa (lihat
+// arp_import_bersihkan_batch_lama di includes/surat_import_helper.php).
+define('ARP_IMPORT_TMP_DIR', BASE_PATH . '/storage/tmp_import');
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'import_surat_preview') {
+    try {
+        arp_import_bersihkan_batch_lama(ARP_IMPORT_TMP_DIR);
+
+        $arahDefault = in_array($_POST['arah_default'] ?? '', ['Masuk', 'Keluar'], true) ? $_POST['arah_default'] : 'Keluar';
+        $kodeIdDefault = (int) ($_POST['kode_id_default'] ?? 0);
+
+        if (empty($_FILES['berkas_import']['name'][0])) {
+            throw new RuntimeException('Pilih minimal 1 file (.docx/.pdf) untuk diimpor.');
+        }
+
+        if (!is_dir(ARP_IMPORT_TMP_DIR) && !mkdir(ARP_IMPORT_TMP_DIR, 0775, true) && !is_dir(ARP_IMPORT_TMP_DIR)) {
+            throw new RuntimeException('Gagal menyiapkan folder sementara di server (periksa izin folder storage/).');
+        }
+
+        $batchId = bin2hex(random_bytes(8));
+        $batchDir = ARP_IMPORT_TMP_DIR . '/' . $batchId;
+        if (!mkdir($batchDir, 0775, true)) {
+            throw new RuntimeException('Gagal membuat folder sementara untuk batch import ini.');
+        }
+
+        $jumlahFile = count($_FILES['berkas_import']['name']);
+        $baris = [];
+        $dilewati = [];
+
+        for ($i = 0; $i < $jumlahFile; $i++) {
+            $namaAsli = $_FILES['berkas_import']['name'][$i] ?? '';
+            if ($namaAsli === '') {
+                continue;
+            }
+            if (($_FILES['berkas_import']['error'][$i] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+                $dilewati[] = ['nama' => $namaAsli, 'alasan' => 'Gagal diupload (error saat transfer).'];
+                continue;
+            }
+
+            $ekstensi = strtolower(pathinfo($namaAsli, PATHINFO_EXTENSION));
+            if (!in_array($ekstensi, ['docx', 'pdf'], true)) {
+                $dilewati[] = ['nama' => $namaAsli, 'alasan' => 'Format tidak didukung (hanya .docx dan .pdf).'];
+                continue;
+            }
+
+            $ukuran = (int) ($_FILES['berkas_import']['size'][$i] ?? 0);
+            if ($ukuran > ARP_DRIVE_MAX_FILESIZE_DOKUMEN) {
+                $dilewati[] = ['nama' => $namaAsli, 'alasan' => 'Ukuran melebihi ' . round(ARP_DRIVE_MAX_FILESIZE_DOKUMEN / 1024 / 1024) . ' MB.'];
+                continue;
+            }
+
+            $namaSimpan = sprintf('%02d_%s.%s', $i, bin2hex(random_bytes(4)), $ekstensi);
+            $pathSimpan = $batchDir . '/' . $namaSimpan;
+            if (!move_uploaded_file($_FILES['berkas_import']['tmp_name'][$i], $pathSimpan)) {
+                $dilewati[] = ['nama' => $namaAsli, 'alasan' => 'Gagal menyimpan file sementara di server.'];
+                continue;
+            }
+
+            $hasilBaca = arp_import_ekstrak_teks($pathSimpan, $ekstensi);
+            $deteksi = arp_import_parse_semua($hasilBaca['teks'] ?? '');
+
+            $baris[] = [
+                'file_simpan' => $namaSimpan,
+                'nama_asli' => $namaAsli,
+                'ekstensi' => $ekstensi,
+                'arah' => $arahDefault,
+                'kode_id' => $kodeIdDefault,
+                'nomor' => $deteksi['nomor'] ?? '',
+                'perihal' => $deteksi['perihal'] ?? '',
+                'tujuan' => $deteksi['tujuan'] ?? '',
+                'tanggal' => $deteksi['tanggal'] ?? date('Y-m-d'),
+                'parse_ok' => $hasilBaca['ok'],
+                'pesan' => $hasilBaca['error'],
+                'confidence' => $hasilBaca['confidence'],
+            ];
+        }
+
+        if (empty($baris)) {
+            arp_import_hapus_folder($batchDir);
+            $pesanDilewati = !empty($dilewati) ? (' Penyebab: ' . implode('; ', array_map(static fn($d) => $d['nama'] . ' - ' . $d['alasan'], $dilewati))) : '';
+            throw new RuntimeException('Tidak ada file valid yang bisa diproses.' . $pesanDilewati);
+        }
+
+        $_SESSION['arp_import_preview'] = [
+            'batch_id' => $batchId,
+            'batch_dir' => $batchDir,
+            'dibuat_pada' => time(),
+            'baris' => $baris,
+            'dilewati' => $dilewati,
+        ];
+    } catch (Throwable $e) {
+        $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Gagal memproses import: ' . $e->getMessage()];
+    }
+    suratRedirect('surat_keluar');
+}
+
+// ==========================================
+// [TAB: SURAT] IMPORT SURAT (BULK) - BATALKAN (buang file sementara)
+// ==========================================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'import_surat_batal') {
+    $previewLama = $_SESSION['arp_import_preview'] ?? null;
+    if ($previewLama && !empty($previewLama['batch_dir'])) {
+        arp_import_hapus_folder($previewLama['batch_dir']);
+    }
+    unset($_SESSION['arp_import_preview']);
+    $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Import surat dibatalkan.'];
+    suratRedirect('surat_keluar');
+}
+
+// ==========================================
+// [TAB: SURAT] IMPORT SURAT (BULK) - LANGKAH 2: SIMPAN SEMUA KE DATABASE + DRIVE
+// ==========================================
+// Nomor surat DIAMBIL dari hasil bacaan/koreksi manual admin (bukan digenerate
+// otomatis) -- karena surat yang diimport adalah surat yang sudah punya nomor
+// resmi sendiri sebelum masuk ke sistem ini.
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'import_surat_commit') {
+    $previewAktif = $_SESSION['arp_import_preview'] ?? null;
+
+    if (!$previewAktif) {
+        $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Sesi import sudah tidak ditemukan (mungkin sudah kadaluarsa). Silakan upload ulang.'];
+        suratRedirect('surat_keluar');
+    }
+
+    $sertakanPost = $_POST['sertakan'] ?? [];
+    $arahPost = $_POST['arah'] ?? [];
+    $kodePost = $_POST['kode_id'] ?? [];
+    $nomorPost = $_POST['nomor'] ?? [];
+    $perihalPost = $_POST['perihal'] ?? [];
+    $tujuanPost = $_POST['tujuan'] ?? [];
+    $tanggalPost = $_POST['tanggal'] ?? [];
+
+    $jumlahBerhasil = 0;
+    $daftarGagal = [];
+
+    foreach ($previewAktif['baris'] as $barisImport) {
+        $kunci = $barisImport['file_simpan'];
+        if (empty($sertakanPost[$kunci])) {
+            continue; // Admin tidak mencentang "Sertakan" untuk baris ini -> lewati.
+        }
+
+        try {
+            $arah = in_array($arahPost[$kunci] ?? '', ['Masuk', 'Keluar'], true) ? $arahPost[$kunci] : 'Keluar';
+            $kodeId = (int) ($kodePost[$kunci] ?? 0);
+            $nomor = trim((string) ($nomorPost[$kunci] ?? ''));
+            $perihal = trim((string) ($perihalPost[$kunci] ?? '')) ?: '-';
+            $tujuan = trim((string) ($tujuanPost[$kunci] ?? '')) ?: '-';
+            $tanggal = $tanggalPost[$kunci] ?? date('Y-m-d');
+
+            if ($nomor === '') {
+                throw new RuntimeException('Nomor surat wajib diisi (tidak berhasil dibaca otomatis, isi manual).');
+            }
+            if ($kodeId <= 0) {
+                throw new RuntimeException('Jenis surat wajib dipilih.');
+            }
+
+            $pathFile = $previewAktif['batch_dir'] . '/' . $kunci;
+            if (!is_file($pathFile)) {
+                throw new RuntimeException('File sumber tidak ditemukan lagi di server (sesi mungkin sudah kadaluarsa).');
+            }
+
+            $mimeType = $barisImport['ekstensi'] === 'pdf'
+                ? 'application/pdf'
+                : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+            // Ambil kode + nama jenis surat dari Kode_Surat yang dipilih admin di layar
+// preview, supaya folder Drive & penamaan file konsisten dengan jenis surat
+// yang sebenarnya -- persis seperti saat "Buat Surat" (generate_surat).
+            $stmtKodeInfoImport = $pdo->prepare("SELECT kode, nama FROM Kode_Surat WHERE id = ?");
+            $stmtKodeInfoImport->execute([$kodeId]);
+            $kodeInfoImport = $stmtKodeInfoImport->fetch();
+            if (!$kodeInfoImport) {
+                throw new RuntimeException('Jenis surat yang dipilih tidak ditemukan di database.');
+            }
+            $kodeStrImport = strtoupper(trim($kodeInfoImport['kode']));
+
+            // (1) Subfolder Drive ikut Kode Surat yang dipilih, sama seperti hasil
+            // generate surat baru: Surat_{Arah}/{Nama Jenis Surat}/{Tahun}/{Bulan}.
+            // Pakai tanggal SURAT ASLI (bukan tanggal hari ini import dijalankan) supaya
+            // surat lama tetap masuk ke folder tahun/bulan yang sesuai.
+            $tanggalUntukFolder = null;
+            try {
+                $tanggalUntukFolder = new DateTime($tanggal);
+            } catch (Throwable $eTgl) {
+                $tanggalUntukFolder = new DateTime();
+            }
+            $kategoriDrive = arp_kategori_surat($kodeInfoImport['nama'], $arah, $tanggalUntukFolder);
+
+            // (2) Nama file di Drive: "No Urut. NAMA JENIS SURAT Nama Perusahaan"
+            // Ambil hanya nomor urutnya saja (segmen sebelum "/" pertama), bukan
+            // nomor lengkap yang masih ada /ARP/.../tahun -- fallback ke nomor
+            // utuh kalau formatnya bukan "angka/....".
+            $noUrutUntukFileImport = explode('/', $nomor)[0] ?? $nomor;
+            if (!ctype_digit($noUrutUntukFileImport)) {
+                $noUrutUntukFileImport = $nomor;
+            }
+            $namaJenisSuratUntukFile = mb_strtoupper($kodeInfoImport['nama']);
+            $namaPerusahaanUntukFile = $tujuan !== '-' ? $tujuan : pathinfo($barisImport['nama_asli'], PATHINFO_FILENAME);
+            $namaFileMentahImport = $noUrutUntukFileImport . '. ' . $namaJenisSuratUntukFile . ' ' . $namaPerusahaanUntukFile;
+            $namaFileDrive = trim(preg_replace('/[\\\\\/:*?"<>|]+/', '_', $namaFileMentahImport)) . '.' . $barisImport['ekstensi'];
+
+            $hasilDrive = arp_upload_ke_drive($pathFile, $namaFileDrive, $mimeType, 0, $kategoriDrive);
+            if (!$hasilDrive || empty($hasilDrive['link'])) {
+                throw new RuntimeException('Gagal mengunggah ke Google Drive: ' . arp_drive_last_error());
+            }
+
+            $pdo->beginTransaction();
+
+            $nomorAgenda = generateNomorAgenda($pdo, $arah);
+            // Surat impor mewakili surat yang SUDAH ADA & sudah berjalan sebelum
+            // dicatat di sistem ini, jadi statusnya langsung final (bukan Draft/Baru
+            // yang menyiratkan masih perlu diproses).
+            $statusAwal = $arah === 'Masuk' ? 'Diarsipkan' : 'Terkirim';
+
+            $insert = $pdo->prepare("INSERT INTO Surat
+                (nomor_agenda, nomor, kode_id, template_id, perihal, status, arah, tujuan, dibuat_oleh, tgl_dibuat, tanggal_diterima, file_hasil, drive_file_id, drive_link, isi_data)
+                VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $insert->execute([
+                $nomorAgenda,
+                $nomor,
+                $kodeId,
+                $perihal,
+                $statusAwal,
+                $arah,
+                $tujuan,
+                $current_user_id,
+                $tanggal,
+                $arah === 'Masuk' ? $tanggal : null,
+                $hasilDrive['link'],
+                $hasilDrive['file_id'] ?? null,
+                $hasilDrive['link'],
+                json_encode(['sumber' => 'import_bulk', 'nama_file_asli' => $barisImport['nama_asli']], JSON_UNESCAPED_UNICODE),
+            ]);
+            $suratIdBaru = (int) $pdo->lastInsertId();
+
+            arp_arsipkan_dokumen($pdo, [
+                'nama_dokumen' => $nomor . ' - ' . $perihal,
+                'kategori' => 'Lainnya',
+                'file_path' => $hasilDrive['link'],
+                'drive_file_id' => $hasilDrive['file_id'] ?? null,
+                'drive_link' => $hasilDrive['link'],
+                'modul_sumber' => $arah === 'Masuk' ? 'Surat Masuk' : 'Surat Keluar',
+                'ref_id' => $suratIdBaru,
+                'visibilitas' => 'Internal',
+                'diupload_oleh' => $current_user_id,
+            ]);
+
+            $pdo->commit();
+            catatAudit(
+                $pdo,
+                'Surat',
+                'Import Surat',
+                "Import surat {$nomor} ({$arah}) dari file \"{$barisImport['nama_asli']}\" (agenda {$nomorAgenda})",
+                null,
+                ['nomor' => $nomor, 'arah' => $arah, 'perihal' => $perihal, 'tujuan' => $tujuan]
+            );
+
+            $jumlahBerhasil++;
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            $daftarGagal[] = $barisImport['nama_asli'] . ': ' . $e->getMessage();
+        }
+    }
+
+    arp_import_hapus_folder($previewAktif['batch_dir']);
+    unset($_SESSION['arp_import_preview']);
+
+    if ($jumlahBerhasil > 0 && empty($daftarGagal)) {
+        $_SESSION['flash'] = ['type' => 'success', 'msg' => "Berhasil mengimpor {$jumlahBerhasil} surat."];
+    } elseif ($jumlahBerhasil > 0) {
+        $_SESSION['flash'] = ['type' => 'success', 'msg' => "Berhasil mengimpor {$jumlahBerhasil} surat. Gagal: " . implode(' | ', $daftarGagal)];
+    } else {
+        $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Tidak ada surat yang berhasil diimpor. ' . implode(' | ', $daftarGagal)];
+    }
+    suratRedirect('surat_keluar');
+}
+
 // ==========================================
 // [TAB: BUAT SURAT] GENERATE SURAT DARI TEMPLATE
 // ==========================================
@@ -1172,7 +1528,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
                 basename($fileHasilRelatif),
                 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
                 0,
-                'Surat_Keluar'
+                arp_kategori_surat_keluar($kode['nama'] ?? '')
             );
 
             if (!$hasilDriveKeluar || empty($hasilDriveKeluar['link'])) {
@@ -1871,6 +2227,8 @@ $daftar_surat_semua = $pdo->query("
     ORDER BY root_tgl_dibuat DESC, root_id DESC, s.revisi_ke DESC
 ")->fetchAll();
 
+$daftar_surat_semua = arp_urutkan_daftar_surat_by_nomor($daftar_surat_semua); // ⬅ TAMBAHKAN INI
+
 $kodeReimburseUntukFilter = arp_muat_template_reimburse($pdo);
 $kodeIdReimburseDikecualikan = $kodeReimburseUntukFilter ? (int) $kodeReimburseUntukFilter['id'] : 0;
 
@@ -1897,6 +2255,8 @@ foreach ($rowsKodeTemplate as $r) {
 // [DATA: TAB BUAT SURAT] Daftar kode surat (yang punya minimal 1 template)
 // ==========================================
 $daftar_kode = $pdo->query("SELECT * FROM Kode_Surat ORDER BY nama")->fetchAll();
+
+$previewImport = $_SESSION['arp_import_preview'] ?? null;
 
 $template_per_kode = [];
 $rowsTplPerKode = $pdo->query("SELECT kt.id AS kode_template_id, kt.kode_id, kt.template_id, kt.is_default,
@@ -2027,22 +2387,12 @@ foreach ($fields_blok as $namaBlok => $daftarFieldBlok) {
 $preview_nomor = '(otomatis saat disimpan)';
 if ($kodeTerpilih) {
     $tahun = (int) date('Y');
-    $counterDariKodeSurat = ((int) $kodeTerpilih['tahun_counter'] === $tahun) ? (int) $kodeTerpilih['counter'] : 0;
 
-    $stmtMaxNomor = $pdo->prepare("
-        SELECT nomor FROM Surat
-        WHERE kode_id = ? AND nomor LIKE ?
-    ");
-    $stmtMaxNomor->execute([$kodeTerpilih['id'], '%/' . $kodeTerpilih['kode'] . '/ARP/%/' . $tahun]);
-    $counterDariSurat = 0;
-    foreach ($stmtMaxNomor->fetchAll(PDO::FETCH_COLUMN) as $nomorLama) {
-        $angkaAwal = (int) strtok($nomorLama, '/');
-        if ($angkaAwal > $counterDariSurat) {
-            $counterDariSurat = $angkaAwal;
-        }
-    }
-
-    $counterPreview = max($counterDariKodeSurat, $counterDariSurat) + 1;
+    // Sama seperti generateNomorSurat(): baca nomor tertinggi langsung dari
+    // tabel Surat berdasarkan kode_id (bukan teks kode), supaya preview
+    // persis sama dengan nomor yang nanti benar-benar dipakai saat disimpan,
+    // dan tetap akurat walau teks kode sudah di-rename.
+    $counterPreview = arp_hitung_nomor_urut_tertinggi($pdo, (int) $kodeTerpilih['id'], $tahun) + 1;
 
     // ⬇ Pratinjau nomor ikut invoice HANYA kalau checkbox "ikuti_nomor_invoice" dicentang.
     $invoiceSumberIdPreview = (int) ($_POST['invoice_sumber_id'] ?? 0);
@@ -2173,6 +2523,9 @@ include "../includes/topbar.php";
                             <input type="text" class="search-box" placeholder="Cari nomor surat, perihal, tujuan..."
                                 data-table-search="tabelSuratKeluar" onkeyup="handleTableSearch('tabelSuratKeluar')">
                         </div>
+                        <button type="button" class="btn-secondary-custom" onclick="openModal('modalImportSurat')">
+                            <i class="bi bi-file-earmark-arrow-up"></i> Import Surat
+                        </button>
                         <button type="button" class="btn-secondary-custom" onclick="openModal('modalExportRekap')">
                             <i class="bi bi-file-earmark-spreadsheet"></i> Export Rekap
                         </button>
@@ -2253,7 +2606,12 @@ include "../includes/topbar.php";
                                     </td>
                                     <td style="text-align:center;">
                                         <div class="table-actions">
-                                            <?php if ($s['status'] === 'Draft'): ?>
+                                            <?php if ((int) ($s['jumlah_revisi_turunan'] ?? 0) > 0): ?>
+                                                <span class="text-secondary text-xs">
+                                                    <i class="bi bi-check2-circle"></i> Direvisi
+                                                    ke-<?= (int) $s['revisi_terbaru_ke'] ?>
+                                                </span>
+                                            <?php elseif ($s['status'] === 'Draft'): ?>
                                                 <form method="POST" action="surat.php" class="d-inline"
                                                     onsubmit="return confirm('Ajukan surat ini untuk persetujuan?');">
                                                     <input type="hidden" name="aksi" value="ajukan_approval_surat">
@@ -2266,19 +2624,12 @@ include "../includes/topbar.php";
                                             <?php elseif ($s['status'] === 'Menunggu Persetujuan'): ?>
                                                 <span class="text-secondary text-xs">Menunggu persetujuan</span>
                                             <?php elseif ($s['status'] === 'Ditolak'): ?>
-                                                <?php if ((int) ($s['jumlah_revisi_turunan'] ?? 0) > 0): ?>
-                                                    <span class="text-secondary text-xs">
-                                                        <i class="bi bi-check2-circle"></i> Direvisi
-                                                        ke-<?= (int) $s['revisi_terbaru_ke'] ?>
-                                                    </span>
-                                                <?php else: ?>
-                                                    <a href="edit_surat.php?id=<?= (int) $s['id'] ?>&auto_revisi=1"
-                                                        class="btn-secondary-custom"
-                                                        data-arp-loading="Memuat halaman revisi surat..."
-                                                        style="height:28px; padding:0 10px; font-size:0.75rem; display:inline-flex; align-items:center; gap:4px; text-decoration:none;">
-                                                        <i class="bi bi-arrow-counterclockwise"></i> Revisi
-                                                    </a>
-                                                <?php endif; ?>
+                                                <a href="edit_surat.php?id=<?= (int) $s['id'] ?>&auto_revisi=1"
+                                                    class="btn-secondary-custom"
+                                                    data-arp-loading="Memuat halaman revisi surat..."
+                                                    style="height:28px; padding:0 10px; font-size:0.75rem; display:inline-flex; align-items:center; gap:4px; text-decoration:none;">
+                                                    <i class="bi bi-arrow-counterclockwise"></i> Revisi
+                                                </a>
                                             <?php elseif ($s['status'] === 'Disetujui'): ?>
                                                 <form method="POST" action="surat.php" class="d-inline"
                                                     onsubmit="return confirm('Kirim surat ini ke client sekarang?');">
@@ -2306,24 +2657,39 @@ include "../includes/topbar.php";
                                     </td>
                                     <td class="col-aksi" style="text-align:center;">
                                         <div class="table-actions">
-                                            <?php if (!empty($s['file_hasil'])): ?>
-                                                <a class="btn btn-outline-primary btn-sm py-1" style="font-size:0.75rem;"
-                                                    href="edit_surat.php?id=<?= (int) $s['id'] ?>" title="Edit Surat"
-                                                    data-arp-loading="Memuat halaman edit surat...">
+                                            <?php if (!empty($s['template_id'])): ?>
+                                                <?php if (!empty($s['file_hasil'])): ?>
+                                                    <a class="btn btn-outline-primary btn-sm py-1" style="font-size:0.75rem;"
+                                                        href="edit_surat.php?id=<?= (int) $s['id'] ?>" title="Edit Surat"
+                                                        data-arp-loading="Memuat halaman edit surat...">
+                                                        <i class="bi bi-pencil-square"></i>
+                                                    </a>
+                                                <?php endif; ?>
+                                            <?php else: ?>
+                                                <button type="button" class="btn btn-outline-primary btn-sm py-1"
+                                                    style="font-size:0.75rem;" title="Edit Data Surat" onclick='bukaModalEditMetadata(<?= json_encode([
+                                                        'id' => (int) $s['id'],
+                                                        'nomor' => $s['nomor'],
+                                                        'kode_id' => (int) $s['kode_id'],
+                                                        'perihal' => $s['perihal'],
+                                                        'tujuan' => $s['tujuan'],
+                                                        'tgl_dibuat' => $s['tgl_dibuat'] ? date('Y-m-d', strtotime($s['tgl_dibuat'])) : '',
+                                                        'arah' => $s['arah'],
+                                                    ], JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE) ?>)'>
                                                     <i class="bi bi-pencil-square"></i>
-                                                </a>
+                                                </button>
+                                            <?php endif; ?>
+
+                                            <?php if (!empty($s['file_hasil'])): ?>
                                                 <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
                                                     href="<?= e(hrefBerkas($s['file_hasil'])) ?>" target="_blank"
-                                                    title="Lihat berkas" data-arp-loading="Membuka berkas...">
-                                                    <i class="bi bi-eye"></i>
-                                                </a>
+                                                    title="Lihat berkas" data-arp-loading="Membuka berkas..."><i
+                                                        class="bi bi-eye"></i></a>
                                                 <?php $fileIdUnduh = $s['drive_file_id'] ?? driveFileIdDariUrl($s['file_hasil'] ?? null); ?>
                                                 <a class="btn btn-outline-secondary btn-sm py-1" style="font-size:0.75rem;"
                                                     href="<?= e($fileIdUnduh ? urlUnduhLangsungDrive($fileIdUnduh) : hrefBerkas($s['file_hasil'])) ?>"
                                                     title="Unduh Word (.docx)" target="_blank"
-                                                    data-arp-loading="Menyiapkan unduhan...">
-                                                    <i class="bi bi-download"></i>
-                                                </a>
+                                                    data-arp-loading="Menyiapkan unduhan..."><i class="bi bi-download"></i></a>
                                             <?php endif; ?>
 
                                             <form method="POST" action="surat.php" class="d-inline"
@@ -4047,6 +4413,238 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
     </div>
 </div>
 
+<!-- Modal: Import Surat (Langkah 1 - Upload banyak file sekaligus) -->
+<div class="arp-modal-overlay" id="modalImportSurat" onclick="closeModalOutside(event,'modalImportSurat')">
+    <div class="arp-modal-box" style="max-width:650px;">
+        <div class="arp-modal-header">
+            <div>
+                <h5 class="fw-bold mb-0">Import Surat</h5>
+                <small class="text-muted">Upload banyak file surat lama dari laptop sekaligus, sistem akan
+                    membaca Nomor/Perihal/Yth/Tanggal otomatis dari isinya.</small>
+            </div>
+            <button class="arp-modal-close" onclick="closeModal('modalImportSurat')">&times;</button>
+        </div>
+        <div class="arp-modal-body">
+            <form method="POST" action="surat.php" enctype="multipart/form-data" id="formImportSuratUpload">
+                <input type="hidden" name="aksi" value="import_surat_preview">
+
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold mb-2">Arah Surat *</label>
+                        <select class="select-custom" name="arah_default" required>
+                            <option value="Keluar">Surat Keluar</option>
+                            <option value="Masuk">Surat Masuk</option>
+                        </select>
+                        <small class="text-muted d-block mt-1">Bisa diubah lagi per-file di layar
+                            berikutnya.</small>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold mb-2">Jenis Surat (Kode Surat) *</label>
+                        <select class="select-custom" name="kode_id_default" required>
+                            <option value="">-- Pilih jenis surat --</option>
+                            <?php foreach ($daftar_kode as $k): ?>
+                                <option value="<?= (int) $k['id'] ?>"><?= e($k['kode'] . ' - ' . $k['nama']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <small class="text-muted d-block mt-1">Berlaku untuk semua file yang diupload, bisa
+                            diganti per-file di layar berikutnya.</small>
+                    </div>
+                </div>
+
+                <div class="mt-3">
+                    <label class="form-label fw-semibold mb-2">File Surat (.docx / .pdf) *</label>
+                    <input type="file" class="form-control-custom" name="berkas_import[]" accept=".docx,.pdf" multiple
+                        required style="padding-top:8px;">
+                    <small class="text-muted d-block mt-1">
+                        Pilih banyak file sekaligus (tahan Ctrl/Cmd saat memilih, atau drag beberapa file
+                        bersamaan). Format didukung: .docx dan PDF berisi teks asli (bukan hasil scan/foto).
+                    </small>
+                </div>
+
+                <div class="alert alert-secondary-custom mt-3" style="font-size:0.85rem;">
+                    <i class="bi bi-info-circle"></i>
+                    Nomor surat, Perihal, Tujuan (Yth), dan Tanggal akan coba dibaca otomatis dari isi
+                    file. Kamu tetap bisa mengecek &amp; mengoreksi semuanya sebelum benar-benar disimpan.
+                </div>
+
+                <div class="d-flex justify-content-end gap-2 mt-4">
+                    <button type="button" class="btn-secondary-custom" onclick="closeModal('modalImportSurat')">
+                        Batal
+                    </button>
+                    <button type="submit" class="btn-primary-custom" id="btnBacaFileImport"
+                        data-arp-loading="Membaca isi file yang diupload...">
+                        <i class="bi bi-search"></i> Baca &amp; Lanjutkan
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Import Surat (Langkah 2 - Preview, koreksi manual, simpan semua) -->
+<?php if ($previewImport): ?>
+    <div class="arp-modal-overlay" id="modalImportSuratPreview">
+        <div class="arp-modal-box" style="max-width:1150px;">
+            <div class="arp-modal-header">
+                <div>
+                    <h5 class="fw-bold mb-0">Periksa Hasil Import (<?= count($previewImport['baris']) ?> file)</h5>
+                    <small class="text-muted">Periksa/koreksi hasil bacaan otomatis di bawah ini, lalu klik
+                        "Simpan Semua". Hanya baris yang dicentang "Sertakan" yang akan disimpan.</small>
+                </div>
+                <button type="button" class="arp-modal-close"
+                    onclick="if(confirm('Batalkan import ini? File yang sudah diupload akan dihapus dari server.')){document.getElementById('formImportSuratBatal').submit();}">&times;</button>
+            </div>
+            <div class="arp-modal-body">
+
+                <?php if (!empty($previewImport['dilewati'])): ?>
+                    <div class="alert alert-warning-custom mb-3" style="font-size:0.85rem;">
+                        <i class="bi bi-exclamation-triangle-fill"></i>
+                        <?= count($previewImport['dilewati']) ?> file dilewati (tidak diproses):
+                        <?php foreach ($previewImport['dilewati'] as $d): ?>
+                            <div>&bull; <?= e($d['nama']) ?> &mdash; <?= e($d['alasan']) ?></div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
+
+                <form method="POST" action="surat.php" id="formImportSuratCommit">
+                    <input type="hidden" name="aksi" value="import_surat_commit">
+
+                    <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+                        <small class="text-muted fw-semibold">Terapkan ke semua baris yang dicentang:</small>
+                        <select class="select-custom" id="terapkanSemuaArah" style="width:auto;">
+                            <option value="">Arah...</option>
+                            <option value="Keluar">Surat Keluar</option>
+                            <option value="Masuk">Surat Masuk</option>
+                        </select>
+                        <select class="select-custom" id="terapkanSemuaKode" style="width:auto;">
+                            <option value="">Jenis Surat...</option>
+                            <?php foreach ($daftar_kode as $k): ?>
+                                <option value="<?= (int) $k['id'] ?>"><?= e($k['kode'] . ' - ' . $k['nama']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <button type="button" class="btn-secondary-custom" onclick="arpImportTerapkanSemua()">
+                            Terapkan
+                        </button>
+                    </div>
+
+                    <div class="table-responsive-custom">
+                        <table class="table-custom" id="tabelPreviewImport">
+                            <thead>
+                                <tr>
+                                    <th style="width:40px;">
+                                        <input type="checkbox" id="checkAllImport" checked
+                                            onclick="document.querySelectorAll('.chkSertakanImport').forEach(c=>c.checked=this.checked)">
+                                    </th>
+                                    <th>File</th>
+                                    <th>Arah</th>
+                                    <th>Jenis Surat</th>
+                                    <th style="min-width:170px;">Nomor Surat</th>
+                                    <th style="min-width:200px;">Perihal</th>
+                                    <th style="min-width:180px;">Tujuan (Yth)</th>
+                                    <th style="min-width:150px;">Tanggal</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($previewImport['baris'] as $b): ?>
+                                    <?php $k = e($b['file_simpan']); ?>
+                                    <tr>
+                                        <td>
+                                            <input type="checkbox" class="chkSertakanImport" name="sertakan[<?= $k ?>]"
+                                                value="1" <?= $b['parse_ok'] ? 'checked' : '' ?>>
+                                        </td>
+                                        <td style="white-space:normal; word-break:break-word; max-width:180px;">
+                                            <?= e($b['nama_asli']) ?>
+                                            <?php if (!$b['parse_ok']): ?>
+                                                <br><span class="badge-warning" style="font-size:0.65rem;">
+                                                    <?= e($b['pesan']) ?: 'Perlu dicek manual' ?>
+                                                </span>
+                                            <?php elseif ($b['confidence'] === 'rendah'): ?>
+                                                <br><span class="badge-warning" style="font-size:0.65rem;">
+                                                    Cek ulang, teks kurang jelas
+                                                </span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td>
+                                            <select class="select-custom" name="arah[<?= $k ?>]">
+                                                <option value="Keluar" <?= $b['arah'] === 'Keluar' ? 'selected' : '' ?>>Keluar
+                                                </option>
+                                                <option value="Masuk" <?= $b['arah'] === 'Masuk' ? 'selected' : '' ?>>Masuk
+                                                </option>
+                                            </select>
+                                        </td>
+                                        <td>
+                                            <select class="select-custom" name="kode_id[<?= $k ?>]">
+                                                <option value="">-- Pilih --</option>
+                                                <?php foreach ($daftar_kode as $kode): ?>
+                                                    <option value="<?= (int) $kode['id'] ?>" <?= (int) $b['kode_id'] === (int) $kode['id'] ? 'selected' : '' ?>>
+                                                        <?= e($kode['kode'] . ' - ' . $kode['nama']) ?>
+                                                    </option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                        </td>
+                                        <td>
+                                            <input type="text" class="form-control-custom" name="nomor[<?= $k ?>]"
+                                                value="<?= e($b['nomor']) ?>" placeholder="Wajib diisi">
+                                        </td>
+                                        <td>
+                                            <input type="text" class="form-control-custom" name="perihal[<?= $k ?>]"
+                                                value="<?= e($b['perihal']) ?>">
+                                        </td>
+                                        <td>
+                                            <input type="text" class="form-control-custom" name="tujuan[<?= $k ?>]"
+                                                value="<?= e($b['tujuan']) ?>">
+                                        </td>
+                                        <td>
+                                            <input type="date" class="form-control-custom" name="tanggal[<?= $k ?>]"
+                                                value="<?= e($b['tanggal']) ?>">
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="d-flex justify-content-end gap-2 mt-4">
+                        <button type="button" class="btn-secondary-custom"
+                            onclick="if(confirm('Batalkan import ini? File yang sudah diupload akan dihapus dari server.')){document.getElementById('formImportSuratBatal').submit();}">
+                            Batal
+                        </button>
+                        <button type="submit" class="btn-primary-custom" data-arp-loading="Menyimpan semua surat...">
+                            <i class="bi bi-check2-circle"></i> Simpan Semua
+                        </button>
+                    </div>
+                </form>
+
+                <form method="POST" action="surat.php" id="formImportSuratBatal" style="display:none;">
+                    <input type="hidden" name="aksi" value="import_surat_batal">
+                </form>
+            </div>
+        </div>
+    </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            openModal('modalImportSuratPreview');
+        });
+
+        function arpImportTerapkanSemua() {
+            const arah = document.getElementById('terapkanSemuaArah').value;
+            const kode = document.getElementById('terapkanSemuaKode').value;
+            document.querySelectorAll('#tabelPreviewImport tbody tr').forEach(function (tr) {
+                const chk = tr.querySelector('.chkSertakanImport');
+                if (!chk || !chk.checked) return;
+                if (arah) {
+                    const selArah = tr.querySelector('select[name^="arah["]');
+                    if (selArah) selArah.value = arah;
+                }
+                if (kode) {
+                    const selKode = tr.querySelector('select[name^="kode_id["]');
+                    if (selKode) selKode.value = kode;
+                }
+            });
+        }
+    </script>
+<?php endif; ?>
+
 <!-- Modal: Catat Surat Masuk -->
 <div class="arp-modal-overlay" id="modalCatatSuratMasuk" onclick="closeModalOutside(event,'modalCatatSuratMasuk')">
     <div class="arp-modal-box" style="max-width:650px;">
@@ -4108,6 +4706,70 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
         </div>
     </div>
 </div>
+
+<!-- Modal: Edit Meta data Surat -->
+<div class="arp-modal-overlay" id="modalEditMetadataSurat" onclick="closeModalOutside(event,'modalEditMetadataSurat')">
+    <div class="arp-modal-box" style="max-width:550px;">
+        <div class="arp-modal-header">
+            <div>
+                <h5 class="fw-bold mb-0">Edit Data Surat</h5>
+                <small class="text-muted">Untuk surat hasil import/catat manual (tanpa template).</small>
+            </div>
+            <button class="arp-modal-close" onclick="closeModal('modalEditMetadataSurat')">&times;</button>
+        </div>
+        <div class="arp-modal-body">
+            <form method="POST" action="surat.php">
+                <input type="hidden" name="aksi" value="edit_metadata_surat">
+                <input type="hidden" name="surat_id" id="editMetaSuratId" value="">
+
+                <div class="mb-3">
+                    <label class="form-label fw-semibold mb-2">Nomor Surat *</label>
+                    <input type="text" class="form-control-custom" name="nomor" id="editMetaNomor" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold mb-2">Jenis Surat *</label>
+                    <select class="select-custom" name="kode_id" id="editMetaKodeId" required>
+                        <option value="">-- Pilih jenis surat --</option>
+                        <?php foreach ($daftar_kode as $k): ?>
+                            <option value="<?= (int) $k['id'] ?>"><?= e($k['kode'] . ' - ' . $k['nama']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold mb-2">Perihal</label>
+                    <input type="text" class="form-control-custom" name="perihal" id="editMetaPerihal">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold mb-2" id="editMetaTujuanLabel">Tujuan</label>
+                    <input type="text" class="form-control-custom" name="tujuan" id="editMetaTujuan">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold mb-2">Tanggal Surat</label>
+                    <input type="date" class="form-control-custom" name="tgl_dibuat" id="editMetaTanggal">
+                </div>
+
+                <div class="d-flex justify-content-end gap-2 mt-3">
+                    <button type="button" class="btn-secondary-custom"
+                        onclick="closeModal('modalEditMetadataSurat')">Batal</button>
+                    <button type="submit" class="btn-primary-custom"><i class="bi bi-save"></i> Simpan</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    function bukaModalEditMetadata(data) {
+        document.getElementById('editMetaSuratId').value = data.id;
+        document.getElementById('editMetaNomor').value = data.nomor || '';
+        document.getElementById('editMetaKodeId').value = data.kode_id || '';
+        document.getElementById('editMetaPerihal').value = data.perihal || '';
+        document.getElementById('editMetaTujuan').value = data.tujuan || '';
+        document.getElementById('editMetaTanggal').value = data.tgl_dibuat || '';
+        document.getElementById('editMetaTujuanLabel').textContent = (data.arah === 'Masuk') ? 'Pengirim' : 'Tujuan';
+        openModal('modalEditMetadataSurat');
+    }
+</script>
 
 <!-- Modal: Disposisi Surat Masuk -->
 <div class="arp-modal-overlay" id="modalDisposisiSuratMasuk"

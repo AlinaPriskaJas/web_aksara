@@ -81,13 +81,178 @@ function resolveNomorSurat(PDO $pdo, int $kode_id, ?string $noUrutManual = null)
 }
 
 // ==========================================
+// URUTKAN DAFTAR SURAT: family (surat asli + semua revisinya) selalu
+// tampil BERDEKATAN, tapi urutan ANTAR FAMILY sekarang berdasarkan
+// NOMOR SURAT (tahun & angka urutnya), BUKAN tanggal dibuat.
+//
+// Ini penting untuk surat hasil IMPORT: tgl_dibuat surat import diisi
+// TANGGAL SURAT ASLI (bisa jauh di masa lalu), padahal nomor uratnya
+// mengikuti urutan yang seharusnya tampil paling atas kalau memang nomor
+// urutnya besar. Kalau tetap diurutkan pakai tanggal, surat lama-tapi-
+// bernomor-besar bisa salah posisi (turun ke bawah padahal seharusnya
+// di atas).
+//
+// Aturan:
+// - Antar family: tahun (dari segmen nomor) DESC, lalu angka urut DESC.
+// - Kalau nomor tidak bisa diurai jadi angka (format khusus, cth JD...),
+//   fallback ke tanggal surat sebagai kunci urut.
+// - Dalam SATU family: revisi TERBARU (revisi_ke terbesar) di atas,
+//   surat asli (revisi_ke = 0) di posisi paling bawah grupnya.
+//
+// $daftarSurat wajib berisi kolom: nomor, revisi_ke, induk_surat_id,
+// root_id (COALESCE(induk_surat_id, id)), dan root_tgl_dibuat/tgl_dibuat.
+// ==========================================
+function arp_urutkan_daftar_surat_by_nomor(array $daftarSurat): array
+{
+    // 1) Kelompokkan per root_id (satu grup = satu "keluarga" surat)
+    $grup = [];
+    foreach ($daftarSurat as $baris) {
+        $rootId = $baris['root_id'];
+        if (!isset($grup[$rootId])) {
+            $grup[$rootId] = ['baris' => [], 'kunci' => null];
+        }
+        $grup[$rootId]['baris'][] = $baris;
+    }
+
+    // 2) Hitung kunci urut tiap family, dari nomor surat ROOT-nya
+    //    (nomor surat TIDAK berubah walau direvisi, jadi baris manapun
+    //    di family ini nomornya sama; kita utamakan baris induk kalau ada).
+    foreach ($grup as $rootId => &$g) {
+        $barisAcuan = null;
+        foreach ($g['baris'] as $b) {
+            if (empty($b['induk_surat_id'])) {
+                $barisAcuan = $b;
+                break;
+            }
+        }
+        if (!$barisAcuan) {
+            $barisAcuan = $g['baris'][0];
+        }
+
+        $nomor = trim((string) ($barisAcuan['nomor'] ?? ''));
+        $segmen = array_map('trim', explode('/', $nomor));
+
+        $noUrut = (isset($segmen[0]) && ctype_digit($segmen[0]) && $segmen[0] !== '')
+            ? (int) $segmen[0]
+            : null;
+
+        $tahunNomor = null;
+        if (count($segmen) > 1) {
+            $kandidatTahun = end($segmen);
+            if (ctype_digit($kandidatTahun) && strlen($kandidatTahun) === 4) {
+                $tahunNomor = (int) $kandidatTahun;
+            }
+        }
+
+        $tsTanggal = strtotime((string) ($barisAcuan['root_tgl_dibuat'] ?? $barisAcuan['tgl_dibuat'] ?? 'now')) ?: time();
+
+        $g['kunci'] = [
+            'tahun' => $tahunNomor ?? (int) date('Y', $tsTanggal),
+            'urut' => $noUrut ?? 0,
+            // fallback murni tanggal, dipakai HANYA kalau nomor sama sekali
+            // tidak bisa diurai jadi angka (mis. format khusus ${no_surat}).
+            'tanggal' => $tsTanggal,
+            'bisa_diurai' => $noUrut !== null,
+        ];
+    }
+    unset($g);
+
+    // 3) Urutkan family: yang nomornya bisa diurai diprioritaskan lewat
+    //    (tahun, urut) DESC; yang tidak bisa diurai diurutkan lewat tanggal DESC,
+    //    dan tetap disisipkan relatif terhadap yang lain lewat tanggal juga
+    //    supaya tidak "meloncat" aneh ke atas/bawah.
+    uasort($grup, function ($a, $b) {
+        $ka = $a['kunci'];
+        $kb = $b['kunci'];
+
+        if ($ka['tahun'] !== $kb['tahun']) {
+            return $kb['tahun'] <=> $ka['tahun'];
+        }
+        if ($ka['urut'] !== $kb['urut']) {
+            return $kb['urut'] <=> $ka['urut'];
+        }
+        return $kb['tanggal'] <=> $ka['tanggal'];
+    });
+
+    // 4) Flatten kembali, dalam satu family urutkan revisi_ke DESC
+    //    (revisi terbaru di atas, surat asli paling bawah grupnya).
+    $hasil = [];
+    foreach ($grup as $g) {
+        $barisFamily = $g['baris'];
+        usort($barisFamily, function ($a, $b) {
+            return (int) ($b['revisi_ke'] ?? 0) <=> (int) ($a['revisi_ke'] ?? 0);
+        });
+        foreach ($barisFamily as $b) {
+            $hasil[] = $b;
+        }
+    }
+
+    return $hasil;
+}
+
+// ==========================================
+// HITUNG NOMOR URUT (counter) TERTINGGI YANG SUDAH DIPAKAI untuk suatu
+// JENIS SURAT (kode_id) & TAHUN TERTENTU.
+//
+// SENGAJA dicocokkan lewat kode_id (bukan teks kode/nama), karena:
+// - satu teks kode (mis. "S-PEN") bisa dipakai bersama oleh beberapa jenis
+//   surat berbeda (Invoice, Penawaran, Reimbursement, Kuitansi, dst) --
+//   masing-masing punya kode_id sendiri di tabel Kode_Surat, jadi
+//   pencocokan lewat kode_id otomatis memisahkan nomor urut tiap jenis
+//   surat tanpa saling bercampur walau teks kodenya sama persis.
+// - kalau admin mengubah/rename teks kode (mis. "S-PEN" -> "S-INV") lewat
+//   Edit Template, kode_id-nya TIDAK berubah -- jadi riwayat nomor surat
+//   jenis itu tetap terbaca dan penomoran tetap lanjut, tidak balik ke 0.
+//
+// Juga otomatis membuat penomoran reset ke 001 saat tahun berganti:
+// tahun dibaca dari NOMOR SURAT itu sendiri (segmen setelah angka urut),
+// jadi begitu tahun berganti tidak ada nomor lama yang cocok, sehingga
+// hasil fungsi ini = 0 dan nomor berikutnya otomatis 001.
+//
+// Urutan segmen nomor SETELAH angka urut bebas (tidak harus persis
+// "kode/ARP" atau "ARP/kode"), karena yang dicek hanya keberadaan segmen
+// yang persis sama dengan tahun -- di posisi manapun.
+// ==========================================
+function arp_hitung_nomor_urut_tertinggi(PDO $pdo, int $kodeId, int $tahun): int
+{
+    if ($kodeId <= 0) {
+        return 0;
+    }
+
+    $stmt = $pdo->prepare("SELECT nomor FROM Surat WHERE kode_id = ?");
+    $stmt->execute([$kodeId]);
+
+    $tahunStr = (string) $tahun;
+    $tertinggi = 0;
+
+    foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $nomor) {
+        $segmen = array_map('trim', explode('/', (string) $nomor));
+        if (count($segmen) < 2 || !ctype_digit($segmen[0] ?? '')) {
+            continue; // bukan format "angka/....", lewati (mis. nomor khusus ${no_surat})
+        }
+
+        $segmenLain = array_slice($segmen, 1);
+        if (!in_array($tahunStr, $segmenLain, true)) {
+            continue; // bukan tahun yang sama
+        }
+
+        $angka = (int) $segmen[0];
+        if ($angka > $tertinggi) {
+            $tertinggi = $angka;
+        }
+    }
+
+    return $tertinggi;
+}
+
+// ==========================================
 // GENERATE NOMOR SURAT OTOMATIS (per kode, reset tiap tahun)
 // ==========================================
 function generateNomorSurat(PDO $pdo, int $kode_id): string
 {
     $tahun = (int) date('Y');
 
-    $stmt = $pdo->prepare("SELECT kode, counter, tahun_counter FROM Kode_Surat WHERE id = ? FOR UPDATE");
+    $stmt = $pdo->prepare("SELECT kode FROM Kode_Surat WHERE id = ? FOR UPDATE");
     $stmt->execute([$kode_id]);
     $row = $stmt->fetch();
 
@@ -95,8 +260,14 @@ function generateNomorSurat(PDO $pdo, int $kode_id): string
         throw new RuntimeException("Kode surat tidak ditemukan");
     }
 
-    $counter = ((int) $row['tahun_counter'] === $tahun) ? $row['counter'] + 1 : 1;
+    // Nomor urut berikutnya dihitung berdasarkan kode_id (identitas jenis
+    // surat yang sesungguhnya), bukan teks kode -- lihat penjelasan di
+    // arp_hitung_nomor_urut_tertinggi(). Ini memastikan nomor tetap benar
+    // walau teks kode di-rename, dan tidak bercampur antar jenis surat
+    // yang kebetulan memakai teks kode yang sama.
+    $counter = arp_hitung_nomor_urut_tertinggi($pdo, $kode_id, $tahun) + 1;
 
+    // Kolom counter/tahun_counter tetap diperbarui sebagai cache saja.
     $update = $pdo->prepare("UPDATE Kode_Surat SET counter = ?, tahun_counter = ? WHERE id = ?");
     $update->execute([$counter, $tahun, $kode_id]);
 

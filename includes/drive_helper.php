@@ -18,6 +18,80 @@ const ARP_DRIVE_MAX_FILESIZE_DOKUMEN = 20 * 1024 * 1024;  // 20MB
 /** Kategori yang dianggap "foto" (dibatasi ke ARP_DRIVE_MAX_FILESIZE_FOTO). */
 const ARP_DRIVE_KATEGORI_FOTO = ['Absensi', 'Profil', 'Insiden'];
 
+/** Nama bulan dalam Bahasa Indonesia, dipakai untuk struktur folder Drive per bulan. */
+const ARP_NAMA_BULAN_ID = [
+    1 => 'Januari', 2 => 'Februari', 3 => 'Maret', 4 => 'April', 5 => 'Mei', 6 => 'Juni',
+    7 => 'Juli', 8 => 'Agustus', 9 => 'September', 10 => 'Oktober', 11 => 'November', 12 => 'Desember',
+];
+
+/**
+ * Bersihkan nama jenis surat (dari tabel Kode_Surat) supaya aman dipakai
+ * sebagai nama folder Drive -- Drive sebenarnya cukup longgar soal nama folder
+ * (spasi & tanda baca umum tetap boleh), yang perlu dijaga cuma karakter "/"
+ * karena itu dipakai sebagai pemisah level folder oleh Apps Script
+ * (getOrCreateFolderPath). Kalau namanya kosong (mis. data lama tanpa
+ * kode jenis surat), fallback ke "Lainnya" supaya tetap ada tempatnya.
+ *
+ * CATATAN: "Reimbursement Harian" dan "Permohonan Cuti Dan Pengalihan Tugas"
+ * TIDAK PERNAH sampai ke fungsi ini -- keduanya dibuat lewat alur sendiri
+ * (reimburse.php -> arp_proses_pengajuan_reimburse(), kategori 'Surat_Reimburse';
+ * cuti.php, kategori 'Cuti') dan sudah sengaja disembunyikan dari dropdown
+ * tab "Buat Surat" di admin/surat.php. Jadi tidak perlu pengecualian khusus
+ * di sini untuk keduanya.
+ */
+function arp_nama_folder_jenis_surat(string $namaJenisSurat): string
+{
+    $nama = trim($namaJenisSurat);
+
+    if ($nama === '') {
+        return 'Lainnya';
+    }
+
+    return str_replace('/', '-', $nama); // "/" dipakai Apps Script sbg pemisah folder, ganti supaya tidak kepecah
+}
+
+/**
+ * Bangun path kategori Drive untuk Surat Keluar dengan struktur bertingkat:
+ * Surat_Keluar / {Nama Jenis Surat, apa adanya dari tabel Kode_Surat} / {Tahun} / {Bulan}
+ *
+ * Setiap jenis surat (Invoice, Penawaran, Reimbursement Harian, Surat Tugas,
+ * dst) dapat foldernya sendiri persis sesuai namanya -- tidak digabung jadi
+ * satu folder "Lainnya".
+ *
+ * Karakter "/" di sini akan dipecah oleh Apps Script (fungsi getOrCreateFolderPath
+ * di sisi Google Apps Script) menjadi subfolder bersarang -- masing-masing level
+ * dibuat otomatis oleh Apps Script kalau belum ada, jadi di sisi PHP cukup kirim
+ * satu string path ini seperti mengirim kategori biasa.
+ */
+/**
+ * Bangun path kategori Drive bertingkat untuk SURAT (Masuk maupun Keluar):
+ * Surat_{Arah} / {Nama Jenis Surat sesuai Kode_Surat} / {Tahun} / {Bulan}
+ *
+ * $arah menentukan folder induk: 'Keluar' -> Surat_Keluar, 'Masuk' -> Surat_Masuk.
+ * $tanggal sebaiknya diisi TANGGAL SURAT (bukan selalu tanggal hari ini),
+ * supaya surat lama yang diimpor tetap masuk ke folder tahun/bulan yang benar.
+ */
+function arp_kategori_surat(string $namaJenisSurat, string $arah = 'Keluar', ?DateTimeInterface $tanggal = null): string
+{
+    $tanggal = $tanggal ?? new DateTime();
+    $jenis = arp_nama_folder_jenis_surat($namaJenisSurat);
+    $tahun = $tanggal->format('Y');
+    $bulanAngka = (int) $tanggal->format('n');
+    $namaBulan = ARP_NAMA_BULAN_ID[$bulanAngka] ?? (string) $bulanAngka;
+    $folderArah = strcasecmp($arah, 'Masuk') === 0 ? 'Surat_Masuk' : 'Surat_Keluar';
+
+    return "{$folderArah}/{$jenis}/{$tahun}/{$namaBulan}";
+}
+
+/**
+ * @deprecated Pakai arp_kategori_surat($namaJenisSurat, 'Keluar', $tanggal).
+ * Dibiarkan supaya pemanggilan lama (generate_surat) tidak perlu diubah.
+ */
+function arp_kategori_surat_keluar(string $namaJenisSurat, ?DateTimeInterface $tanggal = null): string
+{
+    return arp_kategori_surat($namaJenisSurat, 'Keluar', $tanggal);
+}
+
 /** Ambil batas ukuran file (bytes) yang berlaku untuk suatu kategori. */
 function arp_drive_batas_filesize(string $kategori): int
 {

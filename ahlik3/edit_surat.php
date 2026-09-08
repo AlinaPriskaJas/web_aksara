@@ -1,5 +1,5 @@
 <?php
-// ahliK3/edit_surat.php — Edit surat keluar yang sudah pernah dibuat.
+// ahli/edit_surat.php — Edit surat keluar yang sudah pernah dibuat.
 // Memanfaatkan ulang proses generate surat yang sudah ada (generateSuratDocx dkk
 // di includes/functions.php) -- TIDAK membuat baris/nomor surat baru, hanya
 // meng-update record & meng-generate ulang berkas .docx-nya.
@@ -8,7 +8,7 @@ require_once "../config/koneksi.php";
 if (session_status() === PHP_SESSION_NONE)
     session_start();
 
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'ahli_K3') {
+if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'ahli_k3') {
     header("Location: ../login.php");
     exit;
 }
@@ -261,9 +261,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
                 'sisa_pelunasan' => isset($_POST['sertakan_sisa_pelunasan']),
             ];
 
-            $fileHasilBaruLokal = arp_dengan_template_sementara($kode['drive_file_id'], function ($pathTemplateLokal) use (
-                $dataForm, $items, $nomorBaru, $blocksData, $kode, $tujuanManual, $ringkasanDisertakan, $revisiKeDipakai
-            ) {
+            $fileHasilBaruLokal = arp_dengan_template_sementara($kode['drive_file_id'], function ($pathTemplateLokal) use ($dataForm, $items, $nomorBaru, $blocksData, $kode, $tujuanManual, $ringkasanDisertakan, $revisiKeDipakai) {
                 return generateSuratDocx(
                     $pathTemplateLokal,
                     $dataForm,
@@ -279,16 +277,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
 
             $perihalDariWord = extractPerihalFromDocxText(BASE_PATH . '/' . $fileHasilBaruLokal);
 
-            // Upload ke Google Drive -- surat hasil edit/revisi WAJIB tersimpan
-            // di Drive, tidak boleh fallback ke storage lokal.
+            // Tentukan tanggal acuan untuk struktur folder Drive (pakai tanggal SURAT
+            // ASLI, bukan tanggal hari ini, supaya file edit/revisi tetap masuk ke
+            // folder tahun/bulan yang sama dengan surat aslinya).
+            $tanggalUntukFolderEdit = null;
+            try {
+                $tanggalUntukFolderEdit = new DateTime($surat['tgl_dibuat'] ?? 'now');
+            } catch (Throwable $e) {
+                $tanggalUntukFolderEdit = new DateTime();
+            }
+
             $hasilDriveEdit = arp_upload_ke_drive(
                 BASE_PATH . '/' . $fileHasilBaruLokal,
                 basename($fileHasilBaruLokal),
                 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
                 0,
-                'Surat_Keluar'
+                arp_kategori_surat($kode['nama'], 'Keluar', $tanggalUntukFolderEdit)   // <-- diganti
             );
-
             if (!$hasilDriveEdit || empty($hasilDriveEdit['link'])) {
                 if (is_file(BASE_PATH . '/' . $fileHasilBaruLokal)) {
                     @unlink(BASE_PATH . '/' . $fileHasilBaruLokal);
@@ -2064,4 +2069,3 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
 
 
 <?php include "../includes/footer.php"; ?>
-

@@ -1450,6 +1450,8 @@ $daftar_surat = $pdo->query("
     ORDER BY root_tgl_dibuat DESC, root_id DESC, s.revisi_ke DESC
 ")->fetchAll();
 
+$daftar_surat = arp_urutkan_daftar_surat_by_nomor($daftar_surat); // ⬅ TAMBAHKAN INI
+
 $kodeReimburseUntukFilter = arp_muat_template_reimburse($pdo);
 $kodeIdReimburseDikecualikan = $kodeReimburseUntukFilter ? (int) $kodeReimburseUntukFilter['id'] : 0;
 
@@ -1615,22 +1617,12 @@ foreach ($fields_blok as $namaBlok => $daftarFieldBlok) {
 $preview_nomor = '(otomatis saat disimpan)';
 if ($kodeTerpilih) {
     $tahun = (int) date('Y');
-    $counterDariKodeSurat = ((int) $kodeTerpilih['tahun_counter'] === $tahun) ? (int) $kodeTerpilih['counter'] : 0;
 
-    $stmtMaxNomor = $pdo->prepare("
-        SELECT nomor FROM Surat
-        WHERE kode_id = ? AND nomor LIKE ?
-    ");
-    $stmtMaxNomor->execute([$kodeTerpilih['id'], '%/' . $kodeTerpilih['kode'] . '/ARP/%/' . $tahun]);
-    $counterDariSurat = 0;
-    foreach ($stmtMaxNomor->fetchAll(PDO::FETCH_COLUMN) as $nomorLama) {
-        $angkaAwal = (int) strtok($nomorLama, '/');
-        if ($angkaAwal > $counterDariSurat) {
-            $counterDariSurat = $angkaAwal;
-        }
-    }
-
-    $counterPreview = max($counterDariKodeSurat, $counterDariSurat) + 1;
+    // Sama seperti generateNomorSurat(): baca nomor tertinggi langsung dari
+    // tabel Surat berdasarkan kode_id (bukan teks kode), supaya preview
+    // persis sama dengan nomor yang nanti benar-benar dipakai saat disimpan,
+    // dan tetap akurat walau teks kode sudah di-rename.
+    $counterPreview = arp_hitung_nomor_urut_tertinggi($pdo, (int) $kodeTerpilih['id'], $tahun) + 1;
 
     // ⬇ Pratinjau nomor ikut invoice HANYA kalau checkbox "ikuti_nomor_invoice" dicentang.
     $invoiceSumberIdPreview = (int) ($_POST['invoice_sumber_id'] ?? 0);
@@ -1833,7 +1825,12 @@ include "../includes/topbar.php";
                                             <span class="text-secondary">-</span>
                                         <?php else: ?>
                                             <div class="table-actions">
-                                                <?php if ($s['status'] === 'Draft'): ?>
+                                                <?php if ((int) ($s['jumlah_revisi_turunan'] ?? 0) > 0): ?>
+                                                    <span class="text-secondary text-xs">
+                                                        <i class="bi bi-check2-circle"></i> Direvisi
+                                                        ke-<?= (int) $s['revisi_terbaru_ke'] ?>
+                                                    </span>
+                                                <?php elseif ($s['status'] === 'Draft'): ?>
                                                     <form method="POST" action="surat.php" class="d-inline"
                                                         onsubmit="return confirm('Ajukan surat ini untuk persetujuan?');">
                                                         <input type="hidden" name="aksi" value="ajukan_approval_surat">
@@ -1846,19 +1843,12 @@ include "../includes/topbar.php";
                                                 <?php elseif ($s['status'] === 'Menunggu Persetujuan'): ?>
                                                     <span class="text-secondary text-xs">Menunggu persetujuan</span>
                                                 <?php elseif ($s['status'] === 'Ditolak'): ?>
-                                                    <?php if ((int) ($s['jumlah_revisi_turunan'] ?? 0) > 0): ?>
-                                                        <span class="text-secondary text-xs">
-                                                            <i class="bi bi-check2-circle"></i> Direvisi
-                                                            ke-<?= (int) $s['revisi_terbaru_ke'] ?>
-                                                        </span>
-                                                    <?php else: ?>
-                                                        <a href="edit_surat.php?id=<?= (int) $s['id'] ?>&auto_revisi=1"
-                                                            class="btn-secondary-custom"
-                                                            data-arp-loading="Memuat halaman revisi surat..."
-                                                            style="height:28px; padding:0 10px; font-size:0.75rem; display:inline-flex; align-items:center; gap:4px; text-decoration:none;">
-                                                            <i class="bi bi-arrow-counterclockwise"></i> Revisi
-                                                        </a>
-                                                    <?php endif; ?>
+                                                    <a href="edit_surat.php?id=<?= (int) $s['id'] ?>&auto_revisi=1"
+                                                        class="btn-secondary-custom"
+                                                        data-arp-loading="Memuat halaman revisi surat..."
+                                                        style="height:28px; padding:0 10px; font-size:0.75rem; display:inline-flex; align-items:center; gap:4px; text-decoration:none;">
+                                                        <i class="bi bi-arrow-counterclockwise"></i> Revisi
+                                                    </a>
                                                 <?php elseif ($s['status'] === 'Disetujui'): ?>
                                                     <form method="POST" action="surat.php" class="d-inline"
                                                         onsubmit="return confirm('Kirim surat ini ke client sekarang?');">
