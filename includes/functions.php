@@ -104,75 +104,23 @@ function resolveNomorSurat(PDO $pdo, int $kode_id, ?string $noUrutManual = null)
 // ==========================================
 function arp_urutkan_daftar_surat_by_nomor(array $daftarSurat): array
 {
-    // 1) Kelompokkan per root_id (satu grup = satu "keluarga" surat:
-    //    surat asli + semua revisinya)
-    $grup = [];
-    foreach ($daftarSurat as $baris) {
-        $rootId = $baris['root_id'];
-        if (!isset($grup[$rootId])) {
-            $grup[$rootId] = ['baris' => [], 'kunci' => null];
+    // Tidak lagi mengelompokkan per family (induk + revisi berdekatan).
+    // Sekarang murni: surat yang tanggal dibuatnya PALING BARU tampil PALING
+    // ATAS, apa pun statusnya (induk/revisi). Revisi baru otomatis naik ke
+    // atas karena tgl_dibuat-nya hari ini; suratnya induk tetap di posisi
+    // lama sesuai tanggal aslinya. Untuk melihat revisi dari induknya, pakai
+    // tombol "Direvisi ke-X" yang akan menyorot baris revisinya (lihat
+    // sorotBarisSurat() di halaman surat.php).
+    usort($daftarSurat, function ($a, $b) {
+        $tsA = strtotime((string) ($a['tgl_dibuat'] ?? 'now')) ?: 0;
+        $tsB = strtotime((string) ($b['tgl_dibuat'] ?? 'now')) ?: 0;
+        if ($tsA !== $tsB) {
+            return $tsB <=> $tsA;
         }
-        $grup[$rootId]['baris'][] = $baris;
-    }
-
-    // 2) Hitung kunci urut tiap family, MURNI dari TANGGAL SURAT DIBUAT
-    //    (root_tgl_dibuat = tanggal surat ASLI/induk family ini, sama untuk
-    //    semua baris di family ini walau sudah direvisi berkali-kali).
-    //    Surat yang tanggal dibuatnya paling baru SELALU tampil PALING ATAS,
-    //    apa pun nomor uratnya -- termasuk surat hasil import yang tanggal
-    //    aslinya bisa diisi manual saat proses import.
-    foreach ($grup as $rootId => &$g) {
-        $barisAcuan = null;
-        foreach ($g['baris'] as $b) {
-            if (empty($b['induk_surat_id'])) {
-                $barisAcuan = $b;
-                break;
-            }
-        }
-        if (!$barisAcuan) {
-            $barisAcuan = $g['baris'][0];
-        }
-
-        $tsTanggal = strtotime((string) ($barisAcuan['root_tgl_dibuat'] ?? $barisAcuan['tgl_dibuat'] ?? 'now')) ?: time();
-
-        $g['kunci'] = [
-            'tanggal' => $tsTanggal,
-            // Tie-breaker kalau tanggalnya persis sama: root_id lebih besar
-            // (baris yang di-insert lebih baru ke database) tampil lebih
-            // atas, supaya urutan tetap stabil & konsisten antar refresh.
-            'root_id' => (int) $rootId,
-        ];
-    }
-    unset($g);
-
-    // 3) Urutkan family: tanggal surat dibuat DESC (surat terbaru paling
-    //    atas, surat lama di bawah). Kalau tanggalnya sama persis, fallback
-    //    ke root_id DESC.
-    uasort($grup, function ($a, $b) {
-        $ka = $a['kunci'];
-        $kb = $b['kunci'];
-
-        if ($ka['tanggal'] !== $kb['tanggal']) {
-            return $kb['tanggal'] <=> $ka['tanggal'];
-        }
-        return $kb['root_id'] <=> $ka['root_id'];
+        return ((int) ($b['id'] ?? 0)) <=> ((int) ($a['id'] ?? 0));
     });
 
-    // 4) Flatten kembali, dalam satu family urutkan revisi_ke DESC
-    //    (revisi terbaru di atas, surat asli paling bawah grupnya) --
-    //    BAGIAN INI TIDAK BERUBAH, revisi tetap menempel dekat induknya.
-    $hasil = [];
-    foreach ($grup as $g) {
-        $barisFamily = $g['baris'];
-        usort($barisFamily, function ($a, $b) {
-            return (int) ($b['revisi_ke'] ?? 0) <=> (int) ($a['revisi_ke'] ?? 0);
-        });
-        foreach ($barisFamily as $b) {
-            $hasil[] = $b;
-        }
-    }
-
-    return $hasil;
+    return $daftarSurat;
 }
 
 // ==========================================

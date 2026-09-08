@@ -1075,6 +1075,9 @@ $daftar_surat = $pdo->query("
            COALESCE(rootS.tgl_dibuat, s.tgl_dibuat) AS root_tgl_dibuat,
            (SELECT COUNT(*) FROM Surat child WHERE child.direvisi_dari_id = s.id) AS jumlah_revisi_turunan,
            (SELECT MAX(child.revisi_ke) FROM Surat child WHERE child.direvisi_dari_id = s.id) AS revisi_terbaru_ke,
+           (SELECT MAX(child.revisi_ke) FROM Surat child WHERE child.direvisi_dari_id = s.id) AS revisi_terbaru_ke,
+(SELECT child.id     FROM Surat child WHERE child.direvisi_dari_id = s.id ORDER BY child.revisi_ke DESC LIMIT 1) AS revisi_terbaru_id,
+(SELECT child.nomor  FROM Surat child WHERE child.direvisi_dari_id = s.id ORDER BY child.revisi_ke DESC LIMIT 1) AS revisi_terbaru_nomor,
            (SELECT ap.catatan FROM Approval ap
               WHERE ap.jenis_pengajuan = 'Surat' AND ap.ref_id = s.id AND ap.status = 'Ditolak'
               ORDER BY ap.tgl_aksi DESC LIMIT 1) AS catatan_ditolak
@@ -1402,7 +1405,7 @@ include "../includes/topbar.php";
                             <?php $no = 1; ?>
                             <?php foreach ($daftar_surat as $s): ?>
                                 <?php $suratMilikSaya = ((int) $s['dibuat_oleh'] === (int) $current_user_id); ?>
-                                <tr>
+                                <tr id="surat-row-<?= (int) $s['id'] ?>">
                                     <td><?= $no++; ?></td>
                                     <td><strong><?= e($s['nomor']) ?></strong>
                                         <!-- <?php if (!empty($s['nomor_agenda'])): ?>
@@ -1448,10 +1451,12 @@ include "../includes/topbar.php";
                                         <?php else: ?>
                                             <div class="table-actions">
                                                 <?php if ((int) ($s['jumlah_revisi_turunan'] ?? 0) > 0): ?>
-                                                    <span class="text-secondary text-xs">
+                                                    <a href="javascript:void(0);" class="text-secondary text-xs"
+                                                        style="text-decoration:none; cursor:pointer;"
+                                                        onclick="sorotBarisSurat(<?= (int) $s['revisi_terbaru_id'] ?>, '<?= /* ganti nama tabel sesuai file */ 'tabelSuratKeluar' ?>', '<?= e(addslashes($s['revisi_terbaru_nomor'] ?? '')) ?>')">
                                                         <i class="bi bi-check2-circle"></i> Direvisi
                                                         ke-<?= (int) $s['revisi_terbaru_ke'] ?>
-                                                    </span>
+                                                    </a>
                                                 <?php elseif ($s['status'] === 'Draft'): ?>
                                                     <form method="POST" action="surat.php" class="d-inline"
                                                         onsubmit="return confirm('Ajukan surat ini untuk persetujuan?');">
@@ -3255,6 +3260,33 @@ include "../includes/topbar.php";
             observerFieldBaru.observe(document.body, { childList: true, subtree: true });
         });
     })();
+</script>
+
+<style>
+.arp-row-highlight {
+    animation: arpHighlightFade 5.5s ease-out;
+}
+@keyframes arpHighlightFade {
+    0%   { background-color: #fff3b0; }
+    100% { background-color: transparent; }
+}
+</style>
+<script>
+function sorotBarisSurat(targetId, tableId, nomorSurat) {
+    var baris = document.getElementById('surat-row-' + targetId);
+    if (!baris) return;
+
+    // Baris revisi bisa saja sedang tersembunyi karena pagination (halaman
+    // tabel yang aktif bukan halaman tempat baris ini berada). Paksa baris
+    // ini tampil TANPA menyentuh search box / menyaring baris lain, supaya
+    // daftar surat yang lain tetap utuh seperti semula.
+    baris.style.display = '';
+
+    baris.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    baris.classList.remove('arp-row-highlight');
+    void baris.offsetWidth; // reset animasi kalau tombol diklik berkali-kali
+    baris.classList.add('arp-row-highlight');
+}
 </script>
 
 <?php include "../includes/footer.php"; ?>
