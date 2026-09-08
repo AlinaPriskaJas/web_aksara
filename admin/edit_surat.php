@@ -213,28 +213,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
                 $dataForm['no_surat_manual'] = trim((string) $_POST['no_surat_manual']);
             }
 
-            $items = [];
+        $items = [];        // dipakai untuk generate docx (tanggal sudah diformat Indonesia)
+            $itemsMentah = [];  // disimpan ke isi_data (tanggal tetap YYYY-MM-DD, aman untuk <input type="date">)
             foreach ($_POST['items'] ?? [] as $baris) {
-                $baris = array_map('trim', (array) $baris);
-            
-                // Kolom bertipe tanggal (input type="date" -> "YYYY-MM-DD") diformat
-                // ke format Indonesia sebelum ditulis ke dokumen Word.
-                foreach ($baris as $namaKolom => $nilaiKolom) {
-                    if (isKolomTanggal((string) $namaKolom) && $nilaiKolom !== '') {
-                        $baris[$namaKolom] = formatTanggalIndonesia($nilaiKolom);
-                    }
-                }
-            
+                $barisMentah = array_map('trim', (array) $baris);
+
                 $adaIsi = false;
-                foreach ($baris as $v) {
+                foreach ($barisMentah as $v) {
                     if ($v !== '') {
                         $adaIsi = true;
                         break;
                     }
                 }
-                if ($adaIsi) {
-                    $items[] = $baris;
+                if (!$adaIsi) {
+                    continue;
                 }
+
+                $barisUntukDocx = $barisMentah;
+                foreach ($barisUntukDocx as $namaKolom => $nilaiKolom) {
+                    if (isKolomTanggal((string) $namaKolom) && $nilaiKolom !== '') {
+                        $barisUntukDocx[$namaKolom] = formatTanggalIndonesia($nilaiKolom);
+                    }
+                }
+
+                $items[] = $barisUntukDocx;
+                $itemsMentah[] = $barisMentah;
             }
 
             $blocksData = [];
@@ -347,8 +350,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
                     ?? '-');
 
             $isiDataDisimpan = $dataFormMentah;
-            if (!empty($items)) {
-                $isiDataDisimpan['__items'] = $items;
+            if (!empty($itemsMentah)) {
+                        $isiDataDisimpan['__items'] = $itemsMentah;
             }
             if (!empty($blocksData)) {
                 $isiDataDisimpan['__blok'] = $blocksData;
