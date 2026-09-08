@@ -104,7 +104,8 @@ function resolveNomorSurat(PDO $pdo, int $kode_id, ?string $noUrutManual = null)
 // ==========================================
 function arp_urutkan_daftar_surat_by_nomor(array $daftarSurat): array
 {
-    // 1) Kelompokkan per root_id (satu grup = satu "keluarga" surat)
+    // 1) Kelompokkan per root_id (satu grup = satu "keluarga" surat:
+    //    surat asli + semua revisinya)
     $grup = [];
     foreach ($daftarSurat as $baris) {
         $rootId = $baris['root_id'];
@@ -114,9 +115,12 @@ function arp_urutkan_daftar_surat_by_nomor(array $daftarSurat): array
         $grup[$rootId]['baris'][] = $baris;
     }
 
-    // 2) Hitung kunci urut tiap family, dari nomor surat ROOT-nya
-    //    (nomor surat TIDAK berubah walau direvisi, jadi baris manapun
-    //    di family ini nomornya sama; kita utamakan baris induk kalau ada).
+    // 2) Hitung kunci urut tiap family, MURNI dari TANGGAL SURAT DIBUAT
+    //    (root_tgl_dibuat = tanggal surat ASLI/induk family ini, sama untuk
+    //    semua baris di family ini walau sudah direvisi berkali-kali).
+    //    Surat yang tanggal dibuatnya paling baru SELALU tampil PALING ATAS,
+    //    apa pun nomor uratnya -- termasuk surat hasil import yang tanggal
+    //    aslinya bisa diisi manual saat proses import.
     foreach ($grup as $rootId => &$g) {
         $barisAcuan = null;
         foreach ($g['baris'] as $b) {
@@ -129,53 +133,34 @@ function arp_urutkan_daftar_surat_by_nomor(array $daftarSurat): array
             $barisAcuan = $g['baris'][0];
         }
 
-        $nomor = trim((string) ($barisAcuan['nomor'] ?? ''));
-        $segmen = array_map('trim', explode('/', $nomor));
-
-        $noUrut = (isset($segmen[0]) && ctype_digit($segmen[0]) && $segmen[0] !== '')
-            ? (int) $segmen[0]
-            : null;
-
-        $tahunNomor = null;
-        if (count($segmen) > 1) {
-            $kandidatTahun = end($segmen);
-            if (ctype_digit($kandidatTahun) && strlen($kandidatTahun) === 4) {
-                $tahunNomor = (int) $kandidatTahun;
-            }
-        }
-
         $tsTanggal = strtotime((string) ($barisAcuan['root_tgl_dibuat'] ?? $barisAcuan['tgl_dibuat'] ?? 'now')) ?: time();
 
         $g['kunci'] = [
-            'tahun' => $tahunNomor ?? (int) date('Y', $tsTanggal),
-            'urut' => $noUrut ?? 0,
-            // fallback murni tanggal, dipakai HANYA kalau nomor sama sekali
-            // tidak bisa diurai jadi angka (mis. format khusus ${no_surat}).
             'tanggal' => $tsTanggal,
-            'bisa_diurai' => $noUrut !== null,
+            // Tie-breaker kalau tanggalnya persis sama: root_id lebih besar
+            // (baris yang di-insert lebih baru ke database) tampil lebih
+            // atas, supaya urutan tetap stabil & konsisten antar refresh.
+            'root_id' => (int) $rootId,
         ];
     }
     unset($g);
 
-    // 3) Urutkan family: yang nomornya bisa diurai diprioritaskan lewat
-    //    (tahun, urut) DESC; yang tidak bisa diurai diurutkan lewat tanggal DESC,
-    //    dan tetap disisipkan relatif terhadap yang lain lewat tanggal juga
-    //    supaya tidak "meloncat" aneh ke atas/bawah.
+    // 3) Urutkan family: tanggal surat dibuat DESC (surat terbaru paling
+    //    atas, surat lama di bawah). Kalau tanggalnya sama persis, fallback
+    //    ke root_id DESC.
     uasort($grup, function ($a, $b) {
         $ka = $a['kunci'];
         $kb = $b['kunci'];
 
-        if ($ka['tahun'] !== $kb['tahun']) {
-            return $kb['tahun'] <=> $ka['tahun'];
+        if ($ka['tanggal'] !== $kb['tanggal']) {
+            return $kb['tanggal'] <=> $ka['tanggal'];
         }
-        if ($ka['urut'] !== $kb['urut']) {
-            return $kb['urut'] <=> $ka['urut'];
-        }
-        return $kb['tanggal'] <=> $ka['tanggal'];
+        return $kb['root_id'] <=> $ka['root_id'];
     });
 
     // 4) Flatten kembali, dalam satu family urutkan revisi_ke DESC
-    //    (revisi terbaru di atas, surat asli paling bawah grupnya).
+    //    (revisi terbaru di atas, surat asli paling bawah grupnya) --
+    //    BAGIAN INI TIDAK BERUBAH, revisi tetap menempel dekat induknya.
     $hasil = [];
     foreach ($grup as $g) {
         $barisFamily = $g['baris'];
