@@ -496,6 +496,19 @@ if (!function_exists('isKolomQty')) {
     }
 }
 
+if (!function_exists('isKolomTanggal')) {
+    function isKolomTanggal(string $namaKolom): bool
+    {
+        return (bool) preg_match('/tanggal|tgl/i', $namaKolom);
+    }
+}
+if (!function_exists('isKolomWaktu')) {
+    function isKolomWaktu(string $namaKolom): bool
+    {
+        return !isKolomTanggal($namaKolom) && (bool) preg_match('/waktu|jam/i', $namaKolom);
+    }
+}
+
 const STATUS_OPSI_KELUAR = ['Draft', 'Menunggu Persetujuan', 'Disetujui', 'Ditolak', 'Terkirim', 'Diarsipkan'];
 const STATUS_OPSI_MASUK = ['Baru', 'Diproses', 'Didisposisi', 'Selesai', 'Diarsipkan'];
 
@@ -1446,18 +1459,18 @@ include "../includes/topbar.php";
                                         <?php endif; ?>
                                     </td>
                                     <td style="text-align:center;">
-                                        <?php if (!$suratMilikSaya): ?>
+                                        <?php if ((int) ($s['jumlah_revisi_turunan'] ?? 0) > 0): ?>
+                                            <a href="javascript:void(0);" class="text-secondary text-xs"
+                                                style="text-decoration:none; cursor:pointer;"
+                                                onclick="sorotBarisSurat(<?= (int) $s['revisi_terbaru_id'] ?>, 'tabelSuratKeluar', '<?= e(addslashes($s['revisi_terbaru_nomor'] ?? '')) ?>')">
+                                                <i class="bi bi-check2-circle"></i> Direvisi
+                                                ke-<?= (int) $s['revisi_terbaru_ke'] ?>
+                                            </a>
+                                        <?php elseif (!$suratMilikSaya): ?>
                                             <span class="text-secondary">-</span>
                                         <?php else: ?>
                                             <div class="table-actions">
-                                                <?php if ((int) ($s['jumlah_revisi_turunan'] ?? 0) > 0): ?>
-                                                    <a href="javascript:void(0);" class="text-secondary text-xs"
-                                                        style="text-decoration:none; cursor:pointer;"
-                                                        onclick="sorotBarisSurat(<?= (int) $s['revisi_terbaru_id'] ?>, '<?= /* ganti nama tabel sesuai file */ 'tabelSuratKeluar' ?>', '<?= e(addslashes($s['revisi_terbaru_nomor'] ?? '')) ?>')">
-                                                        <i class="bi bi-check2-circle"></i> Direvisi
-                                                        ke-<?= (int) $s['revisi_terbaru_ke'] ?>
-                                                    </a>
-                                                <?php elseif ($s['status'] === 'Draft'): ?>
+                                                <?php if ($s['status'] === 'Draft'): ?>
                                                     <form method="POST" action="surat.php" class="d-inline"
                                                         onsubmit="return confirm('Ajukan surat ini untuk persetujuan?');">
                                                         <input type="hidden" name="aksi" value="ajukan_approval_surat">
@@ -3263,30 +3276,36 @@ include "../includes/topbar.php";
 </script>
 
 <style>
-.arp-row-highlight {
-    animation: arpHighlightFade 5.5s ease-out;
-}
-@keyframes arpHighlightFade {
-    0%   { background-color: #fff3b0; }
-    100% { background-color: transparent; }
-}
+    .arp-row-highlight {
+        animation: arpHighlightFade 5.5s ease-out;
+    }
+
+    @keyframes arpHighlightFade {
+        0% {
+            background-color: #fff3b0;
+        }
+
+        100% {
+            background-color: transparent;
+        }
+    }
 </style>
 <script>
-function sorotBarisSurat(targetId, tableId, nomorSurat) {
-    var baris = document.getElementById('surat-row-' + targetId);
-    if (!baris) return;
+    function sorotBarisSurat(targetId, tableId, nomorSurat) {
+        var baris = document.getElementById('surat-row-' + targetId);
+        if (!baris) return;
 
-    // Baris revisi bisa saja sedang tersembunyi karena pagination (halaman
-    // tabel yang aktif bukan halaman tempat baris ini berada). Paksa baris
-    // ini tampil TANPA menyentuh search box / menyaring baris lain, supaya
-    // daftar surat yang lain tetap utuh seperti semula.
-    baris.style.display = '';
+        // Baris revisi bisa saja sedang tersembunyi karena pagination (halaman
+        // tabel yang aktif bukan halaman tempat baris ini berada). Paksa baris
+        // ini tampil TANPA menyentuh search box / menyaring baris lain, supaya
+        // daftar surat yang lain tetap utuh seperti semula.
+        baris.style.display = '';
 
-    baris.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    baris.classList.remove('arp-row-highlight');
-    void baris.offsetWidth; // reset animasi kalau tombol diklik berkali-kali
-    baris.classList.add('arp-row-highlight');
-}
+        baris.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        baris.classList.remove('arp-row-highlight');
+        void baris.offsetWidth; // reset animasi kalau tombol diklik berkali-kali
+        baris.classList.add('arp-row-highlight');
+    }
 </script>
 
 <?php include "../includes/footer.php"; ?>
