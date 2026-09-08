@@ -942,7 +942,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'catat_s
             if ($_FILES['lampiran']['error'] !== UPLOAD_ERR_OK) {
                 throw new RuntimeException("Terjadi kesalahan saat upload file.");
             }
-            $hasilDriveMasuk = arp_upload_ke_drive($_FILES['lampiran']['tmp_name'], $_FILES['lampiran']['name'], $_FILES['lampiran']['type'], 0, 'Surat_Masuk');
+            // Nama file di Drive: TanggalDiterima_Pengirim_Perihal
+            // Contoh: 20260905_Dinas Pendidikan_Undangan Rapat.pdf
+            $namaFileDriveMasuk = arp_buat_nama_file_surat_masuk($tglTerima, $pengirim, $perihal, $lampiranExt);
+            $hasilDriveMasuk = arp_upload_ke_drive($_FILES['lampiran']['tmp_name'], $namaFileDriveMasuk, $_FILES['lampiran']['type'], 0, 'Surat_Masuk');
             if (!$hasilDriveMasuk || empty($hasilDriveMasuk['link'])) {
                 throw new RuntimeException("Gagal mengunggah lampiran surat masuk ke Drive.");
             }
@@ -1270,18 +1273,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'import_
             }
             $kategoriDrive = arp_kategori_surat($kodeInfoImport['nama'], $arah, $tanggalUntukFolder);
 
-            // (2) Nama file di Drive: "No Urut. NAMA JENIS SURAT Nama Perusahaan"
-            // Ambil hanya nomor urutnya saja (segmen sebelum "/" pertama), bukan
-            // nomor lengkap yang masih ada /ARP/.../tahun -- fallback ke nomor
-            // utuh kalau formatnya bukan "angka/....".
-            $noUrutUntukFileImport = explode('/', $nomor)[0] ?? $nomor;
-            if (!ctype_digit($noUrutUntukFileImport)) {
-                $noUrutUntukFileImport = $nomor;
+            // (2) Nama file di Drive:
+            // - Surat Masuk : TanggalDiterima_Pengirim_Perihal (cth 20260905_Dinas Pendidikan_Undangan Rapat)
+            // - Surat Keluar: "No Urut. NAMA JENIS SURAT Nama Perusahaan" (perilaku lama, tidak berubah)
+            if ($arah === 'Masuk') {
+                $namaFileDrive = arp_buat_nama_file_surat_masuk($tanggal, $tujuan, $perihal, $barisImport['ekstensi']);
+            } else {
+                // Ambil hanya nomor urutnya saja (segmen sebelum "/" pertama), bukan
+                // nomor lengkap yang masih ada /ARP/.../tahun -- fallback ke nomor
+                // utuh kalau formatnya bukan "angka/....".
+                $noUrutUntukFileImport = explode('/', $nomor)[0] ?? $nomor;
+                if (!ctype_digit($noUrutUntukFileImport)) {
+                    $noUrutUntukFileImport = $nomor;
+                }
+                $namaJenisSuratUntukFile = mb_strtoupper($kodeInfoImport['nama']);
+                $namaPerusahaanUntukFile = $tujuan !== '-' ? $tujuan : pathinfo($barisImport['nama_asli'], PATHINFO_FILENAME);
+                $namaFileMentahImport = $noUrutUntukFileImport . '. ' . $namaJenisSuratUntukFile . ' ' . $namaPerusahaanUntukFile;
+                $namaFileDrive = trim(preg_replace('/[\\\\\/:*?"<>|]+/', '_', $namaFileMentahImport)) . '.' . $barisImport['ekstensi'];
             }
-            $namaJenisSuratUntukFile = mb_strtoupper($kodeInfoImport['nama']);
-            $namaPerusahaanUntukFile = $tujuan !== '-' ? $tujuan : pathinfo($barisImport['nama_asli'], PATHINFO_FILENAME);
-            $namaFileMentahImport = $noUrutUntukFileImport . '. ' . $namaJenisSuratUntukFile . ' ' . $namaPerusahaanUntukFile;
-            $namaFileDrive = trim(preg_replace('/[\\\\\/:*?"<>|]+/', '_', $namaFileMentahImport)) . '.' . $barisImport['ekstensi'];
 
             $hasilDrive = arp_upload_ke_drive($pathFile, $namaFileDrive, $mimeType, 0, $kategoriDrive);
             if (!$hasilDrive || empty($hasilDrive['link'])) {

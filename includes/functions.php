@@ -1708,6 +1708,33 @@ function uploadSuratMasukFile(array $file): string
     return uploadFileKeStorage($file, SURAT_MASUK_DIR, 'storage/surat_masuk/', ['docx', 'doc', 'pdf']);
 }
 
+// ==========================================
+// NAMA FILE DRIVE UNTUK SURAT MASUK:
+//   TanggalDiterima_Pengirim_Perihal.ext
+// Contoh: 20260905_Dinas Pendidikan_Undangan Rapat.pdf
+// Dipakai baik saat "Catat Surat Masuk" manual maupun saat import bulk
+// (arah = Masuk), supaya penamaan file di Drive konsisten dan mudah
+// diurutkan/dicari berdasarkan tanggal diterima.
+// ==========================================
+if (!function_exists('arp_buat_nama_file_surat_masuk')) {
+    function arp_buat_nama_file_surat_masuk(string $tanggalDiterima, string $pengirim, string $perihal, string $ekstensi): string
+    {
+        $ts = strtotime($tanggalDiterima);
+        $tanggalFormat = $ts ? date('Ymd', $ts) : date('Ymd');
+
+        $pengirim = trim($pengirim) !== '' ? trim($pengirim) : '-';
+        $perihal  = trim($perihal)  !== '' ? trim($perihal)  : '-';
+
+        $namaFileMentah = $tanggalFormat . '_' . $pengirim . '_' . $perihal;
+
+        // Bersihkan karakter yang tidak boleh ada pada nama file, lalu
+        // rapikan spasi berlebih (tanpa menyentuh underscore pemisahnya).
+        $namaFileBersih = preg_replace('/[\\\\\/:*?"<>|]+/', '_', $namaFileMentah);
+        $namaFileBersih = preg_replace('/\s+/', ' ', trim($namaFileBersih));
+
+        return $namaFileBersih . '.' . strtolower($ekstensi);
+    }
+}
 
 // ==========================================
 // SCAN PLACEHOLDER ${...} ATAU {...} DARI FILE .DOCX
