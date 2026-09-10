@@ -103,6 +103,108 @@ if (($_GET['export'] ?? '') === 'rekap_transaksi_pdf') {
     exit;
 }
 
+// ====== Export Rekap Bulanan Barang Masuk (Surat PDF) ======
+if (($_GET['export'] ?? '') === 'rekap_barang_masuk_pdf') {
+    require_once "../config/koneksi.php";
+    require_once "../includes/stock_import_helper.php";
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
+    if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
+        header("Location: ../login.php");
+        exit;
+    }
+
+    $bulanFilterMasuk = trim($_GET['bulan'] ?? date('Y-m')); // format YYYY-MM
+    if (!preg_match('/^\d{4}-\d{2}$/', $bulanFilterMasuk)) {
+        $bulanFilterMasuk = date('Y-m');
+    }
+    $idKategoriFilterMasuk = intval($_GET['id_kategori'] ?? 0);
+
+    $namaBulanIndoMasuk = [
+        1 => 'Januari',
+        2 => 'Februari',
+        3 => 'Maret',
+        4 => 'April',
+        5 => 'Mei',
+        6 => 'Juni',
+        7 => 'Juli',
+        8 => 'Agustus',
+        9 => 'September',
+        10 => 'Oktober',
+        11 => 'November',
+        12 => 'Desember',
+    ];
+    [$thnFilterMasuk, $blnFilterMasuk] = explode('-', $bulanFilterMasuk);
+    $labelBulanMasuk = $namaBulanIndoMasuk[(int) $blnFilterMasuk] . ' ' . $thnFilterMasuk;
+
+    $sqlExportMasuk = "SELECT ms.tanggal, ms.jumlah, ms.keterangan,
+            gs.kode_barang, gs.nama_barang, gs.satuan, kbg.nama_kategori,
+            u.nama_lengkap AS operator
+        FROM Mutasi_Stok ms
+        JOIN Gudang_Stok gs ON ms.barang_id = gs.id
+        JOIN Jenis_Barang_Gudang jbg ON gs.id_jenis = jbg.id_jenis
+        JOIN Kategori_Barang_Gudang kbg ON jbg.id_kategori = kbg.id_kategori
+        JOIN Users u ON ms.dibuat_oleh = u.id
+        WHERE ms.jenis_mutasi = 'Masuk' AND DATE_FORMAT(ms.tanggal, '%Y-%m') = :bulan";
+    $paramsExportMasuk = ['bulan' => $bulanFilterMasuk];
+    if ($idKategoriFilterMasuk > 0) {
+        $sqlExportMasuk .= " AND kbg.id_kategori = :id_kategori";
+        $paramsExportMasuk['id_kategori'] = $idKategoriFilterMasuk;
+    }
+    $sqlExportMasuk .= " ORDER BY ms.tanggal ASC, ms.id ASC";
+
+    $stmtExportMasuk = $conn->prepare($sqlExportMasuk);
+    $stmtExportMasuk->execute($paramsExportMasuk);
+    $dataExportMasuk = $stmtExportMasuk->fetchAll();
+
+    $namaKategoriLabelMasuk = 'Semua Kategori';
+    if ($idKategoriFilterMasuk > 0) {
+        $stmtKatLabelMasuk = $conn->prepare("SELECT nama_kategori FROM Kategori_Barang_Gudang WHERE id_kategori = :id");
+        $stmtKatLabelMasuk->execute(['id' => $idKategoriFilterMasuk]);
+        $katRowMasuk = $stmtKatLabelMasuk->fetch();
+        if ($katRowMasuk) {
+            $namaKategoriLabelMasuk = $katRowMasuk['nama_kategori'];
+        }
+    }
+
+    $headersPdfMasuk = ['No', 'Tanggal', 'Kode', 'Nama Barang', 'Kategori', 'Volume', 'Keterangan', 'Dicatat Oleh'];
+    $colCharsPdfMasuk = [3, 10, 8, 30, 14, 10, 28, 20];
+    $rowsPdfMasuk = [];
+    $noExportMasuk = 1;
+    $totalQtyMasuk = 0;
+    foreach ($dataExportMasuk as $d) {
+        $rowsPdfMasuk[] = [
+            (string) $noExportMasuk++,
+            date('d-m-Y', strtotime($d['tanggal'])),
+            (string) $d['kode_barang'],
+            (string) $d['nama_barang'],
+            (string) $d['nama_kategori'],
+            $d['jumlah'] . ' ' . $d['satuan'],
+            (string) ($d['keterangan'] ?: '-'),
+            (string) $d['operator'],
+        ];
+        $totalQtyMasuk += (int) $d['jumlah'];
+    }
+    if (empty($rowsPdfMasuk)) {
+        $rowsPdfMasuk[] = ['-', 'Tidak ada barang masuk pada periode ini.', '', '', '', '', '', ''];
+    }
+
+    $pdfBytesMasuk = buatPdfSederhanaTable(
+        'Rekap Barang Masuk Gudang',
+        'Periode: ' . $labelBulanMasuk . '  |  Kategori: ' . $namaKategoriLabelMasuk . '  |  Total Volume: ' . $totalQtyMasuk . '  |  Dicetak: ' . date('d-m-Y H:i'),
+        $headersPdfMasuk,
+        $colCharsPdfMasuk,
+        $rowsPdfMasuk
+    );
+
+    header('Content-Type: application/pdf');
+    header('Content-Disposition: attachment; filename="Rekap-Barang-Masuk-' . $bulanFilterMasuk . '.pdf"');
+    header('Content-Length: ' . strlen($pdfBytesMasuk));
+    echo $pdfBytesMasuk;
+    exit;
+}
+
 // ====== Export Rekap Tahunan Keuangan Gudang (Surat PDF) — pembelian & pemakaian ======
 if (($_GET['export'] ?? '') === 'rekap_tahunan_pdf') {
     require_once "../config/koneksi.php";
@@ -214,18 +316,15 @@ if (($_GET['export'] ?? '') === 'rekap_anggaran_kategori_pdf') {
     $kategorisExport = $conn->query("SELECT * FROM Kategori_Barang_Gudang ORDER BY id_kategori ASC")->fetchAll();
 
     $stmtItemsExport = $conn->prepare("
-        SELECT gs.id, gs.kode_barang, gs.nama_barang, gs.satuan, gs.harga_satuan, kbg.id_kategori,
-            COALESCE(SUM(CASE WHEN ms.jenis_mutasi = 'Masuk' AND YEAR(ms.tanggal) = :tahun THEN ms.jumlah ELSE 0 END), 0) AS vol
-        FROM Gudang_Stok gs
-        JOIN Jenis_Barang_Gudang jbg ON gs.id_jenis = jbg.id_jenis
-        JOIN Kategori_Barang_Gudang kbg ON jbg.id_kategori = kbg.id_kategori
-        LEFT JOIN Mutasi_Stok ms ON ms.barang_id = gs.id
-        GROUP BY gs.id
-        ORDER BY kbg.id_kategori ASC,
-                 CAST(SUBSTRING_INDEX(gs.kode_barang, '.', 1) AS UNSIGNED) ASC,
-                 CAST(SUBSTRING_INDEX(gs.kode_barang, '.', -1) AS UNSIGNED) ASC
-    ");
-    $stmtItemsExport->execute(['tahun' => $tahunAnggaranExport]);
+    SELECT gs.id, gs.kode_barang, gs.nama_barang, gs.satuan, gs.harga_satuan, gs.stok_awal, kbg.id_kategori
+    FROM Gudang_Stok gs
+    JOIN Jenis_Barang_Gudang jbg ON gs.id_jenis = jbg.id_jenis
+    JOIN Kategori_Barang_Gudang kbg ON jbg.id_kategori = kbg.id_kategori
+    ORDER BY kbg.id_kategori ASC,
+             CAST(SUBSTRING_INDEX(gs.kode_barang, '.', 1) AS UNSIGNED) ASC,
+             CAST(SUBSTRING_INDEX(gs.kode_barang, '.', -1) AS UNSIGNED) ASC
+");
+    $stmtItemsExport->execute();
     $itemsExport = $stmtItemsExport->fetchAll();
 
     $itemsByKategoriExport = [];
@@ -246,7 +345,7 @@ if (($_GET['export'] ?? '') === 'rekap_anggaran_kategori_pdf') {
         $rowsAnggaranPdf[] = ['0.' . $noKategoriPdf, '1.' . $noKategoriPdf, $kat['nama_kategori'], '', '', '', ''];
         $subtotalPdf = 0;
         foreach ($itemsByKategoriExport[$kat['id_kategori']] as $it) {
-            $vol = (int) $it['vol'];
+            $vol = (int) $it['stok_awal'];
             $harga = $it['harga_satuan'] !== null ? (float) $it['harga_satuan'] : 0;
             $nilai = $vol * $harga;
             $rowsAnggaranPdf[] = [
@@ -438,15 +537,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $barang_baru_id = $conn->lastInsertId();
 
-                if ($stok_awal > 0) {
-                    $stmtMutAwal = $conn->prepare("INSERT INTO Mutasi_Stok (barang_id, jenis_mutasi, jumlah, tanggal, keterangan, dibuat_oleh) VALUES (:barang_id, 'Penyesuaian Opname', :jumlah, :tanggal, 'Stok awal saat penambahan barang baru', :user_id)");
-                    $stmtMutAwal->execute([
-                        'barang_id' => $barang_baru_id,
-                        'jumlah' => $stok_awal,
-                        'tanggal' => date('Y-m-d'),
-                        'user_id' => $current_user_id
-                    ]);
-                }
+                // Selalu catat sebagai mutasi 'Masuk' untuk SETIAP barang baru — bahkan jika Stok Awal
+                // diisi 0 — supaya barang baru selalu tercatat di Riwayat Barang Masuk (Pembelian) dan
+                // otomatis ikut terhitung di Rekap Keuangan/Anggaran per kategori.
+                $stmtMutAwal = $conn->prepare("INSERT INTO Mutasi_Stok (barang_id, jenis_mutasi, jumlah, tanggal, keterangan, dibuat_oleh) VALUES (:barang_id, 'Masuk', :jumlah, :tanggal, 'Stok awal barang baru', :user_id)");
+                $stmtMutAwal->execute([
+                    'barang_id' => $barang_baru_id,
+                    'jumlah' => $stok_awal,
+                    'tanggal' => date('Y-m-d'),
+                    'user_id' => $current_user_id
+                ]);
 
                 $conn->commit();
                 catatAudit(
@@ -512,6 +612,96 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    // ---- 3b. Edit Transaksi Pemakaian ----
+    if (isset($_POST['action']) && $_POST['action'] === 'edit_transaksi') {
+        $active_tab = 'tabTransaksi';
+        $mutasi_id = intval($_POST['mutasi_id']);
+        $jumlah_baru = intval($_POST['jumlah']);
+        $pemakai = trim($_POST['pemakai'] ?? '');
+        $keterangan = trim($_POST['keterangan'] ?? '');
+        $tanggal = !empty($_POST['tanggal']) ? $_POST['tanggal'] : date('Y-m-d');
+
+        if ($jumlah_baru <= 0 || empty($pemakai)) {
+            $error_msg = "Jumlah dan nama pemakai wajib diisi!";
+        } else {
+            try {
+                $conn->beginTransaction();
+
+                $stmtOld = $conn->prepare("SELECT * FROM Mutasi_Stok WHERE id = :id AND jenis_mutasi = 'Keluar'");
+                $stmtOld->execute(['id' => $mutasi_id]);
+                $old = $stmtOld->fetch();
+                if (!$old) {
+                    throw new Exception("Transaksi tidak ditemukan.");
+                }
+
+                // Selisih jumlah (baru - lama): jika bertambah, stok berkurang lagi; jika berkurang, stok naik.
+                $selisih = $jumlah_baru - (int) $old['jumlah'];
+                $stmtUpdStok = $conn->prepare("UPDATE Gudang_Stok SET stok_sistem = stok_sistem - :selisih WHERE id = :barang_id");
+                $stmtUpdStok->execute(['selisih' => $selisih, 'barang_id' => $old['barang_id']]);
+
+                $stmtUpdMut = $conn->prepare("UPDATE Mutasi_Stok SET jumlah = :jumlah, pemakai = :pemakai, tanggal = :tanggal, keterangan = :ket WHERE id = :id");
+                $stmtUpdMut->execute([
+                    'jumlah' => $jumlah_baru,
+                    'pemakai' => $pemakai,
+                    'tanggal' => $tanggal,
+                    'ket' => $keterangan,
+                    'id' => $mutasi_id,
+                ]);
+
+                $conn->commit();
+                catatAudit(
+                    $conn,
+                    'Gudang',
+                    'Edit Transaksi Pemakaian',
+                    "Mengubah transaksi pemakaian #{$mutasi_id} barang #{$old['barang_id']}",
+                    null,
+                    ['sebelum' => $old, 'sesudah' => ['jumlah' => $jumlah_baru, 'pemakai' => $pemakai, 'tanggal' => $tanggal, 'keterangan' => $keterangan]]
+                );
+                $success_msg = "Transaksi pemakaian berhasil diperbarui! Sisa stok telah disesuaikan otomatis.";
+            } catch (Exception $e) {
+                $conn->rollBack();
+                $error_msg = "Gagal memperbarui transaksi: " . $e->getMessage();
+            }
+        }
+    }
+
+    // ---- 3c. Hapus Transaksi Pemakaian ----
+    if (isset($_POST['action']) && $_POST['action'] === 'hapus_transaksi') {
+        $active_tab = 'tabTransaksi';
+        $mutasi_id = intval($_POST['mutasi_id']);
+
+        try {
+            $conn->beginTransaction();
+
+            $stmtOld = $conn->prepare("SELECT * FROM Mutasi_Stok WHERE id = :id AND jenis_mutasi = 'Keluar'");
+            $stmtOld->execute(['id' => $mutasi_id]);
+            $old = $stmtOld->fetch();
+            if (!$old) {
+                throw new Exception("Transaksi tidak ditemukan.");
+            }
+
+            $stmtUpdStok = $conn->prepare("UPDATE Gudang_Stok SET stok_sistem = stok_sistem + :jumlah WHERE id = :barang_id");
+            $stmtUpdStok->execute(['jumlah' => $old['jumlah'], 'barang_id' => $old['barang_id']]);
+
+            $stmtDel = $conn->prepare("DELETE FROM Mutasi_Stok WHERE id = :id");
+            $stmtDel->execute(['id' => $mutasi_id]);
+
+            $conn->commit();
+            catatAudit(
+                $conn,
+                'Gudang',
+                'Hapus Transaksi Pemakaian',
+                "Menghapus transaksi pemakaian #{$mutasi_id} barang #{$old['barang_id']}",
+                null,
+                $old
+            );
+            $success_msg = "Transaksi pemakaian berhasil dihapus! Sisa stok telah dikembalikan otomatis.";
+        } catch (Exception $e) {
+            $conn->rollBack();
+            $error_msg = "Gagal menghapus transaksi: " . $e->getMessage();
+        }
+    }
+
     // ---- 4. Catat Barang Masuk ----
     if (isset($_POST['action']) && $_POST['action'] === 'barang_masuk') {
         $active_tab = 'tabBarangMasuk';
@@ -559,26 +749,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    // ---- 5. Edit Barang (satuan, rak, jenis pakai) ----
+    // ---- 5. Edit Barang (nama, satuan, rak, jenis pakai) ----
     if (isset($_POST['action']) && $_POST['action'] === 'edit_barang') {
         $active_tab = 'tabGudang';
         $barang_id = intval($_POST['barang_id']);
+        $nama_barang = trim($_POST['nama_barang'] ?? '');
         $satuan = trim($_POST['satuan']);
         $lokasi_rak = trim($_POST['lokasi_rak']);
         $jenis_pakai = ($_POST['jenis_pakai'] ?? '') === 'Tidak Habis Pakai' ? 'Tidak Habis Pakai' : 'Habis Pakai';
 
-        try {
-            $stmt = $conn->prepare("UPDATE Gudang_Stok SET satuan = :satuan, lokasi_rak = :rak, jenis_pakai = :jenis_pakai WHERE id = :id");
-            $stmt->execute([
-                'satuan' => $satuan,
-                'rak' => $lokasi_rak,
-                'jenis_pakai' => $jenis_pakai,
-                'id' => $barang_id,
-            ]);
-            catatAudit($conn, 'Gudang', 'Edit Barang', "Mengubah data barang #{$barang_id}", null, $_POST);
-            $success_msg = "Data barang berhasil diperbarui.";
-        } catch (Exception $e) {
-            $error_msg = "Gagal memperbarui barang: " . $e->getMessage();
+        if (empty($nama_barang)) {
+            $error_msg = "Nama Barang wajib diisi!";
+        } else {
+            try {
+                $stmt = $conn->prepare("UPDATE Gudang_Stok SET nama_barang = :nama_barang, satuan = :satuan, lokasi_rak = :rak, jenis_pakai = :jenis_pakai WHERE id = :id");
+                $stmt->execute([
+                    'nama_barang' => $nama_barang,
+                    'satuan' => $satuan,
+                    'rak' => $lokasi_rak,
+                    'jenis_pakai' => $jenis_pakai,
+                    'id' => $barang_id,
+                ]);
+                catatAudit($conn, 'Gudang', 'Edit Barang', "Mengubah data barang #{$barang_id} menjadi '{$nama_barang}'", null, $_POST);
+                $success_msg = "Data barang berhasil diperbarui.";
+            } catch (Exception $e) {
+                $error_msg = "Gagal memperbarui barang: " . $e->getMessage();
+            }
         }
     }
 
@@ -609,9 +805,7 @@ $kategoris = $conn->query("SELECT * FROM Kategori_Barang_Gudang ORDER BY id_kate
 // lengkap dengan pemakaian yang dihitung otomatis dari Mutasi_Stok.
 $semuaItems = $conn->query("
     SELECT gs.*, jbg.nama_jenis, kbg.id_kategori, kbg.nama_kategori,
-        (SELECT COALESCE(SUM(ms.jumlah), 0) FROM Mutasi_Stok ms
-            WHERE ms.barang_id = gs.id AND ms.jenis_mutasi = 'Keluar'
-            AND ms.tanggal >= COALESCE(gs.tgl_opname_awal, '1970-01-01')) AS pemakaian
+        GREATEST(gs.stok_awal - gs.stok_sistem, 0) AS pemakaian
     FROM Gudang_Stok gs
     JOIN Jenis_Barang_Gudang jbg ON gs.id_jenis = jbg.id_jenis
     JOIN Kategori_Barang_Gudang kbg ON jbg.id_kategori = kbg.id_kategori
@@ -699,18 +893,10 @@ if ($tahunAnggaran < 2000 || $tahunAnggaran > 2100) {
     $tahunAnggaran = (int) date('Y');
 }
 
-$stmtBelianTahun = $conn->prepare("
-    SELECT barang_id, COALESCE(SUM(jumlah), 0) AS vol
-    FROM Mutasi_Stok
-    WHERE jenis_mutasi = 'Masuk' AND YEAR(tanggal) = :tahun
-    GROUP BY barang_id
-");
-$stmtBelianTahun->execute(['tahun' => $tahunAnggaran]);
-$volBelianPerBarang = [];
-foreach ($stmtBelianTahun->fetchAll() as $row) {
-    $volBelianPerBarang[$row['barang_id']] = (int) $row['vol'];
-}
-
+// Vol Keuangan sekarang mengambil langsung dari Stok Awal barang (Gudang_Stok.stok_awal),
+// supaya SELALU sinkron dengan tab Gudang Barang: Barang Masuk menambah stok_awal (otomatis
+// menambah Vol di sini), sedangkan Pemakaian/Transaksi Keluar TIDAK mengubah stok_awal
+// (hanya mengurangi stok_sistem), sehingga tidak ikut mengurangi Vol Keuangan.
 $rekapAnggaran = [];
 $grandTotalAnggaran = 0;
 $noKategoriAnggaran = 0;
@@ -719,7 +905,7 @@ foreach ($kategoris as $kat) {
     $itemsRekap = [];
     $subtotalKategori = 0;
     foreach ($itemsByKategori[$kat['id_kategori']] as $it) {
-        $vol = $volBelianPerBarang[$it['id']] ?? 0;
+        $vol = (int) $it['stok_awal'];
         $harga = $it['harga_satuan'] !== null ? (float) $it['harga_satuan'] : 0;
         $nilai = $vol * $harga;
         $itemsRekap[] = [
@@ -995,6 +1181,9 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
                             <button class="btn-primary-custom" onclick="openModal('modalBarangMasuk')">
                                 <i class="bi bi-plus-lg"></i> Catat Barang Masuk
                             </button>
+                            <button class="btn-primary-custom" onclick="openModal('modalRekapBarangMasuk')">
+                                <i class="bi bi-file-earmark-pdf"></i> Print PDF
+                            </button>
                         </div>
                     </div>
                     <div class="table-responsive-custom">
@@ -1072,12 +1261,13 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
                                     <th>Volume</th>
                                     <th>Pemakai</th>
                                     <th>Keterangan</th>
+                                    <th>Aksi</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <?php if (count($transaksiList) === 0): ?>
                                     <tr>
-                                        <td colspan="8" class="text-center py-4 text-muted">Belum ada transaksi
+                                        <td colspan="9" class="text-center py-4 text-muted">Belum ada transaksi
                                             pemakaian.</td>
                                     </tr>
                                 <?php else: ?>
@@ -1094,6 +1284,31 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
                                             <td><?= (int) $tr['jumlah'] ?>         <?= htmlspecialchars($tr['satuan']) ?></td>
                                             <td><?= htmlspecialchars($tr['pemakai'] ?: '-') ?></td>
                                             <td><?= htmlspecialchars($tr['keterangan'] ?: '-') ?></td>
+                                            <td>
+                                                <div class="d-flex gap-1">
+                                                    <button type="button" class="btn-secondary-custom py-1 px-2" onclick='openModalEditTransaksi(<?= json_encode([
+                                                        "id" => $tr["id"],
+                                                        "kode" => $tr["kode_barang"],
+                                                        "nama" => $tr["nama_barang"],
+                                                        "jumlah" => (int) $tr["jumlah"],
+                                                        "pemakai" => $tr["pemakai"],
+                                                        "tanggal" => $tr["tanggal"],
+                                                        "keterangan" => $tr["keterangan"],
+                                                    ], JSON_UNESCAPED_UNICODE | JSON_HEX_APOS | JSON_HEX_QUOT) ?>)'>
+                                                        <i class="bi bi-pencil-square"></i>
+                                                    </button>
+                                                    <form method="POST" action="stock.php" style="display:inline;"
+                                                        onsubmit="return confirm('Hapus transaksi pemakaian ini? Sisa stok akan dikembalikan otomatis.');">
+                                                        <input type="hidden" name="action" value="hapus_transaksi">
+                                                        <input type="hidden" name="mutasi_id" value="<?= $tr['id'] ?>">
+                                                        <button type="submit" class="btn-secondary-custom py-1 px-2"
+                                                            style="color:#dc3545;">
+                                                            <i class="bi bi-trash"></i>
+                                                        </button>
+                                                    </form>
+                                                </div>
+                                            </td>
+                                        </tr>
                                         </tr>
                                     <?php endforeach; ?>
                                 <?php endif; ?>
@@ -1444,6 +1659,47 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
         </div>
     </div>
 
+    <!-- Modal: Rekap Bulanan Barang Masuk (Surat PDF) -->
+    <div class="arp-modal-overlay" id="modalRekapBarangMasuk"
+        onclick="closeModalOutside(event, 'modalRekapBarangMasuk')">
+        <div class="arp-modal-box" style="max-width:480px;">
+            <div class="arp-modal-header">
+                <div>
+                    <h5 class="fw-bold mb-0">Rekap Bulanan Barang Masuk</h5>
+                    <small class="text-muted">Diunduh dalam bentuk surat PDF</small>
+                </div>
+                <button class="arp-modal-close" onclick="closeModal('modalRekapBarangMasuk')">&times;</button>
+            </div>
+            <div class="arp-modal-body">
+                <form method="GET" action="stock.php" target="_blank">
+                    <input type="hidden" name="export" value="rekap_barang_masuk_pdf">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold mb-2">Pilih Bulan *</label>
+                        <input type="month" name="bulan" class="form-control-custom" value="<?= date('Y-m') ?>"
+                            required>
+                    </div>
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold mb-2">Kategori</label>
+                        <select name="id_kategori" class="select-custom">
+                            <option value="0">Semua Kategori</option>
+                            <?php foreach ($kategoris as $kat): ?>
+                                <option value="<?= $kat['id_kategori'] ?>">
+                                    <?= htmlspecialchars($kat['nama_kategori']) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="d-flex gap-2 justify-content-end">
+                        <button type="button" class="btn-secondary-custom"
+                            onclick="closeModal('modalRekapBarangMasuk')">Batal</button>
+                        <button type="submit" class="btn-primary-custom"><i class="bi bi-download"></i> Unduh
+                            PDF</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <!-- Modal: Tambah Barang Baru -->
     <div class="arp-modal-overlay" id="modalTambahBarang" onclick="closeModalOutside(event, 'modalTambahBarang')">
         <div class="arp-modal-box" style="max-width:560px;">
@@ -1534,7 +1790,7 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
             <div class="arp-modal-header">
                 <div>
                     <h5 class="fw-bold mb-0" id="editBarangNama">Edit Barang</h5>
-                    <small class="text-muted">Ubah satuan, rak &amp; jenis pakai</small>
+                    <small class="text-muted">Ubah nama, satuan, rak &amp; jenis pakai</small>
                 </div>
                 <button class="arp-modal-close" onclick="closeModal('modalEditBarang')">&times;</button>
             </div>
@@ -1542,6 +1798,10 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
                 <form method="POST" action="stock.php">
                     <input type="hidden" name="action" value="edit_barang">
                     <input type="hidden" name="barang_id" id="editBarangId">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold mb-2">Nama Barang *</label>
+                        <input type="text" name="nama_barang" id="editNamaBarang" class="form-control-custom" required>
+                    </div>
                     <div class="mb-3">
                         <label class="form-label fw-semibold mb-2">Satuan</label>
                         <input type="text" name="satuan" id="editSatuan" class="form-control-custom" required>
@@ -1560,6 +1820,50 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
                     <div class="d-flex gap-2 justify-content-end">
                         <button type="button" class="btn-secondary-custom"
                             onclick="closeModal('modalEditBarang')">Batal</button>
+                        <button type="submit" class="btn-primary-custom">Simpan Perubahan</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Edit Transaksi Pemakaian -->
+    <div class="arp-modal-overlay" id="modalEditTransaksi" onclick="closeModalOutside(event, 'modalEditTransaksi')">
+        <div class="arp-modal-box" style="max-width:480px;">
+            <div class="arp-modal-header">
+                <div>
+                    <h5 class="fw-bold mb-0" id="editTransaksiNama">Edit Transaksi Pemakaian</h5>
+                    <small class="text-muted">Sisa stok akan disesuaikan otomatis dari selisih jumlah</small>
+                </div>
+                <button class="arp-modal-close" onclick="closeModal('modalEditTransaksi')">&times;</button>
+            </div>
+            <div class="arp-modal-body">
+                <form method="POST" action="stock.php">
+                    <input type="hidden" name="action" value="edit_transaksi">
+                    <input type="hidden" name="mutasi_id" id="editTransaksiId">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold mb-2">Jumlah Dipakai *</label>
+                            <input type="number" name="jumlah" id="editTransaksiJumlah" class="form-control-custom"
+                                min="1" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold mb-2">Tanggal</label>
+                            <input type="date" name="tanggal" id="editTransaksiTanggal" class="form-control-custom">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold mb-2">Nama Pemakai *</label>
+                        <input type="text" name="pemakai" id="editTransaksiPemakai" class="form-control-custom"
+                            required>
+                    </div>
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold mb-2">Keterangan</label>
+                        <textarea name="keterangan" id="editTransaksiKeterangan" class="textarea-custom"></textarea>
+                    </div>
+                    <div class="d-flex gap-2 justify-content-end">
+                        <button type="button" class="btn-secondary-custom"
+                            onclick="closeModal('modalEditTransaksi')">Batal</button>
                         <button type="submit" class="btn-primary-custom">Simpan Perubahan</button>
                     </div>
                 </form>
@@ -1822,6 +2126,7 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
     function openModalEdit(data) {
         document.getElementById('editBarangNama').textContent = 'Edit — ' + data.nama;
         document.getElementById('editBarangId').value = data.id;
+        document.getElementById('editNamaBarang').value = data.nama || '';
         document.getElementById('editSatuan').value = data.satuan || '';
         document.getElementById('editJenisPakai').value = data.jenis_pakai || 'Habis Pakai';
         document.getElementById('editRak').value = data.rak || '';
@@ -1834,6 +2139,16 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
         document.getElementById('editHargaBarangId').value = data.id;
         document.getElementById('editHargaSatuan').value = data.harga ?? '';
         openModal('modalEditHarga');
+    }
+
+    function openModalEditTransaksi(data) {
+        document.getElementById('editTransaksiNama').textContent = 'Edit — [' + data.kode + '] ' + data.nama;
+        document.getElementById('editTransaksiId').value = data.id;
+        document.getElementById('editTransaksiJumlah').value = data.jumlah;
+        document.getElementById('editTransaksiTanggal').value = data.tanggal ? data.tanggal.substring(0, 10) : '';
+        document.getElementById('editTransaksiPemakai').value = data.pemakai || '';
+        document.getElementById('editTransaksiKeterangan').value = data.keterangan || '';
+        openModal('modalEditTransaksi');
     }
 
     // Cascading select: Kategori -> Barang (Kode & Nama) untuk Catat Barang Masuk
