@@ -13,5 +13,16 @@
 
 <!-- Main App JavaScript -->
 <script src="<?php echo $base_url; ?>assets/js/script.js"></script>
+
+<!-- Prevent "Confirm Form Resubmission" dialog on refresh after a POST -->
+<!-- Replaces the current history entry (created by the POST) with a plain GET
+     entry for the same URL, so pressing F5/refresh re-fetches the page via GET
+     instead of resubmitting the form data (which was causing duplicated data
+     e.g. uploads, tambah, edit records being saved twice). -->
+<script>
+    if (window.history && window.history.replaceState) {
+        window.history.replaceState(null, null, window.location.href);
+    }
+</script>
 </body>
 </html>

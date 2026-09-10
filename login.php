@@ -179,6 +179,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/js/bootstrap.bundle.min.js"></script>
 
+
+<!-- Prevent "Confirm Form Resubmission" dialog on refresh after a POST -->
+<script>
+    if (window.history && window.history.replaceState) {
+        window.history.replaceState(null, null, window.location.href);
+    }
+</script>
 </body>
 
 </html>

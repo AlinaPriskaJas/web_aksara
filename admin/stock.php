@@ -1518,7 +1518,7 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
                 <form method="POST" action="stock.php">
                     <input type="hidden" name="action" value="pemakaian">
                     <div class="mb-3">
-                        <label class="form-label fw-semibold mb-2">1. Pilih Kategori *</label>
+                        <label class="form-label fw-semibold mb-2">Pilih Kategori *</label>
                         <select class="select-custom" id="pemakaianKategori" required
                             onchange="renderPemakaianBarangOptions()">
                             <option value="">-- Pilih Kategori --</option>
@@ -1529,7 +1529,7 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
                         </select>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label fw-semibold mb-2">2. Pilih Barang (Kode &amp; Nama) *</label>
+                        <label class="form-label fw-semibold mb-2">Pilih Barang (Kode &amp; Nama) *</label>
                         <select name="barang_id" class="select-custom" id="pemakaianBarang" required disabled>
                             <option value="">-- Pilih kategori dahulu --</option>
                         </select>
@@ -1579,7 +1579,7 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
                 <form method="POST" action="stock.php">
                     <input type="hidden" name="action" value="barang_masuk">
                     <div class="mb-3">
-                        <label class="form-label fw-semibold mb-2">1. Pilih Kategori *</label>
+                        <label class="form-label fw-semibold mb-2">Pilih Kategori *</label>
                         <select class="select-custom" id="masukKategori" required onchange="renderBarangMasukOptions()">
                             <option value="">-- Pilih Kategori --</option>
                             <?php foreach ($kategoris as $kat): ?>
@@ -1589,7 +1589,7 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
                         </select>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label fw-semibold mb-2">2. Pilih Barang (Kode &amp; Nama) *</label>
+                        <label class="form-label fw-semibold mb-2">Pilih Barang (Kode &amp; Nama) *</label>
                         <select name="barang_id" class="select-custom" id="masukBarang" required disabled>
                             <option value="">-- Pilih kategori dahulu --</option>
                         </select>

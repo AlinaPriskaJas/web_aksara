@@ -252,5 +252,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     </script>
+
+<!-- Prevent "Confirm Form Resubmission" dialog on refresh after a POST -->
+<script>
+    if (window.history && window.history.replaceState) {
+        window.history.replaceState(null, null, window.location.href);
+    }
+</script>
 </body>
 </html>
