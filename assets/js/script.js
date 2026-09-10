@@ -10,35 +10,88 @@
     var loader = document.getElementById('page-loader');
     if (!loader) return;
 
+    // Ekstensi/tipe yang dianggap "foto" untuk keperluan teks ramah di bawah -
+    // dicek dari atribut accept pada <input type="file"> yang men-trigger submit,
+    // atau dari MIME type file yang sebenarnya dipilih user (fallback kalau
+    // accept tidak diisi/di-set longgar).
+    var EKSTENSI_FOTO = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
+
     function hideLoader() {
         loader.classList.add('is-hidden');
+        setProgress(0, false);
     }
-    function showLoader(text) {
+    function showLoader(text, subtext) {
         var textEl = document.getElementById('page-loader-text');
+        var subEl = document.getElementById('page-loader-subtext');
         if (textEl && text) textEl.textContent = text;
+        if (subEl && subtext) subEl.textContent = subtext;
         loader.classList.remove('is-hidden');
     }
+    function setProgress(persen, aktif) {
+        var track = document.getElementById('page-loader-progress-track');
+        var isi = document.getElementById('page-loader-progress-isi');
+        if (!track || !isi) return;
+        track.classList.toggle('is-active', !!aktif);
+        isi.style.width = Math.max(0, Math.min(100, persen || 0)) + '%';
+    }
 
-    // Sembunyikan begitu SELURUH halaman selesai dimuat (window 'load':
-    // HTML + CSS + JS + semua gambar/aset), bukan cuma DOMContentLoaded
-    // (HTML selesai di-parse saja). Sebelumnya pakai DOMContentLoaded
-    // supaya tidak menunggu gambar paling lambat, TAPI efeknya loading
-    // page kita hilang duluan sementara ikon loading di tab browser
-    // masih berputar (karena tab baru berhenti loading pas 'load' event
-    // selesai) — jadi kelihatan janggal: overlay sudah hilang tapi
-    // browser masih keliatan "memuat". Dengan 'load', overlay & indikator
-    // tab sama-sama hilang bersamaan.
-    window.addEventListener('load', hideLoader);
+    // Tentukan apakah sebuah <input type="file"> kemungkinan besar dipakai
+    // untuk foto (gambar) atau dokumen, supaya teks loader bisa ramah &
+    // sesuai konteks - bukan generik "Mengunggah file..." untuk semua kasus.
+    function apakahInputFotoFileTerpilih(input) {
+        if (!input) return false;
+        var accept = (input.getAttribute('accept') || '').toLowerCase();
+        var hanyaGambarDiAccept = accept !== '' && !accept.includes('.pdf') && !accept.includes('.doc')
+            && (accept.includes('image') || EKSTENSI_FOTO.some(function (ext) { return accept.includes(ext); }));
 
-    // Jaga-jaga kalau event 'load' entah kenapa sudah lewat duluan
-    // sebelum listener ini terpasang (mis. skrip telat dieksekusi).
-    if (document.readyState === 'complete') {
+        if (input.files && input.files.length > 0) {
+            var semuaFileGambar = Array.prototype.every.call(input.files, function (f) {
+                return (f.type || '').startsWith('image/');
+            });
+            if (semuaFileGambar) return true;
+            // Ada file dipilih tapi bukan gambar (mis. PDF) -> pasti dokumen,
+            // walau accept-nya campuran gambar+dokumen.
+            return false;
+        }
+
+        return hanyaGambarDiAccept;
+    }
+
+    // Sembunyikan saat event 'load' - supaya SELARAS dengan ikon loading
+    // bulat di tab browser, yang berhenti berputar setelah semua aset
+    // (gambar, CSS/JS termasuk dari CDN eksternal) selesai dimuat.
+    //
+    // TAPI: kalau ditunggu 'load' murni saja, begitu ada aset yang lambat
+    // (CDN Bootstrap/Icons kena macet, atau halaman berisi banyak foto),
+    // loader jadi ikut molor lama di SEMUA halaman - bukan cuma yang berat.
+    // Itu sebabnya dikasih pagar atas (MAKS_TUNGGU_MS): loader akan hilang
+    // begitu 'load' selesai ATAU begitu batas waktu ini tercapai, mana yang
+    // lebih dulu. Di kondisi normal (aset cepat), 'load' akan menang duluan
+    // sehingga tetap sinkron dengan tab. Hanya di kondisi tidak normal
+    // (aset benar-benar lambat) loader kustom ini akan hilang lebih dulu
+    // daripada ikon tab - itu wajar, karena saat itu halamannya memang
+    // betul-betul masih memuat sesuatu di baliknya.
+    var MAKS_TUNGGU_MS = 2500;
+    var sudahDisembunyikan = false;
+    function hideLoaderSekali() {
+        if (sudahDisembunyikan) return;
+        sudahDisembunyikan = true;
         hideLoader();
     }
 
-    // Failsafe: jangan sampai loader "nyangkut" selamanya kalau ada
-    // aset yang gagal/lambat dimuat.
-    setTimeout(hideLoader, 8000);
+    if (document.readyState === 'complete') {
+        // Kalau skrip ini baru terpasang setelah 'load' sudah lewat
+        // (mis. dimuat lambat/async), event 'load' tidak akan tertangkap
+        // lagi - langsung sembunyikan saja.
+        hideLoaderSekali();
+    } else {
+        window.addEventListener('load', hideLoaderSekali);
+        setTimeout(hideLoaderSekali, MAKS_TUNGGU_MS);
+    }
+
+    // Failsafe terakhir: jangan sampai loader "nyangkut" selamanya kalau
+    // sesuatu di atas gagal terpasang.
+    setTimeout(hideLoader, 12000);
 
     // Saat kembali lewat tombol back/forward browser (bfcache),
     // pastikan loader tidak ikut tersangkut dalam kondisi tampil.
@@ -56,8 +109,16 @@
         if (form.hasAttribute('data-no-loader') || form.target === '_blank') return;
         if (e.defaultPrevented) return;
 
-        var hasFileInput = !!form.querySelector('input[type="file"]');
-        showLoader(hasFileInput ? 'Mengunggah file...' : 'Memproses...');
+        var inputFile = form.querySelector('input[type="file"]');
+        if (inputFile) {
+            if (apakahInputFotoFileTerpilih(inputFile)) {
+                showLoader('Mengunggah foto Anda', 'Hampir selesai, jangan tutup halaman ini ya');
+            } else {
+                showLoader('Mengirim dokumen Anda', 'Sabar sebentar, dokumen sedang kami proses');
+            }
+        } else {
+            showLoader('Tunggu sebentar ya', 'Sedang memproses permintaan Anda');
+        }
 
         // Cegah klik ganda tombol submit selama proses upload berlangsung.
         // PENTING: disable-nya ditunda 1 tick (setTimeout 0) supaya browser
@@ -83,6 +144,13 @@
     // atribut data-arp-loading (lihat listener 'click' di bawah).
     window.arpShowLoader = showLoader;
     window.arpHideLoader = hideLoader;
+
+    // Ekspos setProgress supaya form yang dikirim lewat XHR/fetch manual
+    // (bukan submit form biasa) bisa menampilkan progress bar upload asli
+    // di dalam loader global ini. Panggil arpSetLoaderProgress(0, true) saat
+    // mulai, arpSetLoaderProgress(persen, true) tiap event progress, dan
+    // arpSetLoaderProgress(0, false) untuk menyembunyikan bar-nya lagi.
+    window.arpSetLoaderProgress = setProgress;
 
     // Tampilkan loader saat elemen dengan atribut data-arp-loading diklik
     // (dipasang manual di halaman seperti surat.php pada tombol/link

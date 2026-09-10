@@ -56,9 +56,18 @@ if (strpos($current_script, '/admin/') !== false) {
     <!-- Global Page Loader: tampil saat halaman/menu dimuat & saat form (termasuk upload) disubmit -->
     <div id="page-loader" class="page-loader">
         <div class="page-loader-box">
-            <img src="<?php echo $base_url; ?>assets/img/logo.png" alt="PT Aksara Riksa Perdana" class="page-loader-logo">
-            <div class="page-loader-spinner"></div>
-            <p class="page-loader-text" id="page-loader-text">Memuat halaman...</p>
+            <div class="page-loader-ring-wrap">
+                <div class="page-loader-ring-track"></div>
+                <div class="page-loader-ring-spin"></div>
+                <div class="page-loader-icon-circle">
+                    <img src="<?php echo $base_url; ?>assets/img/logo.png" alt="PT Aksara Riksa Perdana" class="page-loader-logo">
+                </div>
+            </div>
+            <p class="page-loader-text" id="page-loader-text">Tunggu sebentar...</p>
+            <p class="page-loader-subtext" id="page-loader-subtext">Sedang menyiapkan halaman untuk Anda</p>
+            <div class="page-loader-progress-track" id="page-loader-progress-track">
+                <div class="page-loader-progress-isi" id="page-loader-progress-isi"></div>
+            </div>
         </div>
     </div>
 

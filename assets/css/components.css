@@ -1483,7 +1483,12 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--bg-body);
+    /* Latar lembut bernuansa hijau (sesuai tema web), bukan putih polos,
+       supaya loading terasa "menyatu" dengan identitas brand. */
+    background:
+        radial-gradient(circle at 25% 20%, rgba(26, 107, 60, 0.07), transparent 55%),
+        radial-gradient(circle at 80% 85%, rgba(46, 204, 113, 0.06), transparent 55%),
+        var(--bg-body);
     opacity: 1;
     visibility: visible;
     transition: opacity 0.25s ease, visibility 0.25s ease;
@@ -1500,40 +1505,99 @@
     visibility: hidden;
     pointer-events: none;
 }
+/* Tanpa kartu/box putih & shadow tebal - dibuat "mengambang" langsung di
+   atas latar, ukurannya jauh lebih ringkas supaya tidak terasa "besar &
+   norak" di tengah halaman. */
 .page-loader-box {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
+  gap: 0;
+  background: transparent;
+  border-radius: 0;
+  padding: 0 1.5rem;
+  box-shadow: none;
+  min-width: 0;
+  max-width: 260px;
+}
+.page-loader-ring-wrap {
+  position: relative;
+  width: 84px;
+  height: 84px;
+  margin-bottom: 22px;
+  flex-shrink: 0;
+}
+.page-loader-ring-track {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 5px solid rgba(26, 107, 60, 0.12);
+}
+.page-loader-ring-spin {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 5px solid transparent;
+  border-top-color: var(--sidebar-bg);
+  border-right-color: var(--success);
+  animation: page-loader-spin 0.9s linear infinite;
+}
+/* Lingkaran putih kecil di tengah ring, tempat logo duduk - supaya logo
+   (yang berlatar putih & bukan persegi sempurna) ditampilkan utuh lewat
+   object-fit: contain, tidak terpotong paksa oleh border-radius. */
+.page-loader-icon-circle {
+  position: absolute;
+  inset: 9px;
+  border-radius: 50%;
+  background: var(--card-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 10px rgba(26, 107, 60, 0.18);
+  overflow: hidden;
 }
 .page-loader-logo {
-  width: 60px;
-  height: 60px;
+  width: 68%;
+  height: 68%;
   object-fit: contain;
-  animation: page-loader-pulse 1.4s ease-in-out infinite;
-}
-.page-loader-spinner {
-  width: 32px;
-  height: 32px;
-  border: 3px solid var(--border-color);
-  border-top-color: var(--primary);
-  border-radius: 50%;
-  animation: page-loader-spin 0.8s linear infinite;
 }
 .page-loader-text {
+  margin: 0 0 4px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.1px;
+  text-align: center;
+}
+.page-loader-subtext {
   margin: 0;
-  font-size: 0.85rem;
-  font-weight: 600;
+  font-size: 0.78rem;
+  font-weight: 400;
   color: var(--text-secondary);
-  letter-spacing: 0.2px;
+  text-align: center;
+}
+.page-loader-progress-track {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(26, 107, 60, 0.12);
+  overflow: hidden;
+  margin: 14px 0 2px;
+  display: none;
+}
+.page-loader-progress-track.is-active {
+  display: block;
+}
+.page-loader-progress-isi {
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--sidebar-bg), var(--success));
+  transition: width 0.15s ease-out;
 }
 @keyframes page-loader-spin {
   to { transform: rotate(360deg); }
 }
-@keyframes page-loader-pulse {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.06); opacity: 0.85; }
-}
 @media (prefers-reduced-motion: reduce) {
-  .page-loader-logo, .page-loader-spinner { animation: none; }
+  .page-loader-ring-spin { animation: none; }
 }
