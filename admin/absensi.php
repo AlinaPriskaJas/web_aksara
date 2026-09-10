@@ -495,38 +495,63 @@ try {
     </div>
 </div>
 
+
+<!-- ===== Overlay loading: muncul di TENGAH halaman saat form absen dikirim, bukan cuma di tab atas ===== -->
+<div id="arpUploadOverlay" class="arp-upload-overlay">
+    <div class="arp-upload-overlay-box">
+        <div class="spinner-border" role="status" style="color: var(--primary);"></div>
+        <p class="fw-semibold mb-1 mt-3">Mengunggah data &amp; foto...</p>
+        <small class="text-muted">Mohon tunggu sebentar, jangan tutup atau refresh halaman ini.</small>
+    </div>
+</div>
+<style>
+    .arp-upload-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.55);
+        z-index: 99999;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .arp-upload-overlay.arp-show {
+        display: flex;
+    }
+
+    .arp-upload-overlay-box {
+        background: #fff;
+        border-radius: 14px;
+        padding: 28px 32px;
+        text-align: center;
+        max-width: 300px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+    }
+</style>
+
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         initTablePagination('tabelAbsensiSaya', 10);
         initTablePagination('tabelAbsensi', 10);
 
-        // Form check-out (tanpa file) cukup mengandalkan loader global bawaan
-        // (assets/js/script.js sudah otomatis menampilkannya untuk semua form
-        // submit) - di sini cukup cegah klik ganda tombolnya saja.
-        var formCheckout = document.querySelector('#modalAbsenCheckout form');
-        if (formCheckout) {
-            formCheckout.addEventListener('submit', function () {
-                if (!formCheckout.checkValidity()) return;
-                var tombol = formCheckout.querySelector('button[type="submit"]');
+        // Tampilkan overlay loading di tengah halaman saat form check-in/check-out
+        // dikirim, supaya user tahu prosesnya masih berjalan (bukan macet) -
+        // terutama saat mengunggah foto yang makan waktu beberapa detik.
+        document.querySelectorAll('#modalAbsenCheckin form, #modalAbsenCheckout form').forEach(function (form) {
+            form.addEventListener('submit', function () {
+                if (!form.checkValidity()) return; // biarkan validasi HTML5 bawaan jalan dulu
+
+                var overlay = document.getElementById('arpUploadOverlay');
+                overlay.classList.add('arp-show');
+
+                var tombol = form.querySelector('button[type="submit"]');
                 if (tombol) {
                     tombol.disabled = true;
                     tombol.dataset.teksAsli = tombol.innerHTML;
-                    tombol.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Memproses...';
+                    tombol.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Mengunggah...';
                 }
             });
-        }
-
-        // Form check-in (ADA file foto) dikirim lewat XHR supaya progres upload
-        // sebenarnya bisa ditampilkan ke user (bukan cuma spinner diam), dan
-        // supaya kalau ada error dari server, modal tidak hilang/reset percuma.
-        var formCheckin = document.querySelector('#modalAbsenCheckin form');
-        if (formCheckin) {
-            formCheckin.addEventListener('submit', function (e) {
-                if (!formCheckin.checkValidity()) return; // biarkan validasi HTML5 bawaan jalan dulu
-                e.preventDefault();
-                kirimAbsensiDenganProgress(formCheckin);
-            });
-        }
+        });
     });
 
     let streamKameraCheckin = null;
@@ -642,103 +667,22 @@ try {
         }
     }
 
-    // Lebar maksimum hasil foto yang dikirim ke server. Foto absensi cuma
-    // perlu cukup jelas untuk verifikasi wajah/lokasi, tidak perlu resolusi
-    // kamera penuh (yang bisa 1920px+ dan berukuran beberapa MB). Dikecilkan
-    // di sini (sebelum meninggalkan browser) supaya upload ke Drive jauh
-    // lebih cepat, terutama di lokasi dengan koneksi lemah.
-    const ARP_LEBAR_MAKS_FOTO_ABSENSI = 1000;
-    const ARP_KUALITAS_FOTO_ABSENSI = 0.75;
-
     function jepretFotoCheckin() {
         const video = document.getElementById('videoKameraCheckin');
         if (!video.videoWidth) return; // kamera belum siap
-
-        // Hitung dimensi hasil akhir: kalau video lebih lebar dari batas,
-        // skalakan turun sambil menjaga aspek rasio. Kalau sudah lebih kecil
-        // dari batas (kamera resolusi rendah), pakai apa adanya.
-        let lebarAkhir = video.videoWidth;
-        let tinggiAkhir = video.videoHeight;
-        if (lebarAkhir > ARP_LEBAR_MAKS_FOTO_ABSENSI) {
-            tinggiAkhir = Math.round(tinggiAkhir * (ARP_LEBAR_MAKS_FOTO_ABSENSI / lebarAkhir));
-            lebarAkhir = ARP_LEBAR_MAKS_FOTO_ABSENSI;
-        }
-
         const canvas = document.getElementById('canvasKameraCheckin');
-        canvas.width = lebarAkhir;
-        canvas.height = tinggiAkhir;
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
         const ctx = canvas.getContext('2d');
         // Cermin balik hasil jepretan biar tidak terbalik seperti preview
         ctx.translate(canvas.width, 0);
         ctx.scale(-1, 1);
-        // drawImage otomatis men-downscale gambar sesuai ukuran canvas tujuan
-        ctx.drawImage(video, 0, 0, lebarAkhir, tinggiAkhir);
+        ctx.drawImage(video, 0, 0);
         canvas.toBlob(blob => {
             const file = new File([blob], 'selfie_checkin_' + Date.now() + '.jpg', { type: 'image/jpeg' });
             setFotoCheckin(file);
             tutupKameraSelfie();
-        }, 'image/jpeg', ARP_KUALITAS_FOTO_ABSENSI);
-    }
-
-    // Kirim form absensi (dengan foto) via XHR, supaya progres upload asli
-    // (persentase byte terkirim) bisa ditampilkan ke user secara real-time
-    // di dalam loader global (bukan cuma spinner diam yang bikin user kira
-    // aplikasi macet). Setelah selesai, halaman diganti dengan hasil render
-    // PHP (yang berisi pesan sukses/error) - jadi perilaku akhirnya tetap
-    // sama seperti submit form biasa, cuma pengalaman selama menunggu jauh
-    // lebih jelas.
-    function kirimAbsensiDenganProgress(form) {
-        window.arpShowLoader('Mengunggah foto Anda', 'Hampir selesai, jangan tutup halaman ini ya');
-        window.arpSetLoaderProgress(0, true);
-
-        var tombol = form.querySelector('button[type="submit"]');
-        if (tombol) {
-            tombol.disabled = true;
-            tombol.dataset.teksAsli = tombol.innerHTML;
-            tombol.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Mengunggah...';
-        }
-
-        var formData = new FormData(form);
-        var xhr = new XMLHttpRequest();
-        xhr.open('POST', form.action, true);
-
-        xhr.upload.addEventListener('progress', function (ev) {
-            if (!ev.lengthComputable) return;
-            var persen = Math.round((ev.loaded / ev.total) * 100);
-            window.arpSetLoaderProgress(persen, true);
-            if (persen >= 100) {
-                window.arpShowLoader('Menyimpan ke Drive', 'Mohon tunggu sebentar ya, hampir selesai');
-            }
-        });
-
-        xhr.onload = function () {
-            if (xhr.status >= 200 && xhr.status < 400) {
-                // Ganti seluruh halaman dengan hasil render PHP (berisi pesan
-                // sukses/error & data absensi terbaru) - setara hasil akhir
-                // submit form biasa, tanpa perlu reload penuh dari server lagi.
-                document.open();
-                document.write(xhr.responseText);
-                document.close();
-            } else {
-                gagalKirimAbsensi(form, tombol);
-            }
-        };
-
-        xhr.onerror = function () {
-            gagalKirimAbsensi(form, tombol);
-        };
-
-        xhr.send(formData);
-    }
-
-    function gagalKirimAbsensi(form, tombol) {
-        window.arpHideLoader();
-        window.arpSetLoaderProgress(0, false);
-        if (tombol) {
-            tombol.disabled = false;
-            tombol.innerHTML = tombol.dataset.teksAsli || 'Absen Masuk';
-        }
-        alert('Gagal mengirim absensi. Periksa koneksi internet Anda, lalu coba lagi.');
+        }, 'image/jpeg', 0.9);
     }
 
     function setFotoCheckin(file) {
