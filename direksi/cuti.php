@@ -1668,6 +1668,15 @@ $dipakaiSakit = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year)
     }
 </script>
 
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        initTablePagination('tabelCutiTahunan', 10);
+        initTablePagination('tabelCutiKhusus', 10);
+        initTablePagination('tabelIzinSakit', 10);
+        initTablePagination('tabelSaldoCuti', 10);
+    });
+</script>
+
 <?php if ($highlight_id): ?>
     <script>
         document.addEventListener('DOMContentLoaded', function () {

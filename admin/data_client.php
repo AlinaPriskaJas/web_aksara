@@ -2,23 +2,29 @@
 // admin/data_client.php
 session_start();
 
+
 // Auth guard: pastikan sudah login dan role-nya memang admin
 if (empty($_SESSION['login']) || ($_SESSION['role'] ?? '') !== 'admin') {
     header("Location: ../login.php");
     exit;
 }
 
+
 require_once "../config/koneksi.php";
+
 
 $admin_id = $_SESSION['user_id'];
 
+
 $page_title = "Data Klien";
 $flash = null;
+
 
 // ================== PROSES: TAUTKAN KE DATA_KLIEN YANG SUDAH ADA ==================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['aksi'] === 'tautkan_existing') {
     $user_id  = (int) ($_POST['user_id'] ?? 0);
     $klien_id = (int) ($_POST['klien_id'] ?? 0);
+
 
     if (!$user_id || !$klien_id) {
         $flash = ['type' => 'danger', 'message' => 'Pilih perusahaan yang ingin ditautkan.'];
@@ -28,14 +34,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
             $stmt = $conn->prepare("UPDATE Data_Klien SET user_id = :user_id WHERE id = :klien_id AND user_id IS NULL");
             $stmt->execute([':user_id' => $user_id, ':klien_id' => $klien_id]);
 
+
             if ($stmt->rowCount() > 0) {
                 $flash = ['type' => 'success', 'message' => 'Akun client berhasil ditautkan ke data perusahaan.'];
+
 
                 // Beri tahu client bahwa akunnya sudah ditautkan ke data perusahaan
                 try {
                     $stmtNamaKlien = $conn->prepare("SELECT nama_perusahaan FROM Data_Klien WHERE id = :id");
                     $stmtNamaKlien->execute([':id' => $klien_id]);
                     $namaPerusahaanKlien = $stmtNamaKlien->fetchColumn() ?: '-';
+
 
                     $stmtNotifTautkan = $conn->prepare("
                         INSERT INTO Notifikasi (user_id, judul, pesan, modul_terkait, ref_id, sudah_dibaca)
@@ -62,6 +71,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
     exit;
 }
 
+
 // ================== PROSES: BUAT DATA_KLIEN BARU SEKALIGUS TAUTKAN ==================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['aksi'] === 'tautkan_baru') {
     $user_id         = (int) ($_POST['user_id'] ?? 0);
@@ -72,16 +82,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
     $pic_whatsapp    = trim($_POST['pic_whatsapp'] ?? '');
     $pic_email       = trim($_POST['pic_email'] ?? '');
 
+
     if (!$user_id || $nama_perusahaan === '') {
         $flash = ['type' => 'danger', 'message' => 'Nama perusahaan wajib diisi.'];
     } else {
         try {
             $conn->beginTransaction();
 
+
             // Generate kode_klien otomatis: KLN-0001, KLN-0002, dst.
             $stmt = $conn->query("SELECT COUNT(*) FROM Data_Klien");
             $urutan = (int) $stmt->fetchColumn() + 1;
             $kode_klien = 'KLN-' . str_pad((string) $urutan, 4, '0', STR_PAD_LEFT);
+
 
             // Pastikan kode_klien belum terpakai (jaga-jaga kalau ada penghapusan data sebelumnya)
             $cekKode = $conn->prepare("SELECT COUNT(*) FROM Data_Klien WHERE kode_klien = :kode");
@@ -91,6 +104,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
                 $kode_klien = 'KLN-' . str_pad((string) $urutan, 4, '0', STR_PAD_LEFT);
                 $cekKode->execute([':kode' => $kode_klien]);
             }
+
 
             $stmt = $conn->prepare("
                 INSERT INTO Data_Klien (kode_klien, nama_perusahaan, alamat, status, pic_nama, jabatan_pic, pic_whatsapp, pic_email, user_id)
@@ -108,8 +122,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
             ]);
             $klien_id_baru = (int) $conn->lastInsertId();
 
+
             $conn->commit();
             $flash = ['type' => 'success', 'message' => "Data perusahaan baru ($kode_klien) berhasil dibuat dan ditautkan ke akun client."];
+
 
             // Beri tahu client bahwa akunnya sudah ditautkan ke data perusahaan baru
             try {
@@ -136,6 +152,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
     exit;
 }
 
+
 // ================== PROSES: EDIT DATA PERUSAHAAN YANG SUDAH DITAUTKAN ==================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['aksi'] === 'edit_klien') {
     $klien_id        = (int) ($_POST['klien_id'] ?? 0);
@@ -147,6 +164,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
     $pic_whatsapp    = trim($_POST['pic_whatsapp'] ?? '');
     $pic_email       = trim($_POST['pic_email'] ?? '');
     $tab_asal        = in_array($_POST['tab_asal'] ?? 'akun', ['akun', 'daftar'], true) ? $_POST['tab_asal'] : 'akun';
+
 
     if (!$klien_id || $nama_perusahaan === '' || !in_array($status, ['Aktif', 'Non-aktif'], true)) {
         $flash = ['type' => 'danger', 'message' => 'Data tidak valid.'];
@@ -178,9 +196,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
     exit;
 }
 
+
 // ================== PROSES: HAPUS DATA KLIEN ==================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['aksi'] === 'hapus_klien') {
     $klien_id = (int) ($_POST['klien_id'] ?? 0);
+
 
     if (!$klien_id) {
         $flash = ['type' => 'danger', 'message' => 'Data klien tidak valid.'];
@@ -189,6 +209,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
             $cekNama = $conn->prepare("SELECT nama_perusahaan FROM Data_Klien WHERE id = :id");
             $cekNama->execute([':id' => $klien_id]);
             $namaKlien = $cekNama->fetchColumn();
+
 
             if ($namaKlien === false) {
                 $flash = ['type' => 'danger', 'message' => 'Data klien tidak ditemukan (mungkin sudah dihapus sebelumnya).'];
@@ -212,6 +233,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
     exit;
 }
 
+
 // ================== PROSES: TAMBAH CLIENT BARU (langsung dari tab "Daftar Client", tanpa akun/user) ==================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['aksi'] === 'tambah_klien') {
     $nama_perusahaan = trim($_POST['nama_perusahaan'] ?? '');
@@ -222,16 +244,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
     $pic_whatsapp    = trim($_POST['pic_whatsapp'] ?? '');
     $pic_email       = trim($_POST['pic_email'] ?? '');
 
+
     if ($nama_perusahaan === '') {
         $flash = ['type' => 'danger', 'message' => 'Nama perusahaan wajib diisi.'];
     } else {
         try {
             $conn->beginTransaction();
 
+
             // Generate kode_klien otomatis: KLN-0001, KLN-0002, dst.
             $stmt = $conn->query("SELECT COUNT(*) FROM Data_Klien");
             $urutan = (int) $stmt->fetchColumn() + 1;
             $kode_klien = 'KLN-' . str_pad((string) $urutan, 4, '0', STR_PAD_LEFT);
+
 
             $cekKode = $conn->prepare("SELECT COUNT(*) FROM Data_Klien WHERE kode_klien = :kode");
             $cekKode->execute([':kode' => $kode_klien]);
@@ -240,6 +265,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
                 $kode_klien = 'KLN-' . str_pad((string) $urutan, 4, '0', STR_PAD_LEFT);
                 $cekKode->execute([':kode' => $kode_klien]);
             }
+
 
             $stmt = $conn->prepare("
                 INSERT INTO Data_Klien (kode_klien, nama_perusahaan, alamat, status, pic_nama, jabatan_pic, pic_whatsapp, pic_email)
@@ -256,6 +282,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
                 ':pic_email'       => $pic_email,
             ]);
 
+
             $conn->commit();
             $flash = ['type' => 'success', 'message' => "Client baru \"$nama_perusahaan\" ($kode_klien) berhasil ditambahkan."];
         } catch (PDOException $e) {
@@ -270,13 +297,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
     exit;
 }
 
+
 // ================== PROSES: IMPORT DATA KLIEN DARI FILE (.xlsx / .csv) ==================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['aksi'] === 'import_klien') {
     require_once "../includes/functions.php";
 
+
     $total = 0; $berhasil = 0; $gagal = 0; $duplikat = 0; $diperbarui = 0;
     $daftarError = [];
     $namaFileAsli = $_FILES['file_import']['name'] ?? '-';
+
 
     if (!isset($_FILES['file_import']) || $_FILES['file_import']['error'] !== UPLOAD_ERR_OK) {
         $flash = ['type' => 'danger', 'message' => 'File import wajib dipilih.'];
@@ -291,6 +321,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
                     throw new RuntimeException('File kosong / tidak ada data.');
                 }
 
+
                 // ---- Baca baris header (baris pertama) & petakan hanya kolom yang dikenali ----
                 $headerRow = array_shift($baris);
                 $petaHeader = petaHeaderImportKlien();
@@ -303,12 +334,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
                     // Header yang tidak dikenali sengaja dilewati (tidak dipetakan)
                 }
 
+
                 if (!in_array('nama_perusahaan', $kolomTerpakai, true)) {
                     throw new RuntimeException('Kolom "NAMA PERUSAHAAN" tidak ditemukan di file. Pastikan header sesuai template.');
                 }
 
+
                 $total = count($baris);
                 $conn->beginTransaction();
+
 
                 $urutan = (int) $conn->query("SELECT COUNT(*) FROM Data_Klien")->fetchColumn();
                 // Ambil juga kolom PIC yang ada supaya bisa dicek mana yang masih kosong
@@ -325,13 +359,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
                     VALUES (:kode_klien, :nama_perusahaan, :status, :pic_nama, :jabatan_pic, :pic_whatsapp, :pic_email)
                 ");
 
+
                 foreach ($baris as $i => $r) {
                     $baris_ke = $i + 2; // +2: baris 1 = header
+
 
                     $data = ['nama_perusahaan' => '', 'pic_nama' => '', 'jabatan_pic' => '', 'pic_whatsapp' => '', 'pic_email' => '', 'status' => ''];
                     foreach ($kolomTerpakai as $kolomHuruf => $field) {
                         $data[$field] = trim((string) ($r[$kolomHuruf] ?? ''));
                     }
+
 
                     // Lewati baris kosong total (tidak dihitung sama sekali)
                     if ($data['nama_perusahaan'] === '' && $data['pic_nama'] === '' && $data['pic_email'] === '') {
@@ -339,11 +376,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
                         continue;
                     }
 
+
                     if ($data['nama_perusahaan'] === '') {
                         $gagal++;
                         $daftarError[] = "Baris $baris_ke: Nama Perusahaan kosong.";
                         continue;
                     }
+
 
                     $cekDuplikat->execute([':nama' => $data['nama_perusahaan']]);
                     $existing = $cekDuplikat->fetch(PDO::FETCH_ASSOC);
@@ -359,6 +398,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
                             'pic_email'    => $data['pic_email'],
                         ];
 
+
                         $setSql = [];
                         $params = [':id' => $existing['id']];
                         foreach ($kolomBisaDilengkapi as $kolom => $nilaiBaru) {
@@ -368,6 +408,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
                                 $params[":$kolom"] = $nilaiBaru;
                             }
                         }
+
 
                         if (!empty($setSql)) {
                             $conn->prepare("UPDATE Data_Klien SET " . implode(', ', $setSql) . " WHERE id = :id")
@@ -381,15 +422,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
                         continue;
                     }
 
+
                     $statusNormal = strtolower($data['status']);
                     $status = (strpos($statusNormal, 'non') !== false || strpos($statusNormal, 'tidak') !== false)
                         ? 'Non-aktif' : 'Aktif';
+
 
                     do {
                         $urutan++;
                         $kode_klien = 'KLN-' . str_pad((string) $urutan, 4, '0', STR_PAD_LEFT);
                         $cekKode->execute([':kode' => $kode_klien]);
                     } while ((int) $cekKode->fetchColumn() > 0);
+
 
                     $insertKlien->execute([
                         ':kode_klien'      => $kode_klien,
@@ -403,7 +447,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
                     $berhasil++;
                 }
 
+
                 $conn->commit();
+
 
                 // Batasi panjang detail_error sebagai pengaman terakhir, supaya kalau pun
                 // kolomnya di database ternyata masih terbatas ukurannya, insert log ini
@@ -412,6 +458,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
                 if ($detailError !== null && strlen($detailError) > 60000) {
                     $detailError = substr($detailError, 0, 60000) . "\n... (dipotong, terlalu panjang untuk ditampilkan seluruhnya)";
                 }
+
 
                 try {
                     $conn->prepare("
@@ -432,6 +479,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
                     error_log('Gagal menyimpan Import_Log: ' . $eLog->getMessage());
                 }
 
+
                 $flash = [
                     'type'    => ($berhasil > 0 || $diperbarui > 0) ? 'success' : 'danger',
                     'message' => "Import selesai: {$berhasil} baru ditambahkan, {$diperbarui} data lama dilengkapi, {$duplikat} duplikat dilewati (sudah lengkap), {$gagal} gagal dari {$total} baris data.",
@@ -446,13 +494,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aksi']) && $_POST['ak
         }
     }
 
+
     $_SESSION['data_klien_flash'] = $flash;
     header("Location: data_client.php?tab=daftar");
     exit;
 }
 
+
 $flash = $_SESSION['data_klien_flash'] ?? $flash;
 unset($_SESSION['data_klien_flash']);
+
 
 // ================== DAFTAR SEMUA AKUN CLIENT (Users role='client') + STATUS TAUTAN ==================
 $daftar_client = [];
@@ -471,6 +522,7 @@ try {
     $daftar_client = [];
 }
 
+
 $total_client   = count($daftar_client);
 $sudah_tertaut  = 0;
 $belum_tertaut  = 0;
@@ -482,6 +534,7 @@ foreach ($daftar_client as $c) {
     }
 }
 
+
 // ================== DAFTAR DATA_KLIEN YANG BELUM PUNYA user_id (untuk opsi "tautkan ke existing") ==================
 $klien_belum_tertaut = [];
 try {
@@ -490,6 +543,7 @@ try {
 } catch (PDOException $e) {
     $klien_belum_tertaut = [];
 }
+
 
 // ================== DAFTAR SEMUA DATA_KLIEN (Tab "Daftar Client") ==================
 $semua_klien = [];
@@ -504,12 +558,15 @@ try {
     $semua_klien = [];
 }
 
+
 $active_tab_klien = (($_GET['tab'] ?? '') === 'akun') ? 'tabPanelAkunKlien' : 'tabPanelDaftarKlien';
+
 
 include "../includes/header.php";
 include "../includes/sidebar.php";
 include "../includes/topbar.php";
 ?>
+
 
 <style>
 /* ---- Sub-tab di dalam form (Data Perusahaan / Data PIC) ---- */
@@ -545,6 +602,7 @@ include "../includes/topbar.php";
     border-bottom-color: #4338ca;
     background: #eef2ff;
 }
+
 
 /* ---- Tab utama modal Tautkan: "Pilih Perusahaan yang Sudah Ada" / "Buat Perusahaan Baru" ---- */
 .maintab-nav {
@@ -588,7 +646,9 @@ include "../includes/topbar.php";
 }
 </style>
 
+
 <main class="main-content">
+
 
     <?php if ($flash): ?>
         <div class="alert alert-<?= $flash['type'] === 'success' ? 'success' : 'danger' ?>-custom mb-3">
@@ -607,6 +667,7 @@ include "../includes/topbar.php";
             </div>
         </div>
     <?php endif; ?>
+
 
     <!-- Ringkasan -->
     <div class="row g-4 mb-4">
@@ -639,6 +700,7 @@ include "../includes/topbar.php";
         </div>
     </div>
 
+
     <!-- Tab Navigation -->
     <div class="arp-tab-group">
         <div class="arp-tab-nav">
@@ -652,16 +714,25 @@ include "../includes/topbar.php";
             </button>
         </div>
 
+
         <div class="row g-4">
             <!-- Panel 1: Akun Client Terdaftar -->
             <div class="col-12 arp-tab-panel" id="tabPanelAkunKlien" <?= $active_tab_klien === 'tabPanelAkunKlien' ? '' : 'style="display:none;"' ?>>
                 <div class="card-box">
                     <div class="table-toolbar">
                         <h5 class="table-toolbar-title fw-bold">Akun Client Terdaftar</h5>
+                        <div class="table-toolbar-actions">
+                            <div class="search-box-container">
+                                <i class="bi bi-search"></i>
+                                <input type="text" class="search-box" placeholder="Cari akun client..."
+                                    data-table-search="tabelAkunKlien" onkeyup="handleTableSearch('tabelAkunKlien')">
+                            </div>
+                        </div>
                     </div>
 
+
                     <div class="table-responsive-custom">
-                        <table class="table-custom">
+                        <table class="table-custom" id="tabelAkunKlien">
                             <thead>
                                 <tr>
                                     <th>No</th>
@@ -735,8 +806,10 @@ include "../includes/topbar.php";
                             </tbody>
                         </table>
                     </div>
+                    <div class="pagination-custom" id="pagination-tabelAkunKlien"></div>
                 </div>
             </div>
+
 
             <!-- Panel 2: Daftar Client (baru, dengan Import Data Klien + Edit/Hapus) -->
             <div class="col-12 arp-tab-panel" id="tabPanelDaftarKlien" <?= $active_tab_klien === 'tabPanelDaftarKlien' ? '' : 'style="display:none;"' ?>>
@@ -832,6 +905,7 @@ include "../includes/topbar.php";
     </div>
 </main>
 
+
 <!-- ===== MODAL: Tautkan Akun Client ===== -->
 <div class="modal fade modal-custom" id="modalTautkan" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
@@ -854,10 +928,12 @@ include "../includes/topbar.php";
                     </li>
                 </ul>
 
+
                 <!-- Tab: Tautkan ke Data_Klien existing -->
                 <form action="data_client.php" method="POST" id="formTautkanExisting">
                     <input type="hidden" name="aksi" value="tautkan_existing">
                     <input type="hidden" name="user_id" id="tautkanExistingUserId" value="">
+
 
                     <label class="form-label fw-semibold fs-7 mb-2">Pilih Perusahaan</label>
                     <select class="select-custom mb-3" name="klien_id" required>
@@ -872,6 +948,7 @@ include "../includes/topbar.php";
                         <p class="text-muted fs-7">Tidak ada data perusahaan yang belum ditautkan. Gunakan tab "Buat Perusahaan Baru".</p>
                     <?php endif; ?>
 
+
                     <div class="d-flex gap-2 mt-3">
                         <button type="button" class="btn-secondary-custom flex-grow-1" data-bs-dismiss="modal">Batal</button>
                         <button type="submit" class="btn-primary-custom flex-grow-1" <?= empty($klien_belum_tertaut) ? 'disabled' : '' ?>>
@@ -880,10 +957,12 @@ include "../includes/topbar.php";
                     </div>
                 </form>
 
+
                 <!-- Tab: Buat Data_Klien baru -->
                 <form action="data_client.php" method="POST" id="formTautkanBaru" style="display:none;">
                     <input type="hidden" name="aksi" value="tautkan_baru">
                     <input type="hidden" name="user_id" id="tautkanBaruUserId" value="">
+
 
                     <ul class="subtab-nav">
                         <li>
@@ -898,6 +977,7 @@ include "../includes/topbar.php";
                         </li>
                     </ul>
 
+
                     <div data-subtab-group="baru" data-subtab-panel="perusahaan" class="subtab-panel">
                         <div class="mb-3">
                             <label class="form-label fw-semibold fs-7 mb-2">Nama Perusahaan *</label>
@@ -908,6 +988,7 @@ include "../includes/topbar.php";
                             <textarea class="textarea-custom" name="alamat"></textarea>
                         </div>
                     </div>
+
 
                     <div data-subtab-group="baru" data-subtab-panel="pic" class="subtab-panel" style="display:none;">
                         <div class="mb-3">
@@ -928,6 +1009,7 @@ include "../includes/topbar.php";
                         </div>
                     </div>
 
+
                     <div class="d-flex gap-2 mt-3">
                         <button type="button" class="btn-secondary-custom flex-grow-1" data-bs-dismiss="modal">Batal</button>
                         <button type="submit" class="btn-primary-custom flex-grow-1">
@@ -939,6 +1021,7 @@ include "../includes/topbar.php";
         </div>
     </div>
 </div>
+
 
 <!-- ===== MODAL: Edit Data Perusahaan (dipakai dari tab "Akun Client" & "Daftar Client") ===== -->
 <div class="modal fade modal-custom" id="modalEditKlien" tabindex="-1" aria-hidden="true">
@@ -966,6 +1049,7 @@ include "../includes/topbar.php";
                         </li>
                     </ul>
 
+
                     <div data-subtab-group="edit" data-subtab-panel="perusahaan" class="subtab-panel">
                         <div class="mb-3">
                             <label class="form-label fw-semibold fs-7 mb-2">Nama Perusahaan *</label>
@@ -983,6 +1067,7 @@ include "../includes/topbar.php";
                             </select>
                         </div>
                     </div>
+
 
                     <div data-subtab-group="edit" data-subtab-panel="pic" class="subtab-panel" style="display:none;">
                         <div class="mb-3">
@@ -1012,6 +1097,7 @@ include "../includes/topbar.php";
     </div>
 </div>
 
+
 <!-- ===== MODAL: Tambah Client Baru (langsung, tanpa akun/user) ===== -->
 <div class="modal fade modal-custom" id="modalTambahKlien" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
@@ -1036,6 +1122,7 @@ include "../includes/topbar.php";
                         </li>
                     </ul>
 
+
                     <div data-subtab-group="tambah" data-subtab-panel="perusahaan" class="subtab-panel">
                         <div class="mb-3">
                             <label class="form-label fw-semibold fs-7 mb-2">Nama Perusahaan *</label>
@@ -1053,6 +1140,7 @@ include "../includes/topbar.php";
                             </select>
                         </div>
                     </div>
+
 
                     <div data-subtab-group="tambah" data-subtab-panel="pic" class="subtab-panel" style="display:none;">
                         <div class="mb-3">
@@ -1082,6 +1170,7 @@ include "../includes/topbar.php";
     </div>
 </div>
 
+
 <!-- ===== MODAL: Import Data Klien ===== -->
 <div class="modal fade modal-custom" id="modalImportKlien" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
@@ -1099,7 +1188,7 @@ include "../includes/topbar.php";
                             File harus punya baris header berikut (urutan bebas, <strong>besar/kecil huruf tidak masalah</strong>):<br>
                             <strong>Nama Perusahaan, Nama PIC, Jabatan, No. HP/WhatsApp, Email, Status Client</strong><br>
                             Kolom di luar daftar ini otomatis diabaikan. Format file: <strong>.xlsx</strong> atau <strong>.csv</strong>.<br>
-                            Jika nama perusahaan <strong>sudah ada</strong> di Data Klien, sistem <strong>tidak menduplikasi</strong> 
+                            Jika nama perusahaan <strong>sudah ada</strong> di Data Klien, sistem <strong>tidak menduplikasi</strong>
                             kolom PIC (nama/jabatan/WhatsApp/email) yang di data lama masih kosong akan otomatis dilengkapi dari file ini,
                             tanpa menimpa data yang sudah terisi.
                         </div>
@@ -1129,10 +1218,13 @@ include "../includes/topbar.php";
     </div>
 </div>
 
+
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+    initTablePagination('tabelAkunKlien', 10);
     initTablePagination('tabelDaftarKlien', 10);
 });
+
 
 function openTautkanModal(userId, namaAkun) {
     document.getElementById('tautkanNamaAkun').textContent = namaAkun;
@@ -1143,11 +1235,13 @@ function openTautkanModal(userId, namaAkun) {
     new bootstrap.Modal(document.getElementById('modalTautkan')).show();
 }
 
+
 function gantiTabTautkan(tab) {
     const btnExisting = document.getElementById('btnTabExisting');
     const btnBaru = document.getElementById('btnTabBaru');
     const formExisting = document.getElementById('formTautkanExisting');
     const formBaru = document.getElementById('formTautkanBaru');
+
 
     if (tab === 'existing') {
         btnExisting.classList.add('active');
@@ -1162,6 +1256,7 @@ function gantiTabTautkan(tab) {
     }
 }
 
+
 // Sub-tab generik: dipakai untuk memisahkan "Data Perusahaan" & "Data PIC" di dalam form
 function gantiSubTab(group, tab) {
     document.querySelectorAll('.subtab-btn[data-subtab-group="' + group + '"]').forEach(function (btn) {
@@ -1171,6 +1266,7 @@ function gantiSubTab(group, tab) {
         panel.style.display = (panel.dataset.subtabPanel === tab) ? 'block' : 'none';
     });
 }
+
 
 // tabAsal: 'akun' (dibuka dari tab Akun Client) atau 'daftar' (dibuka dari tab Daftar Client),
 // dipakai supaya setelah simpan, halaman kembali ke tab yang sama tempat tombol Edit diklik.
@@ -1189,6 +1285,8 @@ function openEditModal(data, tabAsal) {
 }
 </script>
 
+
 <?php
 include "../includes/footer.php";
 ?>
+

@@ -1031,22 +1031,29 @@ include "../includes/topbar.php";
     </div>
 
     <div class="card-box">
-        <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-3">
-            <h5 class="mb-0 fw-bold">Daftar Pengajuan Pemeriksaan</h5>
-            <form method="GET" class="d-flex gap-2">
-                <input type="hidden" name="tab" value="pemeriksaan">
-                <select class="select-custom" name="status" style="width: 220px;" onchange="this.form.submit()">
-                    <?php foreach (['Menunggu Verifikasi', 'Diverifikasi', 'Dijadwalkan', 'Ditolak', 'Selesai', 'Semua'] as $opt): ?>
-                        <option value="<?= htmlspecialchars($opt) ?>" <?= $status_filter === $opt ? 'selected' : '' ?>>
-                            <?= $opt === 'Semua' ? 'Semua Status' : htmlspecialchars($opt) ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-            </form>
+        <div class="table-toolbar">
+            <h5 class="table-toolbar-title fw-bold">Daftar Pengajuan Pemeriksaan</h5>
+            <div class="table-toolbar-actions">
+                <div class="search-box-container">
+                    <i class="bi bi-search"></i>
+                    <input type="text" class="search-box" placeholder="Cari pengajuan..."
+                        data-table-search="tabelPemeriksaanApproval" onkeyup="handleTableSearch('tabelPemeriksaanApproval')">
+                </div>
+                <form method="GET" class="d-flex gap-2">
+                    <input type="hidden" name="tab" value="pemeriksaan">
+                    <select class="select-custom" name="status" style="width: 220px;" onchange="this.form.submit()">
+                        <?php foreach (['Menunggu Verifikasi', 'Diverifikasi', 'Dijadwalkan', 'Ditolak', 'Selesai', 'Semua'] as $opt): ?>
+                            <option value="<?= htmlspecialchars($opt) ?>" <?= $status_filter === $opt ? 'selected' : '' ?>>
+                                <?= $opt === 'Semua' ? 'Semua Status' : htmlspecialchars($opt) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </form>
+            </div>
         </div>
 
         <div class="table-responsive-custom">
-            <table class="table-custom">
+            <table class="table-custom" id="tabelPemeriksaanApproval">
                 <colgroup>
                     <col class="col-no">
                     <col class="col-tanggal">
@@ -1225,6 +1232,7 @@ include "../includes/topbar.php";
                 </tbody>
             </table>
         </div>
+        <div class="pagination-custom" id="pagination-tabelPemeriksaanApproval"></div>
     </div>
 
         </div>
@@ -1272,22 +1280,29 @@ include "../includes/topbar.php";
     </div>
 
     <div class="card-box">
-        <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-3">
-            <h5 class="mb-0 fw-bold">Daftar Persetujuan Surat</h5>
-            <form method="GET" class="d-flex gap-2">
-                <input type="hidden" name="tab" value="surat">
-                <select class="select-custom" name="status_surat" style="width: 220px;" onchange="this.form.submit()">
-                    <?php foreach (['Diajukan', 'Disetujui', 'Ditolak', 'Draft', 'Semua'] as $opt): ?>
-                        <option value="<?= htmlspecialchars($opt) ?>" <?= $status_filter_surat === $opt ? 'selected' : '' ?>>
-                            <?= $opt === 'Semua' ? 'Semua Status' : htmlspecialchars($opt) ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-            </form>
+        <div class="table-toolbar">
+            <h5 class="table-toolbar-title fw-bold">Daftar Persetujuan Surat</h5>
+            <div class="table-toolbar-actions">
+                <div class="search-box-container">
+                    <i class="bi bi-search"></i>
+                    <input type="text" class="search-box" placeholder="Cari surat..."
+                        data-table-search="tabelSuratApproval" onkeyup="handleTableSearch('tabelSuratApproval')">
+                </div>
+                <form method="GET" class="d-flex gap-2">
+                    <input type="hidden" name="tab" value="surat">
+                    <select class="select-custom" name="status_surat" style="width: 220px;" onchange="this.form.submit()">
+                        <?php foreach (['Diajukan', 'Disetujui', 'Ditolak', 'Draft', 'Semua'] as $opt): ?>
+                            <option value="<?= htmlspecialchars($opt) ?>" <?= $status_filter_surat === $opt ? 'selected' : '' ?>>
+                                <?= $opt === 'Semua' ? 'Semua Status' : htmlspecialchars($opt) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </form>
+            </div>
         </div>
 
         <div class="table-responsive-custom">
-            <table class="table-custom">
+            <table class="table-custom" id="tabelSuratApproval">
                 <colgroup>
                     <col style="width: 44px;">
                     <col style="width: 110px;">
@@ -1365,12 +1380,20 @@ include "../includes/topbar.php";
                 </tbody>
             </table>
         </div>
+        <div class="pagination-custom" id="pagination-tabelSuratApproval"></div>
     </div>
 
         </div>
 
     </div>
 </main>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        initTablePagination('tabelPemeriksaanApproval', 10);
+        initTablePagination('tabelSuratApproval', 10);
+    });
+</script>
 
 <div class="modal fade modal-custom" id="modalApproval" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
@@ -1928,3 +1951,4 @@ function openApprovalModalSurat(suratId, decision, perihal) {
 <?php
 include "../includes/footer.php";
 ?>
+

@@ -188,7 +188,7 @@ include "../includes/topbar.php";
         </div>
 
         <div class="table-responsive-custom">
-            <table class="table-custom">
+            <table class="table-custom" id="tabelDigitalDireksi">
                 <thead>
                     <tr>
                         <th>No</th>
@@ -244,8 +244,15 @@ include "../includes/topbar.php";
                 </tbody>
             </table>
         </div>
+        <div class="pagination-custom" id="pagination-tabelDigitalDireksi"></div>
     </div>
 </main>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        initTablePagination('tabelDigitalDireksi', 10);
+    });
+</script>
 
 <?php
 include "../includes/footer.php";

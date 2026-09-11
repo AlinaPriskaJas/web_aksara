@@ -545,7 +545,7 @@ include "../includes/topbar.php";
         </form>
 
         <div class="table-responsive-custom">
-            <table class="table-custom">
+            <table class="table-custom" id="tabelInsiden">
                 <thead>
                     <tr>
                         <th>No</th>

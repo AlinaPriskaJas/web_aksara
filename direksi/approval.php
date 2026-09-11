@@ -712,27 +712,29 @@ include "../includes/topbar.php";
             </div>
 
             <div class="card-box">
-                <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-3">
-                    <div>
-                        <h5 class="mb-1 fw-bold">Approval Center</h5>
-                        <p class="text-secondary fs-7 mb-0">Persetujuan akhir untuk Cuti, Reimburse, dan Peminjaman
-                            Kendaraan.
-                        </p>
+                <div class="table-toolbar">
+                    <h5 class="table-toolbar-title fw-bold">Approval Center</h5>
+                    <div class="table-toolbar-actions">
+                        <div class="search-box-container">
+                            <i class="bi bi-search"></i>
+                            <input type="text" class="search-box" placeholder="Cari pengajuan..."
+                                data-table-search="tabelApprovalUmum" onkeyup="handleTableSearch('tabelApprovalUmum')">
+                        </div>
+                        <form method="GET" class="d-flex gap-2">
+                            <input type="hidden" name="tab" value="umum">
+                            <select class="select-custom" name="status" style="width: 200px;" onchange="this.form.submit()">
+                                <?php foreach ($valid_statuses as $opt): ?>
+                                    <option value="<?= htmlspecialchars($opt) ?>" <?= $status_filter === $opt ? 'selected' : '' ?>>
+                                        <?= $opt === 'Semua' ? 'Semua Status' : htmlspecialchars($opt) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </form>
                     </div>
-                    <form method="GET" class="d-flex gap-2">
-                        <input type="hidden" name="tab" value="umum">
-                        <select class="select-custom" name="status" style="width: 200px;" onchange="this.form.submit()">
-                            <?php foreach ($valid_statuses as $opt): ?>
-                                <option value="<?= htmlspecialchars($opt) ?>" <?= $status_filter === $opt ? 'selected' : '' ?>>
-                                    <?= $opt === 'Semua' ? 'Semua Status' : htmlspecialchars($opt) ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </form>
                 </div>
 
                 <div class="table-responsive-custom">
-                    <table class="table-custom">
+                    <table class="table-custom" id="tabelApprovalUmum">
                         <thead>
                             <tr>
                                 <th>No</th>
@@ -861,6 +863,7 @@ include "../includes/topbar.php";
                         </tbody>
                     </table>
                 </div>
+                <div class="pagination-custom" id="pagination-tabelApprovalUmum"></div>
             </div>
         </div>
 
@@ -906,25 +909,29 @@ include "../includes/topbar.php";
         </div>
 
         <div class="card-box">
-            <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-3">
-                <div>
-                    <h5 class="mb-1 fw-bold">Approval Surat Keluar</h5>
-                    <p class="text-secondary fs-7 mb-0">Persetujuan akhir untuk surat keluar sebelum dikirim.</p>
+            <div class="table-toolbar">
+                <h5 class="table-toolbar-title fw-bold">Approval Surat Keluar</h5>
+                <div class="table-toolbar-actions">
+                    <div class="search-box-container">
+                        <i class="bi bi-search"></i>
+                        <input type="text" class="search-box" placeholder="Cari surat..."
+                            data-table-search="tabelApprovalSurat" onkeyup="handleTableSearch('tabelApprovalSurat')">
+                    </div>
+                    <form method="GET" class="d-flex gap-2">
+                        <input type="hidden" name="tab" value="surat">
+                        <select class="select-custom" name="status_surat" style="width: 220px;" onchange="this.form.submit()">
+                            <?php foreach ($valid_statuses_surat as $opt): ?>
+                                <option value="<?= htmlspecialchars($opt) ?>" <?= $status_filter_surat === $opt ? 'selected' : '' ?>>
+                                    <?= $opt === 'Semua' ? 'Semua Status' : htmlspecialchars($opt) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </form>
                 </div>
-                <form method="GET" class="d-flex gap-2">
-                    <input type="hidden" name="tab" value="surat">
-                    <select class="select-custom" name="status_surat" style="width: 220px;" onchange="this.form.submit()">
-                        <?php foreach ($valid_statuses_surat as $opt): ?>
-                            <option value="<?= htmlspecialchars($opt) ?>" <?= $status_filter_surat === $opt ? 'selected' : '' ?>>
-                                <?= $opt === 'Semua' ? 'Semua Status' : htmlspecialchars($opt) ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </form>
             </div>
 
             <div class="table-responsive-custom">
-                <table class="table-custom">
+                <table class="table-custom" id="tabelApprovalSurat">
                     <thead>
                         <tr>
                             <th>No</th>
@@ -1004,10 +1011,18 @@ include "../includes/topbar.php";
                     </tbody>
                 </table>
             </div>
+            <div class="pagination-custom" id="pagination-tabelApprovalSurat"></div>
         </div>
 
     <?php endif; ?>
 </main>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        initTablePagination('tabelApprovalUmum', 10);
+        initTablePagination('tabelApprovalSurat', 10);
+    });
+</script>
 
 <!-- Modal Approval Umum -->
 <div class="modal fade modal-custom" id="modalApproval" tabindex="-1" aria-hidden="true">
@@ -1295,3 +1310,4 @@ include "../includes/topbar.php";
 <?php
 include "../includes/footer.php";
 ?>
+

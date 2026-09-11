@@ -254,7 +254,7 @@ include "../includes/topbar.php";
         </form>
 
         <div class="table-responsive-custom">
-            <table class="table-custom">
+            <table class="table-custom" id="tabelDigital">
                 <thead>
                     <tr>
                         <th>No</th>
@@ -337,6 +337,7 @@ include "../includes/topbar.php";
                 </tbody>
             </table>
         </div>
+        <div class="pagination-custom" id="pagination-tabelDigital"></div>
     </div>
 </main>
 
@@ -376,6 +377,10 @@ include "../includes/topbar.php";
 </div>
 
 <script>
+document.addEventListener('DOMContentLoaded', function () {
+    initTablePagination('tabelDigital', 10);
+});
+
 function openPrintModal(data) {
     document.getElementById('printNamaDokumen').textContent = data.nama_dokumen || 'Cetak Dokumen';
     document.getElementById('printKategoriDokumen').textContent = data.kategori || '-';

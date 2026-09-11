@@ -124,21 +124,28 @@ include "../includes/topbar.php";
     </div>
 
     <div class="card-box">
-        <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-3">
-            <h5 class="mb-0 fw-bold">Daftar Laporan Insiden K3</h5>
-            <form method="GET" class="d-flex gap-2">
-                <select class="select-custom" name="status" style="width: 200px;" onchange="this.form.submit()">
-                    <?php foreach ($valid_statuses as $opt): ?>
-                        <option value="<?= htmlspecialchars($opt) ?>" <?= $status_filter === $opt ? 'selected' : '' ?>>
-                            <?= $opt === 'Semua' ? 'Semua Status' : htmlspecialchars($opt) ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-            </form>
+        <div class="table-toolbar">
+            <h5 class="table-toolbar-title fw-bold">Daftar Laporan Insiden K3</h5>
+            <div class="table-toolbar-actions">
+                <div class="search-box-container">
+                    <i class="bi bi-search"></i>
+                    <input type="text" class="search-box" placeholder="Cari insiden..."
+                        data-table-search="tabelInsiden" onkeyup="handleTableSearch('tabelInsiden')">
+                </div>
+                <form method="GET" class="d-flex gap-2">
+                    <select class="select-custom" name="status" style="width: 200px;" onchange="this.form.submit()">
+                        <?php foreach ($valid_statuses as $opt): ?>
+                            <option value="<?= htmlspecialchars($opt) ?>" <?= $status_filter === $opt ? 'selected' : '' ?>>
+                                <?= $opt === 'Semua' ? 'Semua Status' : htmlspecialchars($opt) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </form>
+            </div>
         </div>
 
         <div class="table-responsive-custom">
-            <table class="table-custom">
+            <table class="table-custom" id="tabelInsiden">
                 <thead>
                     <tr>
                         <th>No</th>
@@ -174,8 +181,15 @@ include "../includes/topbar.php";
                 </tbody>
             </table>
         </div>
+        <div class="pagination-custom" id="pagination-tabelInsiden"></div>
     </div>
 </main>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        initTablePagination('tabelInsiden', 10);
+    });
+</script>
 
 <?php
 include "../includes/footer.php";
