@@ -398,16 +398,71 @@ if (($_GET['export'] ?? '') === 'daftar_barang_pdf') {
     if (!in_array($jenisPakaiFilterGudang, ['Habis Pakai', 'Tidak Habis Pakai'], true)) {
         $jenisPakaiFilterGudang = '';
     }
+    $bulanFilterGudang = trim($_GET['bulan'] ?? '');
+    if (!preg_match('/^\d{4}-\d{2}$/', $bulanFilterGudang)) {
+        $bulanFilterGudang = '';
+    }
 
-    $sqlGudangExport = "SELECT gs.kode_barang, gs.nama_barang, gs.satuan, gs.stok_awal, gs.stok_sistem,
-            GREATEST(gs.stok_awal - gs.stok_sistem, 0) AS pemakaian,
-            COALESCE(gs.jenis_pakai, 'Habis Pakai') AS jenis_pakai,
-            kbg.nama_kategori
-        FROM Gudang_Stok gs
-        JOIN Jenis_Barang_Gudang jbg ON gs.id_jenis = jbg.id_jenis
-        JOIN Kategori_Barang_Gudang kbg ON jbg.id_kategori = kbg.id_kategori
-        WHERE 1=1";
-    $paramsGudangExport = [];
+    $namaBulanIndoGudang = [
+        1 => 'Januari', 2 => 'Februari', 3 => 'Maret', 4 => 'April', 5 => 'Mei', 6 => 'Juni',
+        7 => 'Juli', 8 => 'Agustus', 9 => 'September', 10 => 'Oktober', 11 => 'November', 12 => 'Desember',
+    ];
+    $labelBulanGudang = 'Semua Periode (Terkini)';
+    $akhirBulanGudang = null;
+    if ($bulanFilterGudang !== '') {
+        [$thnBg, $blnBg] = explode('-', $bulanFilterGudang);
+        $labelBulanGudang = 's.d. ' . $namaBulanIndoGudang[(int) $blnBg] . ' ' . $thnBg;
+        // Tanggal akhir bulan yang dipilih, dipakai sebagai batas snapshot
+        $akhirBulanGudang = date('Y-m-t', strtotime($bulanFilterGudang . '-01'));
+    }
+
+    if ($akhirBulanGudang !== null) {
+        // Snapshot per akhir bulan yang dipilih:
+        // - Stok Awal = total SEMUA mutasi 'Masuk' barang tersebut yang tanggalnya <= akhir bulan
+        // - Pemakaian = total mutasi 'Keluar' barang tersebut yang tanggalnya <= akhir bulan
+        // - Sisa Stok = Stok Awal - Pemakaian (dibatasi minimal 0)
+        // Barang yang belum ada mutasi Masuk sampai akhir bulan itu (belum "lahir") TIDAK ditampilkan
+        // (pakai INNER JOIN, bukan LEFT JOIN) — sesuai tanggal yang diisi saat Tambah Barang / Import.
+        $sqlGudangExport = "SELECT gs.kode_barang, gs.nama_barang, gs.satuan,
+                sm.stok_awal_bulan AS stok_awal,
+                COALESCE(sk.pemakaian_bulan, 0) AS pemakaian,
+                GREATEST(sm.stok_awal_bulan - COALESCE(sk.pemakaian_bulan, 0), 0) AS sisa_stok,
+                COALESCE(gs.jenis_pakai, 'Habis Pakai') AS jenis_pakai,
+                kbg.nama_kategori
+            FROM Gudang_Stok gs
+            JOIN Jenis_Barang_Gudang jbg ON gs.id_jenis = jbg.id_jenis
+            JOIN Kategori_Barang_Gudang kbg ON jbg.id_kategori = kbg.id_kategori
+            INNER JOIN (
+                SELECT barang_id, SUM(jumlah) AS stok_awal_bulan
+                FROM Mutasi_Stok
+                WHERE jenis_mutasi = 'Masuk' AND tanggal <= :akhir_bulan_masuk
+                GROUP BY barang_id
+            ) sm ON sm.barang_id = gs.id
+            LEFT JOIN (
+                SELECT barang_id, SUM(jumlah) AS pemakaian_bulan
+                FROM Mutasi_Stok
+                WHERE jenis_mutasi = 'Keluar' AND tanggal <= :akhir_bulan_keluar
+                GROUP BY barang_id
+            ) sk ON sk.barang_id = gs.id
+            WHERE 1=1";
+        $paramsGudangExport = [
+            'akhir_bulan_masuk' => $akhirBulanGudang,
+            'akhir_bulan_keluar' => $akhirBulanGudang,
+        ];
+    } else {
+        // Tanpa filter bulan = kondisi stok TERKINI (seperti sebelumnya)
+        $sqlGudangExport = "SELECT gs.kode_barang, gs.nama_barang, gs.satuan, gs.stok_awal,
+                GREATEST(gs.stok_awal - gs.stok_sistem, 0) AS pemakaian,
+                gs.stok_sistem AS sisa_stok,
+                COALESCE(gs.jenis_pakai, 'Habis Pakai') AS jenis_pakai,
+                kbg.nama_kategori
+            FROM Gudang_Stok gs
+            JOIN Jenis_Barang_Gudang jbg ON gs.id_jenis = jbg.id_jenis
+            JOIN Kategori_Barang_Gudang kbg ON jbg.id_kategori = kbg.id_kategori
+            WHERE 1=1";
+        $paramsGudangExport = [];
+    }
+
     if ($idKategoriFilterGudang > 0) {
         $sqlGudangExport .= " AND kbg.id_kategori = :id_kategori";
         $paramsGudangExport['id_kategori'] = $idKategoriFilterGudang;
@@ -448,7 +503,7 @@ if (($_GET['export'] ?? '') === 'daftar_barang_pdf') {
             (string) $d['jenis_pakai'],
             (string) $d['stok_awal'],
             (string) $d['pemakaian'],
-            (string) $d['stok_sistem'],
+            (string) $d['sisa_stok'],
             (string) $d['satuan'],
         ];
     }
@@ -458,7 +513,7 @@ if (($_GET['export'] ?? '') === 'daftar_barang_pdf') {
 
     $pdfBytesGudang = buatPdfSederhanaTable(
         'Daftar Barang Gudang',
-        'Kategori: ' . $namaKategoriLabelGudang . '  |  Jenis Pakai: ' . $labelJenisPakaiGudang . '  |  Total Item: ' . count($dataGudangExport) . '  |  Dicetak: ' . date('d-m-Y H:i'),
+        'Periode: ' . $labelBulanGudang . '  |  Kategori: ' . $namaKategoriLabelGudang . '  |  Jenis Pakai: ' . $labelJenisPakaiGudang . '  |  Total Item: ' . count($dataGudangExport) . '  |  Dicetak: ' . date('d-m-Y H:i'),
         $headersGudangPdf,
         $colCharsGudangPdf,
         $rowsGudangPdf
@@ -511,7 +566,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['action']) && $_POST['action'] === 'import_stok') {
         $active_tab = 'tabGudang';
         $id_kategori = intval($_POST['id_kategori_import'] ?? 0);
-
+    
+        // NEW: bulan/periode data import
+        $bulanImport = trim($_POST['bulan_import'] ?? '');
+        if (!preg_match('/^\d{4}-\d{2}$/', $bulanImport)) {
+            $bulanImport = date('Y-m');
+        }
+        $tanggalImport = $bulanImport . '-01'; // dipakai sebagai tanggal mutasi 'Masuk' stok awal
+    
         if ($id_kategori <= 0 || empty($_FILES['file_import']['name'])) {
             $error_msg = "Pilih kategori dan file (.csv / .xlsx) terlebih dahulu!";
         } else {
@@ -522,7 +584,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!$kat) {
                     throw new Exception("Kategori tidak ditemukan.");
                 }
-
+    
                 $ext = strtolower(pathinfo($_FILES['file_import']['name'], PATHINFO_EXTENSION));
                 if (!in_array($ext, ['csv', 'xlsx'])) {
                     throw new Exception("Hanya file .csv atau .xlsx yang didukung.");
@@ -530,26 +592,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!is_uploaded_file($_FILES['file_import']['tmp_name'])) {
                     throw new Exception("Upload file gagal / mencurigakan.");
                 }
-
+    
+                // NEW: kirim $tanggalImport sebagai parameter ke-7
                 $import_result = processStockImport(
                     $conn,
                     $_FILES['file_import']['tmp_name'],
                     $_FILES['file_import']['name'],
                     $id_kategori,
                     $kat['nama_kategori'],
-                    $current_user_id
+                    $current_user_id,
+                    $tanggalImport
                 );
-
+    
                 catatAudit(
                     $conn,
                     'Gudang',
                     'Import Stok',
-                    "Import stok kategori {$kat['nama_kategori']} dari file {$_FILES['file_import']['name']}: {$import_result['berhasil']} berhasil, {$import_result['duplikat']} diperbarui, {$import_result['gagal']} gagal",
+                    "Import stok kategori {$kat['nama_kategori']} periode {$bulanImport} dari file {$_FILES['file_import']['name']}: {$import_result['berhasil']} berhasil, {$import_result['duplikat']} diperbarui, {$import_result['gagal']} gagal",
                     null,
                     $import_result
                 );
-
-                $success_msg = "Import selesai: {$import_result['berhasil']} barang baru, {$import_result['duplikat']} diperbarui, {$import_result['gagal']} gagal dari total {$import_result['total_baris']} baris.";
+    
+                $success_msg = "Import selesai (periode {$bulanImport}): {$import_result['berhasil']} barang baru, {$import_result['duplikat']} diperbarui, {$import_result['gagal']} gagal dari total {$import_result['total_baris']} baris.";
             } catch (Exception $e) {
                 $error_msg = "Gagal import: " . $e->getMessage();
             }
@@ -563,17 +627,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $nama_kategori = trim($_POST['kategori_pilih'] ?? '');
         $satuan = trim($_POST['satuan']);
         $stok_awal = intval($_POST['stok_awal']);
-        // Stok Minimum sudah tidak ada lagi di form input (poin 10).
         $stok_minimum = null;
         $lokasi_rak = trim($_POST['lokasi_rak']);
-        // Harga Satuan tidak lagi diisi di sini — diatur belakangan lewat tab Keuangan
-        // (menu "Atur Harga"), supaya form Tambah Barang tetap ringkas.
         $harga_satuan = null;
         $jenis_pakai = ($_POST['jenis_pakai'] ?? '') === 'Tidak Habis Pakai' ? 'Tidak Habis Pakai' : 'Habis Pakai';
-        // Kode Barang TIDAK diisi manual lagi — dibuat otomatis sesuai kategori
-        // (1.x = ATK, 2.x = AAK3, 3.x = Konsumsi, 4.x = Kebersihan), meniru
-        // penomoran di file Excel Stock Opname perusahaan.
         $kode_barang = '';
+
+        // NEW: tanggal stok awal bisa diisi manual, default hari ini kalau kosong
+        $tanggal_masuk = !empty($_POST['tanggal_masuk']) ? $_POST['tanggal_masuk'] : date('Y-m-d');
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $tanggal_masuk)) {
+            $tanggal_masuk = date('Y-m-d');
+        }
 
         if (empty($nama_barang) || empty($nama_kategori) || empty($satuan)) {
             $error_msg = "Semua field wajib (Nama Barang, Kategori, Satuan) harus diisi!";
@@ -605,7 +669,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $id_jenis = $conn->lastInsertId();
                 }
 
-                // Generate kode barang otomatis (format "1.x/2.x/3.x/4.x" sesuai kategori)
                 $kode_barang = stockGenerateKodeBarang($conn, $id_kategori, $nama_kategori);
 
                 $stmtInsBarang = $conn->prepare("INSERT INTO Gudang_Stok
@@ -618,7 +681,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'satuan' => $satuan,
                     'stok' => $stok_awal,
                     'stok_awal' => $stok_awal,
-                    'tgl' => date('Y-m-d'),
+                    'tgl' => $tanggal_masuk, // NEW: pakai tanggal yang diisi user
                     'rak' => $lokasi_rak,
                     'min' => $stok_minimum,
                     'harga' => $harga_satuan,
@@ -627,14 +690,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $barang_baru_id = $conn->lastInsertId();
 
-                // Selalu catat sebagai mutasi 'Masuk' untuk SETIAP barang baru — bahkan jika Stok Awal
-                // diisi 0 — supaya barang baru selalu tercatat di Riwayat Barang Masuk (Pembelian) dan
-                // otomatis ikut terhitung di Rekap Keuangan/Anggaran per kategori.
                 $stmtMutAwal = $conn->prepare("INSERT INTO Mutasi_Stok (barang_id, jenis_mutasi, jumlah, tanggal, keterangan, dibuat_oleh) VALUES (:barang_id, 'Masuk', :jumlah, :tanggal, 'Stok awal barang baru', :user_id)");
                 $stmtMutAwal->execute([
                     'barang_id' => $barang_baru_id,
                     'jumlah' => $stok_awal,
-                    'tanggal' => date('Y-m-d'),
+                    'tanggal' => $tanggal_masuk, // NEW: konsisten sama tgl_opname_awal
                     'user_id' => $current_user_id
                 ]);
 
@@ -643,9 +703,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $conn,
                     'Gudang',
                     'Tambah Barang',
-                    "Menambahkan barang {$kode_barang} - {$nama_barang} (stok awal {$stok_awal})",
+                    "Menambahkan barang {$kode_barang} - {$nama_barang} (stok awal {$stok_awal}, tanggal {$tanggal_masuk})",
                     null,
-                    ['kode_barang' => $kode_barang, 'nama_barang' => $nama_barang, 'stok_awal' => $stok_awal, 'lokasi_rak' => $lokasi_rak]
+                    ['kode_barang' => $kode_barang, 'nama_barang' => $nama_barang, 'stok_awal' => $stok_awal, 'lokasi_rak' => $lokasi_rak, 'tanggal_masuk' => $tanggal_masuk]
                 );
                 $success_msg = "Barang baru '$nama_barang' berhasil ditambahkan ke gudang!";
                 $active_tab = 'tabGudang';
@@ -792,7 +852,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    // ---- 4. Catat Barang Masuk ----
+   // ---- 4. Catat Barang Masuk ----
     if (isset($_POST['action']) && $_POST['action'] === 'barang_masuk') {
         $active_tab = 'tabBarangMasuk';
         $barang_id = intval($_POST['barang_id']);
@@ -816,11 +876,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'user_id' => $current_user_id
                 ]);
 
-                // Barang masuk (pembelian bulan berjalan) menambah stok_sistem SEKALIGUS
-                // stok_awal, supaya Sisa Stok (= Stok Awal - Pemakaian) tetap konsisten
-                // dan penambahan langsung terlihat di kolom "Stok Awal" tab kategorinya.
-                $stmtUpd = $conn->prepare("UPDATE Gudang_Stok SET stok_sistem = stok_sistem + :jumlah, stok_awal = stok_awal + :jumlah WHERE id = :barang_id");
-                $stmtUpd->execute(['jumlah' => $jumlah, 'barang_id' => $barang_id]);
+                // FIX: parameter dipisah, jangan pakai :jumlah dua kali di query yang sama
+                $stmtUpd = $conn->prepare("UPDATE Gudang_Stok SET stok_sistem = stok_sistem + :jumlah1, stok_awal = stok_awal + :jumlah2 WHERE id = :barang_id");
+                $ok = $stmtUpd->execute(['jumlah1' => $jumlah, 'jumlah2' => $jumlah, 'barang_id' => $barang_id]);
+                if (!$ok || $stmtUpd->rowCount() === 0) {
+                    throw new Exception("Update stok gagal — barang_id tidak ditemukan atau query tidak mengubah baris apapun.");
+                }
 
                 $conn->commit();
                 catatAudit(
@@ -860,12 +921,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     throw new Exception("Transaksi tidak ditemukan.");
                 }
 
-                // Selisih jumlah (baru - lama): Barang Masuk menambah stok_sistem DAN stok_awal
-                // saat dicatat, jadi kalau diedit, selisihnya diterapkan ke keduanya supaya
-                // Daftar Barang Gudang ikut menyesuaikan otomatis.
                 $selisih = $jumlah_baru - (int) $old['jumlah'];
-                $stmtUpdStok = $conn->prepare("UPDATE Gudang_Stok SET stok_sistem = stok_sistem + :selisih, stok_awal = stok_awal + :selisih WHERE id = :barang_id");
-                $stmtUpdStok->execute(['selisih' => $selisih, 'barang_id' => $old['barang_id']]);
+
+                // FIX: parameter dipisah, jangan pakai :selisih dua kali
+                $stmtUpdStok = $conn->prepare("UPDATE Gudang_Stok SET stok_sistem = stok_sistem + :selisih1, stok_awal = stok_awal + :selisih2 WHERE id = :barang_id");
+                $stmtUpdStok->execute(['selisih1' => $selisih, 'selisih2' => $selisih, 'barang_id' => $old['barang_id']]);
 
                 $stmtUpdMut = $conn->prepare("UPDATE Mutasi_Stok SET jumlah = :jumlah, tanggal = :tanggal, keterangan = :ket WHERE id = :id");
                 $stmtUpdMut->execute([
@@ -907,10 +967,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new Exception("Transaksi tidak ditemukan.");
             }
 
-            // Kembalikan stok_sistem & stok_awal ke kondisi sebelum barang masuk ini dicatat,
-            // supaya Daftar Barang Gudang normal kembali (tidak berubah/seperti semula).
-            $stmtUpdStok = $conn->prepare("UPDATE Gudang_Stok SET stok_sistem = stok_sistem - :jumlah, stok_awal = stok_awal - :jumlah WHERE id = :barang_id");
-            $stmtUpdStok->execute(['jumlah' => $old['jumlah'], 'barang_id' => $old['barang_id']]);
+            // FIX: parameter dipisah, jangan pakai :jumlah dua kali
+            $stmtUpdStok = $conn->prepare("UPDATE Gudang_Stok SET stok_sistem = stok_sistem - :jumlah1, stok_awal = stok_awal - :jumlah2 WHERE id = :barang_id");
+            $stmtUpdStok->execute(['jumlah1' => $old['jumlah'], 'jumlah2' => $old['jumlah'], 'barang_id' => $old['barang_id']]);
 
             $stmtDel = $conn->prepare("DELETE FROM Mutasi_Stok WHERE id = :id");
             $stmtDel->execute(['id' => $mutasi_id]);
@@ -1710,6 +1769,11 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
                             sini.</small>
                     </div>
                     <div class="mb-3">
+                        <label class="form-label fw-semibold mb-2">Periode / Bulan Data *</label>
+                        <input type="month" name="bulan_import" class="form-control-custom" value="<?= date('Y-m') ?>" required>
+                        <small class="text-muted">Menentukan tanggal pencatatan stok awal barang hasil import, supaya laporan bulanan nanti akurat sesuai periode data ini (bukan otomatis tanggal hari ini import dilakukan).</small>
+                    </div>
+                    <div class="mb-3">
                         <label class="form-label fw-semibold mb-2">File (.csv atau .xlsx) *</label>
                         <div class="upload-dropzone" id="dropzoneImportStok">
                             <div class="upload-dropzone-icon"><i class="bi bi-cloud-arrow-up"></i></div>
@@ -1754,6 +1818,10 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
             <div class="arp-modal-body">
                 <form method="GET" action="stock.php" target="_blank">
                     <input type="hidden" name="export" value="daftar_barang_pdf">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold mb-2">Pilih Bulan</label>
+                        <input type="month" name="bulan" class="form-control-custom" value="<?= date('Y-m') ?>">
+                    </div>
                     <div class="mb-3">
                         <label class="form-label fw-semibold mb-2">Kategori</label>
                         <select name="id_kategori" class="select-custom">
@@ -2043,6 +2111,11 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
                             <input type="number" name="stok_awal" class="form-control-custom" min="0" value="0"
                                 required>
                         </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold mb-2">Tanggal Stok Awal *</label>
+                        <input type="date" name="tanggal_masuk" class="form-control-custom" value="<?= date('Y-m-d') ?>" required>
                     </div>
 
                     <div class="mb-4">
