@@ -749,6 +749,98 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    // ---- 4b. Edit Barang Masuk ----
+    if (isset($_POST['action']) && $_POST['action'] === 'edit_barang_masuk') {
+        $active_tab = 'tabBarangMasuk';
+        $mutasi_id = intval($_POST['mutasi_id']);
+        $jumlah_baru = intval($_POST['jumlah']);
+        $keterangan = trim($_POST['keterangan'] ?? '');
+        $tanggal = !empty($_POST['tanggal']) ? $_POST['tanggal'] : date('Y-m-d');
+
+        if ($jumlah_baru <= 0) {
+            $error_msg = "Jumlah barang masuk wajib diisi dan lebih dari 0!";
+        } else {
+            try {
+                $conn->beginTransaction();
+
+                $stmtOld = $conn->prepare("SELECT * FROM Mutasi_Stok WHERE id = :id AND jenis_mutasi = 'Masuk'");
+                $stmtOld->execute(['id' => $mutasi_id]);
+                $old = $stmtOld->fetch();
+                if (!$old) {
+                    throw new Exception("Transaksi tidak ditemukan.");
+                }
+
+                // Selisih jumlah (baru - lama): Barang Masuk menambah stok_sistem DAN stok_awal
+                // saat dicatat, jadi kalau diedit, selisihnya diterapkan ke keduanya supaya
+                // Daftar Barang Gudang ikut menyesuaikan otomatis.
+                $selisih = $jumlah_baru - (int) $old['jumlah'];
+                $stmtUpdStok = $conn->prepare("UPDATE Gudang_Stok SET stok_sistem = stok_sistem + :selisih, stok_awal = stok_awal + :selisih WHERE id = :barang_id");
+                $stmtUpdStok->execute(['selisih' => $selisih, 'barang_id' => $old['barang_id']]);
+
+                $stmtUpdMut = $conn->prepare("UPDATE Mutasi_Stok SET jumlah = :jumlah, tanggal = :tanggal, keterangan = :ket WHERE id = :id");
+                $stmtUpdMut->execute([
+                    'jumlah' => $jumlah_baru,
+                    'tanggal' => $tanggal,
+                    'ket' => $keterangan,
+                    'id' => $mutasi_id,
+                ]);
+
+                $conn->commit();
+                catatAudit(
+                    $conn,
+                    'Gudang',
+                    'Edit Barang Masuk',
+                    "Mengubah transaksi barang masuk #{$mutasi_id} barang #{$old['barang_id']}",
+                    null,
+                    ['sebelum' => $old, 'sesudah' => ['jumlah' => $jumlah_baru, 'tanggal' => $tanggal, 'keterangan' => $keterangan]]
+                );
+                $success_msg = "Transaksi barang masuk berhasil diperbarui! Stok gudang telah disesuaikan otomatis.";
+            } catch (Exception $e) {
+                $conn->rollBack();
+                $error_msg = "Gagal memperbarui barang masuk: " . $e->getMessage();
+            }
+        }
+    }
+
+    // ---- 4c. Hapus Barang Masuk ----
+    if (isset($_POST['action']) && $_POST['action'] === 'hapus_barang_masuk') {
+        $active_tab = 'tabBarangMasuk';
+        $mutasi_id = intval($_POST['mutasi_id']);
+
+        try {
+            $conn->beginTransaction();
+
+            $stmtOld = $conn->prepare("SELECT * FROM Mutasi_Stok WHERE id = :id AND jenis_mutasi = 'Masuk'");
+            $stmtOld->execute(['id' => $mutasi_id]);
+            $old = $stmtOld->fetch();
+            if (!$old) {
+                throw new Exception("Transaksi tidak ditemukan.");
+            }
+
+            // Kembalikan stok_sistem & stok_awal ke kondisi sebelum barang masuk ini dicatat,
+            // supaya Daftar Barang Gudang normal kembali (tidak berubah/seperti semula).
+            $stmtUpdStok = $conn->prepare("UPDATE Gudang_Stok SET stok_sistem = stok_sistem - :jumlah, stok_awal = stok_awal - :jumlah WHERE id = :barang_id");
+            $stmtUpdStok->execute(['jumlah' => $old['jumlah'], 'barang_id' => $old['barang_id']]);
+
+            $stmtDel = $conn->prepare("DELETE FROM Mutasi_Stok WHERE id = :id");
+            $stmtDel->execute(['id' => $mutasi_id]);
+
+            $conn->commit();
+            catatAudit(
+                $conn,
+                'Gudang',
+                'Hapus Barang Masuk',
+                "Menghapus transaksi barang masuk #{$mutasi_id} barang #{$old['barang_id']}",
+                null,
+                $old
+            );
+            $success_msg = "Transaksi barang masuk berhasil dihapus! Stok gudang telah dikembalikan otomatis.";
+        } catch (Exception $e) {
+            $conn->rollBack();
+            $error_msg = "Gagal menghapus barang masuk: " . $e->getMessage();
+        }
+    }
+
     // ---- 5. Edit Barang (nama, satuan, rak, jenis pakai) ----
     if (isset($_POST['action']) && $_POST['action'] === 'edit_barang') {
         $active_tab = 'tabGudang';
@@ -1198,12 +1290,13 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
                                     <th>Volume</th>
                                     <th>Keterangan</th>
                                     <th>Dicatat Oleh</th>
+                                    <th>Aksi</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <?php if (count($barangMasukList) === 0): ?>
                                     <tr>
-                                        <td colspan="8" class="text-center py-4 text-muted">Belum ada riwayat barang
+                                        <td colspan="9" class="text-center py-4 text-muted">Belum ada riwayat barang
                                             masuk.</td>
                                     </tr>
                                 <?php else: ?>
@@ -1220,6 +1313,29 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
                                             <td><?= (int) $bm['jumlah'] ?>         <?= htmlspecialchars($bm['satuan']) ?></td>
                                             <td><?= htmlspecialchars($bm['keterangan'] ?: '-') ?></td>
                                             <td><?= htmlspecialchars($bm['operator']) ?></td>
+                                            <td>
+                                                <div class="d-flex gap-1">
+                                                    <button type="button" class="btn-secondary-custom py-1 px-2" onclick='openModalEditBarangMasuk(<?= json_encode([
+                                                        "id" => $bm["id"],
+                                                        "kode" => $bm["kode_barang"],
+                                                        "nama" => $bm["nama_barang"],
+                                                        "jumlah" => (int) $bm["jumlah"],
+                                                        "tanggal" => $bm["tanggal"],
+                                                        "keterangan" => $bm["keterangan"],
+                                                    ], JSON_UNESCAPED_UNICODE | JSON_HEX_APOS | JSON_HEX_QUOT) ?>)'>
+                                                        <i class="bi bi-pencil-square"></i>
+                                                    </button>
+                                                    <form method="POST" action="stock.php" style="display:inline;"
+                                                        onsubmit="return confirm('Hapus transaksi barang masuk ini? Stok gudang akan dikembalikan otomatis seperti sebelum barang ini masuk.');">
+                                                        <input type="hidden" name="action" value="hapus_barang_masuk">
+                                                        <input type="hidden" name="mutasi_id" value="<?= $bm['id'] ?>">
+                                                        <button type="submit" class="btn-secondary-custom py-1 px-2"
+                                                            style="color:#dc3545;">
+                                                            <i class="bi bi-trash"></i>
+                                                        </button>
+                                                    </form>
+                                                </div>
+                                            </td>
                                         </tr>
                                     <?php endforeach; ?>
                                 <?php endif; ?>
@@ -1308,7 +1424,6 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
                                                     </form>
                                                 </div>
                                             </td>
-                                        </tr>
                                         </tr>
                                     <?php endforeach; ?>
                                 <?php endif; ?>
@@ -1871,6 +1986,45 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
         </div>
     </div>
 
+    <!-- Modal: Edit Barang Masuk -->
+    <div class="arp-modal-overlay" id="modalEditBarangMasuk" onclick="closeModalOutside(event, 'modalEditBarangMasuk')">
+        <div class="arp-modal-box" style="max-width:480px;">
+            <div class="arp-modal-header">
+                <div>
+                    <h5 class="fw-bold mb-0" id="editBarangMasukNama">Edit Barang Masuk</h5>
+                    <small class="text-muted">Stok gudang akan disesuaikan otomatis dari selisih jumlah</small>
+                </div>
+                <button class="arp-modal-close" onclick="closeModal('modalEditBarangMasuk')">&times;</button>
+            </div>
+            <div class="arp-modal-body">
+                <form method="POST" action="stock.php">
+                    <input type="hidden" name="action" value="edit_barang_masuk">
+                    <input type="hidden" name="mutasi_id" id="editBarangMasukId">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold mb-2">Jumlah Masuk *</label>
+                            <input type="number" name="jumlah" id="editBarangMasukJumlah" class="form-control-custom"
+                                min="1" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold mb-2">Tanggal</label>
+                            <input type="date" name="tanggal" id="editBarangMasukTanggal" class="form-control-custom">
+                        </div>
+                    </div>
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold mb-2">Keterangan</label>
+                        <textarea name="keterangan" id="editBarangMasukKeterangan" class="textarea-custom"></textarea>
+                    </div>
+                    <div class="d-flex gap-2 justify-content-end">
+                        <button type="button" class="btn-secondary-custom"
+                            onclick="closeModal('modalEditBarangMasuk')">Batal</button>
+                        <button type="submit" class="btn-primary-custom">Simpan Perubahan</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <!-- Modal: Atur Harga Satuan (dari tab Keuangan) -->
     <div class="arp-modal-overlay" id="modalEditHarga" onclick="closeModalOutside(event, 'modalEditHarga')">
         <div class="arp-modal-box" style="max-width:420px;">
@@ -2188,6 +2342,15 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
         document.getElementById('editTransaksiPemakai').value = data.pemakai || '';
         document.getElementById('editTransaksiKeterangan').value = data.keterangan || '';
         openModal('modalEditTransaksi');
+    }
+
+    function openModalEditBarangMasuk(data) {
+        document.getElementById('editBarangMasukNama').textContent = 'Edit — [' + data.kode + '] ' + data.nama;
+        document.getElementById('editBarangMasukId').value = data.id;
+        document.getElementById('editBarangMasukJumlah').value = data.jumlah;
+        document.getElementById('editBarangMasukTanggal').value = data.tanggal ? data.tanggal.substring(0, 10) : '';
+        document.getElementById('editBarangMasukKeterangan').value = data.keterangan || '';
+        openModal('modalEditBarangMasuk');
     }
 
     // Cascading select: Kategori -> Barang (Kode & Nama) untuk Catat Barang Masuk
