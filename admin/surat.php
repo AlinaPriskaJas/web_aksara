@@ -2272,7 +2272,7 @@ $kodeIdReimburseDikecualikan = $kodeReimburseUntukFilter ? (int) $kodeReimburseU
 $daftar_surat_keluar = array_values(array_filter(
     $daftar_surat_semua,
     fn($s) => $s['arah'] === 'Keluar'
-    && ($kodeIdReimburseDikecualikan === 0 || (int) $s['kode_id'] !== $kodeIdReimburseDikecualikan)
+        && ($kodeIdReimburseDikecualikan === 0 || (int) $s['kode_id'] !== $kodeIdReimburseDikecualikan)
 ));
 $daftar_surat_masuk = array_values(array_filter($daftar_surat_semua, fn($s) => $s['arah'] === 'Masuk'));
 
@@ -2286,6 +2286,44 @@ $rowsKodeTemplate = $pdo->query("SELECT kt.template_id, k.kode FROM Kode_Templat
                                   JOIN Kode_Surat k ON k.id = kt.kode_id")->fetchAll();
 foreach ($rowsKodeTemplate as $r) {
     $daftar_kode_per_template[$r['template_id']][] = $r['kode'];
+}
+
+// ==========================================
+// DATA LENGKAP TEMPLATE UNTUK MODAL EDIT TEMPLATE (tanpa AJAX)
+// Supaya modal Edit Template terbuka INSTAN, semua data yang dibutuhkan
+// (metadata template + kode terhubung + fields) disiapkan sekali di sini
+// saat halaman dimuat, lalu dikirim ke JS lewat JSON. JS tinggal baca dari
+// sini, tidak perlu fetch ke server lagi saat tombol edit diklik.
+// ==========================================
+$rowsKodeTerhubungFull = $pdo->query("
+    SELECT kt.template_id, k.id AS kode_id, k.kode, k.nama AS nama_kode,
+           kt.id AS kode_template_id, kt.is_default
+    FROM Kode_Template kt
+    JOIN Kode_Surat k ON k.id = kt.kode_id
+    ORDER BY kt.template_id ASC, kt.is_default DESC, k.kode ASC
+")->fetchAll();
+$daftar_kode_terhubung_per_template = [];
+foreach ($rowsKodeTerhubungFull as $r) {
+    $daftar_kode_terhubung_per_template[$r['template_id']][] = $r;
+}
+
+$dataTemplateFullUntukJs = [];
+foreach ($daftar_template as $t) {
+    $decodedFieldsTpl = $t['fields_json'] ? (json_decode($t['fields_json'], true) ?: []) : [];
+    $dataTemplateFullUntukJs[(int) $t['id']] = [
+        'template' => [
+            'id' => (int) $t['id'],
+            'nama' => $t['nama'],
+            'deskripsi' => $t['deskripsi'],
+            'format' => $t['format'],
+            'drive_file_id' => $t['drive_file_id'],
+            'drive_link' => $t['drive_link'],
+        ],
+        'kode_terhubung' => $daftar_kode_terhubung_per_template[$t['id']] ?? [],
+        'fields' => $decodedFieldsTpl['fields'] ?? [],
+        'table_fields' => $decodedFieldsTpl['table_fields'] ?? [],
+        'blocks' => $decodedFieldsTpl['blocks'] ?? [],
+    ];
 }
 
 // ==========================================
@@ -4951,6 +4989,10 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
     </div>
 </div>
 
+<script id="data-template-full" type="application/json">
+<?= json_encode($dataTemplateFullUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT) ?>
+</script>
+
 <!-- Modal: Edit Template -->
 <div class="arp-modal-overlay" id="modalEditTemplate" onclick="closeModalOutside(event,'modalEditTemplate')">
     <div class="arp-modal-box" style="max-width:750px;">
@@ -5025,71 +5067,59 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
         var errorEl = document.getElementById('editTemplateError');
         var formEl = document.getElementById('formEditTemplate');
 
-        loadingEl.style.display = 'block';
+        var semuaDataTemplate = JSON.parse(document.getElementById('data-template-full').textContent);
+        var data = semuaDataTemplate[templateId];
+
+        loadingEl.style.display = 'none'; // tidak ada loading sama sekali, data sudah ada
+
+        if (!data) {
+            errorEl.textContent = 'Data template tidak ditemukan.';
+            errorEl.style.display = 'block';
+            formEl.style.display = 'none';
+            return;
+        }
         errorEl.style.display = 'none';
-        formEl.style.display = 'none';
 
-        fetch('surat.php?ajax=get_template&id=' + encodeURIComponent(templateId))
-            .then(function (res) { return res.json(); })
-            .then(function (data) {
-                loadingEl.style.display = 'none';
+        document.getElementById('editTplId').value = data.template.id;
+        document.getElementById('editTplNama').value = data.template.nama || '';
+        document.getElementById('editTplDeskripsi').value = data.template.deskripsi || '';
 
-                if (data.error) {
-                    errorEl.textContent = data.error;
-                    errorEl.style.display = 'block';
-                    return;
-                }
+        var wrapperBukaWord = document.getElementById('editTplBukaWordWrapper');
+        var linkBukaWord = document.getElementById('editTplBukaWordLink');
+        if (data.template.drive_file_id) {
+            linkBukaWord.href = 'https://docs.google.com/document/d/' + data.template.drive_file_id + '/edit';
+            wrapperBukaWord.style.display = 'block';
+        } else {
+            wrapperBukaWord.style.display = 'none';
+        }
 
-                document.getElementById('editTplId').value = data.template.id;
-                document.getElementById('editTplNama').value = data.template.nama || '';
-                document.getElementById('editTplDeskripsi').value = data.template.deskripsi || '';
+        var kodeListEl = document.getElementById('editTplKodeList');
+        kodeListEl.innerHTML = '';
 
-                var wrapperBukaWord = document.getElementById('editTplBukaWordWrapper');
-                var linkBukaWord = document.getElementById('editTplBukaWordLink');
-                if (data.template.drive_file_id) {
-                    linkBukaWord.href = 'https://docs.google.com/document/d/' + data.template.drive_file_id + '/edit';
-                    wrapperBukaWord.style.display = 'block';
-                } else {
-                    wrapperBukaWord.style.display = 'none';
-                }
-
-                // ----- Render daftar kode surat terhubung -----
-                var kodeListEl = document.getElementById('editTplKodeList');
-                kodeListEl.innerHTML = '';
-
-                if (!data.kode_terhubung || data.kode_terhubung.length === 0) {
-                    kodeListEl.innerHTML = '<p class="text-secondary text-xs">Template ini belum terhubung ke kode surat manapun.</p>';
-                } else {
-                    data.kode_terhubung.forEach(function (k) {
-                        var row = document.createElement('div');
-                        row.className = 'row g-2 mb-2 align-items-center';
-                        row.innerHTML =
-                            '<input type="hidden" name="kode_template_id[]" value="' + k.kode_template_id + '">' +
-                            '<div class="col-md-5">' +
-                            '<input type="text" name="kode_baru[]" class="form-control-custom" style="text-transform:uppercase;" ' +
-                            'value="' + escapeHtmlAttr(k.kode) + '" placeholder="Kode (cth: ST)">' +
-                            '</div>' +
-                            '<div class="col-md-6">' +
-                            '<input type="text" name="nama_kode_baru[]" class="form-control-custom" ' +
-                            'value="' + escapeHtmlAttr(k.nama_kode) + '" placeholder="Nama jenis surat">' +
-                            '</div>' +
-                            '<div class="col-md-1 text-center">' +
-                            (k.is_default == 1 ? '<span class="badge-success" title="Default">Def</span>' : '') +
-                            '</div>';
-                        kodeListEl.appendChild(row);
-                    });
-                }
-
-                // ----- Render daftar field placeholder (fields + table_fields) -----
-
-
-                formEl.style.display = 'block';
-            })
-            .catch(function () {
-                loadingEl.style.display = 'none';
-                errorEl.textContent = 'Gagal memuat data template. Silakan coba lagi.';
-                errorEl.style.display = 'block';
+        if (!data.kode_terhubung || data.kode_terhubung.length === 0) {
+            kodeListEl.innerHTML = '<p class="text-secondary text-xs">Template ini belum terhubung ke kode surat manapun.</p>';
+        } else {
+            data.kode_terhubung.forEach(function (k) {
+                var row = document.createElement('div');
+                row.className = 'row g-2 mb-2 align-items-center';
+                row.innerHTML =
+                    '<input type="hidden" name="kode_template_id[]" value="' + k.kode_template_id + '">' +
+                    '<div class="col-md-5">' +
+                    '<input type="text" name="kode_baru[]" class="form-control-custom" style="text-transform:uppercase;" ' +
+                    'value="' + escapeHtmlAttr(k.kode) + '" placeholder="Kode (cth: ST)">' +
+                    '</div>' +
+                    '<div class="col-md-6">' +
+                    '<input type="text" name="nama_kode_baru[]" class="form-control-custom" ' +
+                    'value="' + escapeHtmlAttr(k.nama_kode) + '" placeholder="Nama jenis surat">' +
+                    '</div>' +
+                    '<div class="col-md-1 text-center">' +
+                    (k.is_default == 1 ? '<span class="badge-success" title="Default">Def</span>' : '') +
+                    '</div>';
+                kodeListEl.appendChild(row);
             });
+        }
+
+        formEl.style.display = 'block';
     }
 
     function escapeHtmlAttr(str) {
@@ -5441,30 +5471,36 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
 </script>
 
 <style>
-.arp-row-highlight {
-    animation: arpHighlightFade 5.5s ease-out;
-}
-@keyframes arpHighlightFade {
-    0%   { background-color: #fff3b0; }
-    100% { background-color: transparent; }
-}
+    .arp-row-highlight {
+        animation: arpHighlightFade 5.5s ease-out;
+    }
+
+    @keyframes arpHighlightFade {
+        0% {
+            background-color: #fff3b0;
+        }
+
+        100% {
+            background-color: transparent;
+        }
+    }
 </style>
 <script>
-function sorotBarisSurat(targetId, tableId, nomorSurat) {
-    var baris = document.getElementById('surat-row-' + targetId);
-    if (!baris) return;
+    function sorotBarisSurat(targetId, tableId, nomorSurat) {
+        var baris = document.getElementById('surat-row-' + targetId);
+        if (!baris) return;
 
-    // Baris revisi bisa saja sedang tersembunyi karena pagination (halaman
-    // tabel yang aktif bukan halaman tempat baris ini berada). Paksa baris
-    // ini tampil TANPA menyentuh search box / menyaring baris lain, supaya
-    // daftar surat yang lain tetap utuh seperti semula.
-    baris.style.display = '';
+        // Baris revisi bisa saja sedang tersembunyi karena pagination (halaman
+        // tabel yang aktif bukan halaman tempat baris ini berada). Paksa baris
+        // ini tampil TANPA menyentuh search box / menyaring baris lain, supaya
+        // daftar surat yang lain tetap utuh seperti semula.
+        baris.style.display = '';
 
-    baris.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    baris.classList.remove('arp-row-highlight');
-    void baris.offsetWidth; // reset animasi kalau tombol diklik berkali-kali
-    baris.classList.add('arp-row-highlight');
-}
+        baris.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        baris.classList.remove('arp-row-highlight');
+        void baris.offsetWidth; // reset animasi kalau tombol diklik berkali-kali
+        baris.classList.add('arp-row-highlight');
+    }
 </script>
 
 <?php include "../includes/footer.php"; ?>
