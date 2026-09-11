@@ -451,7 +451,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
             $surat = $stmtSurat->fetch();
             $isiDataAsli = json_decode($surat['isi_data'] ?? '', true) ?: [];
 
-            $success_msg = "Perubahan berhasil disimpan. Database, berkas surat, dan pratinjau sudah diperbarui.";
+            $_SESSION['flash'] = [
+                'type' => 'success',
+                'msg' => 'Perubahan berhasil disimpan. Database, berkas surat, dan pratinjau sudah diperbarui.',
+            ];
+            header('Location: surat.php?tab=surat_keluar');
+            exit;
         } catch (Throwable $e) {
             $error_msg = "Gagal menyimpan perubahan: " . $e->getMessage();
         }
