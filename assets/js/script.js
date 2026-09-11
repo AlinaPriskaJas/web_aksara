@@ -397,6 +397,19 @@ function goToTablePage(tableId, page) {
     renderTablePage(tableId);
 }
 
+function changeTablePerPage(tableId, newRowsPerPage) {
+    const state = tablePaginationState[tableId];
+    if (!state) return;
+
+    const parsed = parseInt(newRowsPerPage, 10);
+    if (!parsed || parsed < 1) return;
+
+    state.rowsPerPage = parsed;
+    state.currentPage = 1; // balik ke halaman 1 supaya "Menampilkan X-Y dari Z" konsisten
+    renderTablePage(tableId); // ini otomatis update teks "Menampilkan..." & nomor halaman
+}
+window.changeTablePerPage = changeTablePerPage;
+
 function renderTablePage(tableId) {
     const state = tablePaginationState[tableId];
     const table = document.getElementById(tableId);
@@ -467,8 +480,32 @@ function renderTablePaginationControls(tableId, totalRows, totalPages) {
     const start = totalRows === 0 ? 0 : (state.currentPage - 1) * state.rowsPerPage + 1;
     const end = Math.min(state.currentPage * state.rowsPerPage, totalRows);
 
-    let html = '<div class="pagination-info text-muted" style="font-size:0.875rem;">Menampilkan ' + start + '-' + end + ' dari ' + totalRows + ' data</div>';
+    // Opsi dropdown item per halaman. Kalau rowsPerPage aktif ternyata
+    // bukan salah satu opsi baku (mis. dikirim custom lewat initTablePagination),
+    // tetap disisipkan supaya nilainya konsisten muncul terpilih di dropdown.
+    var opsiPerPage = [10, 25, 50, 100];
+    if (opsiPerPage.indexOf(state.rowsPerPage) === -1) {
+        opsiPerPage.push(state.rowsPerPage);
+        opsiPerPage.sort(function (a, b) { return a - b; });
+    }
 
+    var selectHtml = '<select class="pagination-per-page-select" onchange="changeTablePerPage(\'' + tableId + '\', this.value)">';
+    opsiPerPage.forEach(function (n) {
+        selectHtml += '<option value="' + n + '"' + (n === state.rowsPerPage ? ' selected' : '') + '>' + n + '</option>';
+    });
+    selectHtml += '</select>';
+
+    // Grup kiri: teks "Menampilkan X-Y dari Z data" (persis seperti sebelumnya,
+    // TIDAK diubah) + dropdown "Tampilkan [n] per halaman" dengan gaya teks
+    // yang sama (text-muted, font-size 0.875rem).
+    let html = '<div class="pagination-info-group">';
+    html += '<div class="pagination-info text-muted" style="font-size:0.875rem;">Menampilkan ' + start + '-' + end + ' dari ' + totalRows + ' data</div>';
+    html += '<div class="pagination-per-page text-muted" style="font-size:0.875rem;">' +
+        '<span>Tampilkan</span>' + selectHtml + '<span>per halaman</span></div>';
+    html += '</div>';
+
+    // Bagian pagination nomor halaman — SAMA PERSIS seperti sebelumnya,
+    // tetap ul.pagination-pages, tetap didorong ke kanan oleh space-between.
     html += '<ul class="pagination-pages">';
 
     const prevDisabled = state.currentPage === 1;

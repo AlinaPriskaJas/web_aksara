@@ -2108,19 +2108,58 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
         const start = totalRows === 0 ? 0 : (gudangTableState.currentPage - 1) * gudangTableState.rowsPerPage + 1;
         const end = Math.min(gudangTableState.currentPage * gudangTableState.rowsPerPage, totalRows);
 
-        let html = '<div class="pagination-info text-muted" style="font-size:0.875rem;">Menampilkan ' + start + '-' + end + ' dari ' + totalRows + ' data</div>';
+        // Opsi dropdown item per halaman (sama seperti tabel lain)
+        var opsiPerPage = [10, 25, 50, 100];
+        if (opsiPerPage.indexOf(gudangTableState.rowsPerPage) === -1) {
+            opsiPerPage.push(gudangTableState.rowsPerPage);
+            opsiPerPage.sort(function (a, b) { return a - b; });
+        }
+
+        var selectHtml = '<select class="pagination-per-page-select" onchange="changeGudangPerPage(this.value)">';
+        opsiPerPage.forEach(function (n) {
+            selectHtml += '<option value="' + n + '"' + (n === gudangTableState.rowsPerPage ? ' selected' : '') + '>' + n + '</option>';
+        });
+        selectHtml += '</select>';
+
+        // Grup kiri: "Menampilkan X-Y dari Z data" + dropdown "Tampilkan [n] per halaman"
+        let html = '<div class="pagination-info-group">';
+        html += '<div class="pagination-info text-muted" style="font-size:0.875rem;">Menampilkan ' + start + '-' + end + ' dari ' + totalRows + ' data</div>';
+        html += '<div class="pagination-per-page text-muted" style="font-size:0.875rem;">' +
+            '<span>Tampilkan</span>' + selectHtml + '<span>per halaman</span></div>';
+        html += '</div>';
+
+        // Nomor halaman (pakai window 5 angka, sama seperti tabel lain via getPaginationRange)
         html += '<ul class="pagination-pages">';
         const prevDisabled = gudangTableState.currentPage === 1;
-        html += '<li class="pagination-item' + (prevDisabled ? ' disabled' : '') + '"><a href="javascript:void(0)"' + (prevDisabled ? '' : ' onclick="goToGudangPage(' + (gudangTableState.currentPage - 1) + ')"') + '><i class="bi bi-chevron-left"></i></a></li>';
-        for (let p = 1; p <= totalPages; p++) {
+        html += '<li class="pagination-item' + (prevDisabled ? ' disabled' : '') + '">' +
+            '<a href="javascript:void(0)"' + (prevDisabled ? '' : ' onclick="goToGudangPage(' + (gudangTableState.currentPage - 1) + ')"') + '>' +
+            '<i class="bi bi-chevron-left"></i></a></li>';
+
+        const pages = getPaginationRange(gudangTableState.currentPage, totalPages, 5);
+        pages.forEach(function (p) {
             const isActive = p === gudangTableState.currentPage;
-            html += '<li class="pagination-item' + (isActive ? ' active' : '') + '"><span style="cursor:pointer;" onclick="goToGudangPage(' + p + ')">' + p + '</span></li>';
-        }
+            html += '<li class="pagination-item' + (isActive ? ' active' : '') + '">' +
+                '<span style="cursor:pointer;" onclick="goToGudangPage(' + p + ')">' + p + '</span></li>';
+        });
+
         const nextDisabled = gudangTableState.currentPage === totalPages;
-        html += '<li class="pagination-item' + (nextDisabled ? ' disabled' : '') + '"><a href="javascript:void(0)"' + (nextDisabled ? '' : ' onclick="goToGudangPage(' + (gudangTableState.currentPage + 1) + ')"') + '><i class="bi bi-chevron-right"></i></a></li>';
+        html += '<li class="pagination-item' + (nextDisabled ? ' disabled' : '') + '">' +
+            '<a href="javascript:void(0)"' + (nextDisabled ? '' : ' onclick="goToGudangPage(' + (gudangTableState.currentPage + 1) + ')"') + '>' +
+            '<i class="bi bi-chevron-right"></i></a></li>';
         html += '</ul>';
+
         container.innerHTML = html;
     }
+
+    // Tambahkan fungsi baru ini (belum ada sebelumnya)
+    function changeGudangPerPage(newRowsPerPage) {
+        const parsed = parseInt(newRowsPerPage, 10);
+        if (!parsed || parsed < 1) return;
+        gudangTableState.rowsPerPage = parsed;
+        gudangTableState.currentPage = 1; // balik ke halaman 1 biar "Menampilkan X-Y" tetap konsisten
+        renderGudangTable();
+    }
+    window.changeGudangPerPage = changeGudangPerPage;
 
     // Buka modal Edit Barang dan isi field dari data barang yang diklik
     function openModalEdit(data) {

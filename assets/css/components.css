@@ -453,6 +453,49 @@
   padding: var(--padding) 0;
 }
 
+/* Wrapper info + dropdown "per halaman" */
+.pagination-info-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pagination-per-page {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Dropdown "Tampilkan [n] per halaman" */
+.pagination-per-page-select {
+  height: 30px;
+  padding: 0 30px 0 12px;
+  font-size: 0.875rem;
+  font-weight: 400;
+  color: var(--text-secondary);
+  background-color: #ffffff;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  cursor: pointer;
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' stroke='%2364748b' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  transition: border-color var(--transition), box-shadow var(--transition), background-color var(--transition);
+}
+
+.pagination-per-page-select:hover {
+  border-color: var(--primary);
+}
+
+.pagination-per-page-select:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(27, 99, 196, 0.15);
+}
+
 .pagination-pages {
   display: flex;
   gap: 6px;
