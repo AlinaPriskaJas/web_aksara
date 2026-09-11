@@ -381,6 +381,96 @@ if (($_GET['export'] ?? '') === 'rekap_anggaran_kategori_pdf') {
     exit;
 }
 
+// ====== Export Daftar Barang Gudang Keseluruhan (Surat PDF) ======
+if (($_GET['export'] ?? '') === 'daftar_barang_pdf') {
+    require_once "../config/koneksi.php";
+    require_once "../includes/stock_import_helper.php";
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
+    if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'it') {
+        header("Location: ../login.php");
+        exit;
+    }
+
+    $idKategoriFilterGudang = intval($_GET['id_kategori'] ?? 0);
+    $jenisPakaiFilterGudang = trim($_GET['jenis_pakai'] ?? '');
+    if (!in_array($jenisPakaiFilterGudang, ['Habis Pakai', 'Tidak Habis Pakai'], true)) {
+        $jenisPakaiFilterGudang = '';
+    }
+
+    $sqlGudangExport = "SELECT gs.kode_barang, gs.nama_barang, gs.satuan, gs.stok_awal, gs.stok_sistem,
+            GREATEST(gs.stok_awal - gs.stok_sistem, 0) AS pemakaian,
+            COALESCE(gs.jenis_pakai, 'Habis Pakai') AS jenis_pakai,
+            kbg.nama_kategori
+        FROM Gudang_Stok gs
+        JOIN Jenis_Barang_Gudang jbg ON gs.id_jenis = jbg.id_jenis
+        JOIN Kategori_Barang_Gudang kbg ON jbg.id_kategori = kbg.id_kategori
+        WHERE 1=1";
+    $paramsGudangExport = [];
+    if ($idKategoriFilterGudang > 0) {
+        $sqlGudangExport .= " AND kbg.id_kategori = :id_kategori";
+        $paramsGudangExport['id_kategori'] = $idKategoriFilterGudang;
+    }
+    if ($jenisPakaiFilterGudang !== '') {
+        $sqlGudangExport .= " AND COALESCE(gs.jenis_pakai, 'Habis Pakai') = :jenis_pakai";
+        $paramsGudangExport['jenis_pakai'] = $jenisPakaiFilterGudang;
+    }
+    $sqlGudangExport .= " ORDER BY kbg.id_kategori ASC,
+                 CAST(SUBSTRING_INDEX(gs.kode_barang, '.', 1) AS UNSIGNED) ASC,
+                 CAST(SUBSTRING_INDEX(gs.kode_barang, '.', -1) AS UNSIGNED) ASC";
+
+    $stmtGudangExport = $conn->prepare($sqlGudangExport);
+    $stmtGudangExport->execute($paramsGudangExport);
+    $dataGudangExport = $stmtGudangExport->fetchAll();
+
+    $namaKategoriLabelGudang = 'Semua Kategori';
+    if ($idKategoriFilterGudang > 0) {
+        $stmtKatLabelGudang = $conn->prepare("SELECT nama_kategori FROM Kategori_Barang_Gudang WHERE id_kategori = :id");
+        $stmtKatLabelGudang->execute(['id' => $idKategoriFilterGudang]);
+        $katRowGudang = $stmtKatLabelGudang->fetch();
+        if ($katRowGudang) {
+            $namaKategoriLabelGudang = $katRowGudang['nama_kategori'];
+        }
+    }
+    $labelJenisPakaiGudang = $jenisPakaiFilterGudang !== '' ? $jenisPakaiFilterGudang : 'Semua Jenis Pakai';
+
+    $headersGudangPdf = ['No', 'Kode', 'Nama Barang', 'Kategori', 'Jenis Pakai', 'Stok Awal', 'Pemakaian', 'Sisa Stok', 'Satuan'];
+    $colCharsGudangPdf = [3, 8, 26, 12, 14, 9, 9, 9, 8];
+    $rowsGudangPdf = [];
+    $noGudang = 1;
+    foreach ($dataGudangExport as $d) {
+        $rowsGudangPdf[] = [
+            (string) $noGudang++,
+            (string) $d['kode_barang'],
+            (string) $d['nama_barang'],
+            (string) $d['nama_kategori'],
+            (string) $d['jenis_pakai'],
+            (string) $d['stok_awal'],
+            (string) $d['pemakaian'],
+            (string) $d['stok_sistem'],
+            (string) $d['satuan'],
+        ];
+    }
+    if (empty($rowsGudangPdf)) {
+        $rowsGudangPdf[] = ['-', 'Tidak ada barang gudang untuk kriteria ini.', '', '', '', '', '', '', ''];
+    }
+
+    $pdfBytesGudang = buatPdfSederhanaTable(
+        'Daftar Barang Gudang',
+        'Kategori: ' . $namaKategoriLabelGudang . '  |  Jenis Pakai: ' . $labelJenisPakaiGudang . '  |  Total Item: ' . count($dataGudangExport) . '  |  Dicetak: ' . date('d-m-Y H:i'),
+        $headersGudangPdf,
+        $colCharsGudangPdf,
+        $rowsGudangPdf
+    );
+
+    header('Content-Type: application/pdf');
+    header('Content-Disposition: attachment; filename="Daftar-Barang-Gudang-' . date('Y-m-d') . '.pdf"');
+    header('Content-Length: ' . strlen($pdfBytesGudang));
+    echo $pdfBytesGudang;
+    exit;
+}
+
 $page_title = "Laporan Stock Opname";
 include "../includes/header.php";
 include "../includes/sidebar.php";
@@ -841,7 +931,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    // ---- 5. Edit Barang (nama, satuan, rak, jenis pakai) ----
+    // ---- 5. Edit Barang (nama, satuan, rak, jenis pakai, stok awal) ----
     if (isset($_POST['action']) && $_POST['action'] === 'edit_barang') {
         $active_tab = 'tabGudang';
         $barang_id = intval($_POST['barang_id']);
@@ -849,22 +939,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $satuan = trim($_POST['satuan']);
         $lokasi_rak = trim($_POST['lokasi_rak']);
         $jenis_pakai = ($_POST['jenis_pakai'] ?? '') === 'Tidak Habis Pakai' ? 'Tidak Habis Pakai' : 'Habis Pakai';
+        $stok_awal_baru = intval($_POST['stok_awal'] ?? 0);
 
         if (empty($nama_barang)) {
             $error_msg = "Nama Barang wajib diisi!";
         } else {
             try {
-                $stmt = $conn->prepare("UPDATE Gudang_Stok SET nama_barang = :nama_barang, satuan = :satuan, lokasi_rak = :rak, jenis_pakai = :jenis_pakai WHERE id = :id");
+                $conn->beginTransaction();
+
+                // Ambil stok_awal lama untuk hitung selisih
+                $stmtOld = $conn->prepare("SELECT stok_awal FROM Gudang_Stok WHERE id = :id");
+                $stmtOld->execute(['id' => $barang_id]);
+                $oldRow = $stmtOld->fetch();
+                if (!$oldRow) {
+                    throw new Exception("Barang tidak ditemukan.");
+                }
+
+                // Selisih stok awal (baru - lama) ikut menyesuaikan stok_sistem,
+                // supaya Sisa Stok (= Stok Awal - Pemakaian) tetap konsisten
+                // walau Stok Awal diedit manual dari sini.
+                $selisihStokAwal = $stok_awal_baru - (int) $oldRow['stok_awal'];
+
+                $stmt = $conn->prepare("UPDATE Gudang_Stok SET
+                        nama_barang = :nama_barang,
+                        satuan = :satuan,
+                        lokasi_rak = :rak,
+                        jenis_pakai = :jenis_pakai,
+                        stok_awal = :stok_awal,
+                        stok_sistem = stok_sistem + :selisih
+                    WHERE id = :id");
                 $stmt->execute([
                     'nama_barang' => $nama_barang,
                     'satuan' => $satuan,
                     'rak' => $lokasi_rak,
                     'jenis_pakai' => $jenis_pakai,
+                    'stok_awal' => $stok_awal_baru,
+                    'selisih' => $selisihStokAwal,
                     'id' => $barang_id,
                 ]);
-                catatAudit($conn, 'Gudang', 'Edit Barang', "Mengubah data barang #{$barang_id} menjadi '{$nama_barang}'", null, $_POST);
+
+                $conn->commit();
+                catatAudit($conn, 'Gudang', 'Edit Barang', "Mengubah data barang #{$barang_id} menjadi '{$nama_barang}' (stok awal {$oldRow['stok_awal']} -> {$stok_awal_baru})", null, $_POST);
                 $success_msg = "Data barang berhasil diperbarui.";
             } catch (Exception $e) {
+                $conn->rollBack();
                 $error_msg = "Gagal memperbarui barang: " . $e->getMessage();
             }
         }
@@ -1189,6 +1307,9 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
                                 <option value="Habis Pakai">Habis Pakai</option>
                                 <option value="Tidak Habis Pakai">Tidak Habis Pakai</option>
                             </select>
+                            <button class="btn-primary-custom" onclick="openModal('modalRekapGudang')">
+                                <i class="bi bi-file-earmark-pdf"></i> Print PDF
+                            </button>
                             <button class="btn-secondary-custom" onclick="openModal('modalTambahBarang')">
                                 <i class="bi bi-plus-lg"></i> Tambah Barang
                             </button>
@@ -1244,6 +1365,7 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
                                                     "satuan" => $it["satuan"],
                                                     "rak" => $it["lokasi_rak"],
                                                     "jenis_pakai" => $it["jenis_pakai"] ?? "Habis Pakai",
+                                                    "stok_awal" => (int) $it["stok_awal"],
                                                 ], JSON_UNESCAPED_UNICODE | JSON_HEX_APOS | JSON_HEX_QUOT) ?>)'>
                                                     <i class="bi bi-pencil-square"></i>
                                                 </button>
@@ -1619,6 +1741,48 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
         </div>
     </div>
 
+    <!-- Modal: Cetak Daftar Barang Gudang (Surat PDF) -->
+    <div class="arp-modal-overlay" id="modalRekapGudang" onclick="closeModalOutside(event, 'modalRekapGudang')">
+        <div class="arp-modal-box" style="max-width:480px;">
+            <div class="arp-modal-header">
+                <div>
+                    <h5 class="fw-bold mb-0">Cetak Daftar Barang Gudang</h5>
+                    <small class="text-muted">Diunduh dalam bentuk surat PDF</small>
+                </div>
+                <button class="arp-modal-close" onclick="closeModal('modalRekapGudang')">&times;</button>
+            </div>
+            <div class="arp-modal-body">
+                <form method="GET" action="stock.php" target="_blank">
+                    <input type="hidden" name="export" value="daftar_barang_pdf">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold mb-2">Kategori</label>
+                        <select name="id_kategori" class="select-custom">
+                            <option value="0">Semua Kategori</option>
+                            <?php foreach ($kategoris as $kat): ?>
+                                <option value="<?= $kat['id_kategori'] ?>"><?= htmlspecialchars($kat['nama_kategori']) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold mb-2">Jenis Pakai</label>
+                        <select name="jenis_pakai" class="select-custom">
+                            <option value="">Semua Jenis Pakai</option>
+                            <option value="Habis Pakai">Habis Pakai</option>
+                            <option value="Tidak Habis Pakai">Tidak Habis Pakai</option>
+                        </select>
+                    </div>
+                    <div class="d-flex gap-2 justify-content-end">
+                        <button type="button" class="btn-secondary-custom"
+                            onclick="closeModal('modalRekapGudang')">Batal</button>
+                        <button type="submit" class="btn-primary-custom"><i class="bi bi-download"></i> Unduh
+                            PDF</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <!-- Modal: Form Penggunaan Barang (alur: pilih Kategori -> Nama Barang & Kode) -->
     <div class="arp-modal-overlay" id="modalPemakaianGlobal" onclick="closeModalOutside(event, 'modalPemakaianGlobal')">
         <div class="arp-modal-box" style="max-width:520px;">
@@ -1917,9 +2081,16 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
                         <label class="form-label fw-semibold mb-2">Nama Barang *</label>
                         <input type="text" name="nama_barang" id="editNamaBarang" class="form-control-custom" required>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold mb-2">Satuan</label>
-                        <input type="text" name="satuan" id="editSatuan" class="form-control-custom" required>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold mb-2">Stok Awal *</label>
+                            <input type="number" name="stok_awal" id="editStokAwal" class="form-control-custom" min="0" required>
+                        </div>
+                    
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold mb-2">Satuan</label>
+                            <input type="text" name="satuan" id="editSatuan" class="form-control-custom" required>
+                        </div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-semibold mb-2">Jenis Pakai</label>
@@ -1933,8 +2104,7 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
                         <input type="text" name="lokasi_rak" id="editRak" class="form-control-custom">
                     </div>
                     <div class="d-flex gap-2 justify-content-end">
-                        <button type="button" class="btn-secondary-custom"
-                            onclick="closeModal('modalEditBarang')">Batal</button>
+                        <button type="button" class="btn-secondary-custom" onclick="closeModal('modalEditBarang')">Batal</button>
                         <button type="submit" class="btn-primary-custom">Simpan Perubahan</button>
                     </div>
                 </form>
@@ -2323,6 +2493,7 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
         document.getElementById('editSatuan').value = data.satuan || '';
         document.getElementById('editJenisPakai').value = data.jenis_pakai || 'Habis Pakai';
         document.getElementById('editRak').value = data.rak || '';
+        document.getElementById('editStokAwal').value = data.stok_awal ?? 0;
         openModal('modalEditBarang');
     }
 
