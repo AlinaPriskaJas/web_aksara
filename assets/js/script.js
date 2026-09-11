@@ -10,22 +10,41 @@
     var loader = document.getElementById('page-loader');
     if (!loader) return;
 
-    // Ekstensi/tipe yang dianggap "foto" untuk keperluan teks ramah di bawah -
-    // dicek dari atribut accept pada <input type="file"> yang men-trigger submit,
-    // atau dari MIME type file yang sebenarnya dipilih user (fallback kalau
-    // accept tidak diisi/di-set longgar).
     var EKSTENSI_FOTO = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
 
+    // Failsafe default: harus lebih besar dari timeout terlama di backend
+    // (arp_upload_ke_drive() maks 120s, arp_unduh_dari_drive()/timpa maks 60s).
+    // Diberi margin jadi 150s supaya tidak menembak lebih dulu dari proses aslinya.
+    var FAILSAFE_MS_DEFAULT = 150000;
+    var failsafeTimerId = null;
+
+    function clearFailsafe() {
+        if (failsafeTimerId) {
+            clearTimeout(failsafeTimerId);
+            failsafeTimerId = null;
+        }
+    }
+
+    // PENTING: failsafe selalu di-arm ULANG relatif ke saat overlay
+    // ditampilkan (bukan relatif ke saat halaman dibuka). Ini yang tadinya
+    // bikin overlay hilang mendadak walau proses Drive masih berjalan.
+    function armFailsafe(timeoutMs) {
+        clearFailsafe();
+        failsafeTimerId = setTimeout(hideLoader, timeoutMs || FAILSAFE_MS_DEFAULT);
+    }
+
     function hideLoader() {
+        clearFailsafe();
         loader.classList.add('is-hidden');
         setProgress(0, false);
     }
-    function showLoader(text, subtext) {
+    function showLoader(text, subtext, timeoutMs) {
         var textEl = document.getElementById('page-loader-text');
         var subEl = document.getElementById('page-loader-subtext');
         if (textEl && text) textEl.textContent = text;
         if (subEl && subtext) subEl.textContent = subtext;
         loader.classList.remove('is-hidden');
+        armFailsafe(timeoutMs);
     }
     function setProgress(persen, aktif) {
         var track = document.getElementById('page-loader-progress-track');
@@ -35,9 +54,6 @@
         isi.style.width = Math.max(0, Math.min(100, persen || 0)) + '%';
     }
 
-    // Tentukan apakah sebuah <input type="file"> kemungkinan besar dipakai
-    // untuk foto (gambar) atau dokumen, supaya teks loader bisa ramah &
-    // sesuai konteks - bukan generik "Mengunggah file..." untuk semua kasus.
     function apakahInputFotoFileTerpilih(input) {
         if (!input) return false;
         var accept = (input.getAttribute('accept') || '').toLowerCase();
@@ -49,28 +65,14 @@
                 return (f.type || '').startsWith('image/');
             });
             if (semuaFileGambar) return true;
-            // Ada file dipilih tapi bukan gambar (mis. PDF) -> pasti dokumen,
-            // walau accept-nya campuran gambar+dokumen.
             return false;
         }
-
         return hanyaGambarDiAccept;
     }
 
-    // Sembunyikan saat event 'load' - supaya SELARAS dengan ikon loading
-    // bulat di tab browser, yang berhenti berputar setelah semua aset
-    // (gambar, CSS/JS termasuk dari CDN eksternal) selesai dimuat.
-    //
-    // TAPI: kalau ditunggu 'load' murni saja, begitu ada aset yang lambat
-    // (CDN Bootstrap/Icons kena macet, atau halaman berisi banyak foto),
-    // loader jadi ikut molor lama di SEMUA halaman - bukan cuma yang berat.
-    // Itu sebabnya dikasih pagar atas (MAKS_TUNGGU_MS): loader akan hilang
-    // begitu 'load' selesai ATAU begitu batas waktu ini tercapai, mana yang
-    // lebih dulu. Di kondisi normal (aset cepat), 'load' akan menang duluan
-    // sehingga tetap sinkron dengan tab. Hanya di kondisi tidak normal
-    // (aset benar-benar lambat) loader kustom ini akan hilang lebih dulu
-    // daripada ikon tab - itu wajar, karena saat itu halamannya memang
-    // betul-betul masih memuat sesuatu di baliknya.
+    // Sembunyikan overlay AWAL (saat pertama buka halaman) saat 'load' selesai,
+    // dibatasi MAKS_TUNGGU_MS supaya tidak molor kalau ada aset lambat.
+    // Ini terpisah dari failsafe di atas, dan HANYA berlaku untuk load awal halaman.
     var MAKS_TUNGGU_MS = 2500;
     var sudahDisembunyikan = false;
     function hideLoaderSekali() {
@@ -80,32 +82,19 @@
     }
 
     if (document.readyState === 'complete') {
-        // Kalau skrip ini baru terpasang setelah 'load' sudah lewat
-        // (mis. dimuat lambat/async), event 'load' tidak akan tertangkap
-        // lagi - langsung sembunyikan saja.
         hideLoaderSekali();
     } else {
         window.addEventListener('load', hideLoaderSekali);
         setTimeout(hideLoaderSekali, MAKS_TUNGGU_MS);
     }
 
-    // Failsafe terakhir: jangan sampai loader "nyangkut" selamanya kalau
-    // sesuatu di atas gagal terpasang.
-    setTimeout(hideLoader, 12000);
-
-    // Saat kembali lewat tombol back/forward browser (bfcache),
-    // pastikan loader tidak ikut tersangkut dalam kondisi tampil.
     window.addEventListener('pageshow', function () {
         hideLoader();
     });
 
-    // Tampilkan kembali loader begitu ada form yang disubmit (mis. form
-    // upload sertifikat, surat, absensi, dsb), supaya jeda menunggu respons
-    // server/Google Drive punya indikator visual, bukan layar kosong.
     document.addEventListener('submit', function (e) {
         var form = e.target;
         if (!(form instanceof HTMLFormElement)) return;
-
         if (form.hasAttribute('data-no-loader') || form.target === '_blank') return;
         if (e.defaultPrevented) return;
 
@@ -114,21 +103,13 @@
             if (apakahInputFotoFileTerpilih(inputFile)) {
                 showLoader('Mengunggah foto Anda', 'Hampir selesai, jangan tutup halaman ini ya');
             } else {
+                // Upload dokumen ke Drive bisa lama -> failsafe pakai default besar (150s)
                 showLoader('Mengirim dokumen Anda', 'Sabar sebentar, dokumen sedang kami proses');
             }
         } else {
             showLoader('Tunggu sebentar ya', 'Sedang memproses permintaan Anda');
         }
 
-        // Cegah klik ganda tombol submit selama proses upload berlangsung.
-        // PENTING: disable-nya ditunda 1 tick (setTimeout 0) supaya browser
-        // sudah selesai menyusun & mengirim data form (termasuk nama/value
-        // tombol submit yang diklik, mis. name="proses_approval") SEBELUM
-        // tombolnya jadi disabled. Kalau di-disable langsung secara sync di
-        // sini, browser akan menganggap tombol itu tidak "submit-able" lagi
-        // dan MENGECUALIKAN name/value-nya dari data yang dikirim ke server
-        // — akibatnya $_POST['proses_approval'] tidak pernah terkirim sama
-        // sekali walau method-nya tetap POST.
         var buttons = form.querySelectorAll('button[type="submit"], input[type="submit"]');
         setTimeout(function () {
             buttons.forEach(function (btn) {
@@ -138,35 +119,19 @@
         }, 0);
     });
 
-    // Ekspos showLoader/hideLoader supaya halaman lain (mis. surat.php) bisa
-    // memicu overlay ini untuk aksi berbasis <a>/tombol yang BUKAN form submit
-    // biasa (link navigasi, link unduh, link yang buka tab baru), lewat
-    // atribut data-arp-loading (lihat listener 'click' di bawah).
     window.arpShowLoader = showLoader;
     window.arpHideLoader = hideLoader;
-
-    // Ekspos setProgress supaya form yang dikirim lewat XHR/fetch manual
-    // (bukan submit form biasa) bisa menampilkan progress bar upload asli
-    // di dalam loader global ini. Panggil arpSetLoaderProgress(0, true) saat
-    // mulai, arpSetLoaderProgress(persen, true) tiap event progress, dan
-    // arpSetLoaderProgress(0, false) untuk menyembunyikan bar-nya lagi.
     window.arpSetLoaderProgress = setProgress;
 
-    // Tampilkan loader saat elemen dengan atribut data-arp-loading diklik
-    // (dipasang manual di halaman seperti surat.php pada tombol/link
-    // cetak, unduh, buat surat, kirim, edit dsb yang sebelumnya "diam"
-    // tanpa indikator karena bukan berupa form submit biasa).
     document.addEventListener('click', function (e) {
         var el = e.target.closest('[data-arp-loading]');
         if (!el || e.defaultPrevented) return;
 
-        showLoader(el.getAttribute('data-arp-loading') || 'Memproses...');
+        // Boleh override durasi failsafe lewat atribut data-arp-loading-timeout="90000"
+        // kalau ada aksi tertentu yang butuh lebih lama/lebih singkat dari default.
+        var timeoutOverride = parseInt(el.getAttribute('data-arp-loading-timeout') || '', 10);
+        showLoader(el.getAttribute('data-arp-loading') || 'Memproses...', null, timeoutOverride || undefined);
 
-        // Link/tombol yang buka tab baru (target="_blank", termasuk tombol
-        // submit di dalam form target="_blank" seperti export/unduh) TIDAK
-        // membuat halaman ini reload, jadi loader tidak akan otomatis
-        // tersembunyi lewat DOMContentLoaded. Sembunyikan otomatis setelah
-        // jeda singkat supaya tidak "nyangkut" menutupi halaman.
         var bukaTabBaru = (el.tagName === 'A' && (el.target === '_blank' || el.hasAttribute('download'))) ||
             (el.tagName === 'BUTTON' && el.form && el.form.target === '_blank') ||
             (el.tagName === 'INPUT' && el.form && el.form.target === '_blank');
