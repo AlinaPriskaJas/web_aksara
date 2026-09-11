@@ -453,7 +453,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
 
             $_SESSION['flash'] = [
                 'type' => 'success',
-                'msg' => 'Perubahan berhasil disimpan. Database, berkas surat, dan pratinjau sudah diperbarui.',
+                'msg' => "Perubahan pada surat nomor {$nomorBaru} berhasil disimpan. Database, berkas surat, dan pratinjau sudah diperbarui.",
             ];
             header('Location: surat.php?tab=surat_keluar');
             exit;

@@ -213,7 +213,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
                 $dataForm['no_surat_manual'] = trim((string) $_POST['no_surat_manual']);
             }
 
-        $items = [];        // dipakai untuk generate docx (tanggal sudah diformat Indonesia)
+            $items = [];        // dipakai untuk generate docx (tanggal sudah diformat Indonesia)
             $itemsMentah = [];  // disimpan ke isi_data (tanggal tetap YYYY-MM-DD, aman untuk <input type="date">)
             foreach ($_POST['items'] ?? [] as $baris) {
                 $barisMentah = array_map('trim', (array) $baris);
@@ -351,7 +351,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
 
             $isiDataDisimpan = $dataFormMentah;
             if (!empty($itemsMentah)) {
-                        $isiDataDisimpan['__items'] = $itemsMentah;
+                $isiDataDisimpan['__items'] = $itemsMentah;
             }
             if (!empty($blocksData)) {
                 $isiDataDisimpan['__blok'] = $blocksData;
@@ -453,7 +453,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
 
             $_SESSION['flash'] = [
                 'type' => 'success',
-                'msg' => 'Perubahan berhasil disimpan. Database, berkas surat, dan pratinjau sudah diperbarui.',
+                'msg' => "Perubahan pada surat nomor {$nomorBaru} berhasil disimpan. Database, berkas surat, dan pratinjau sudah diperbarui.",
             ];
             header('Location: surat.php?tab=surat_keluar');
             exit;
@@ -1227,25 +1227,26 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
                                         </tr>
                                     </thead>
                                     <tbody id="tabel-item-body">
-                                    <?php foreach ($nilai_items as $idxBaris => $baris): ?>
-                                        <tr class="baris-item" data-baris-index="<?= (int) $idxBaris ?>">
-                                            <td class="nomor-baris">1</td>
-                                            <?php foreach ($fields_tabel as $kolom): ?>
-                                                <?php
-                                                $isHarga = isKolomHarga($kolom['field']);
-                                                $isQty = isKolomQty($kolom['field']);
-                                                $isTanggalKolom = isKolomTanggal($kolom['field']);
-                                                $isWaktuKolom = isKolomWaktu($kolom['field']);
-                                                $tipeInputKolom = $isTanggalKolom ? 'date' : ($isWaktuKolom ? 'time' : 'text');
-                                                $placeholderKolom = $isHarga ? 'cth: 6055000' : ($isQty ? 'cth: 3 unit / 5 orang' : '');
-                                                ?>
-                                                <td>
-                                                    <input type="<?= $tipeInputKolom ?>"
-                                                        name="items[<?= (int) $idxBaris ?>][<?= e($kolom['field']) ?>]"
-                                                        data-kolom="<?= e($kolom['field']) ?>" <?= $isHarga ? 'data-tipe="harga"' : '' ?> placeholder="<?= $isTanggalKolom || $isWaktuKolom ? '' : e($placeholderKolom) ?>" class="form-control-custom"
-                                                        value="<?= e($baris[$kolom['field']] ?? '') ?>">
-                                                </td>
-                                            <?php endforeach; ?>
+                                        <?php foreach ($nilai_items as $idxBaris => $baris): ?>
+                                            <tr class="baris-item" data-baris-index="<?= (int) $idxBaris ?>">
+                                                <td class="nomor-baris">1</td>
+                                                <?php foreach ($fields_tabel as $kolom): ?>
+                                                    <?php
+                                                    $isHarga = isKolomHarga($kolom['field']);
+                                                    $isQty = isKolomQty($kolom['field']);
+                                                    $isTanggalKolom = isKolomTanggal($kolom['field']);
+                                                    $isWaktuKolom = isKolomWaktu($kolom['field']);
+                                                    $tipeInputKolom = $isTanggalKolom ? 'date' : ($isWaktuKolom ? 'time' : 'text');
+                                                    $placeholderKolom = $isHarga ? 'cth: 6055000' : ($isQty ? 'cth: 3 unit / 5 orang' : '');
+                                                    ?>
+                                                    <td>
+                                                        <input type="<?= $tipeInputKolom ?>"
+                                                            name="items[<?= (int) $idxBaris ?>][<?= e($kolom['field']) ?>]"
+                                                            data-kolom="<?= e($kolom['field']) ?>" <?= $isHarga ? 'data-tipe="harga"' : '' ?>
+                                                            placeholder="<?= $isTanggalKolom || $isWaktuKolom ? '' : e($placeholderKolom) ?>"
+                                                            class="form-control-custom" value="<?= e($baris[$kolom['field']] ?? '') ?>">
+                                                    </td>
+                                                <?php endforeach; ?>
                                                 <?php if ($tabel_item_punya_harga): ?>
                                                     <td class="subtotal-baris" style="text-align:right; font-family:monospace;">
                                                         -</td>
@@ -1337,7 +1338,8 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
                                     <td>
                                         <input type="<?= $tipeInputKolom ?>" name="items[__IDX__][<?= e($kolom['field']) ?>]"
                                             data-kolom="<?= e($kolom['field']) ?>" <?= $isHarga ? 'data-tipe="harga"' : '' ?>
-                                            placeholder="<?= $isTanggalKolom || $isWaktuKolom ? '' : e($placeholderKolom) ?>" class="form-control-custom" value="">
+                                            placeholder="<?= $isTanggalKolom || $isWaktuKolom ? '' : e($placeholderKolom) ?>"
+                                            class="form-control-custom" value="">
                                     </td>
                                 <?php endforeach; ?>
                                 <?php if ($tabel_item_punya_harga): ?>

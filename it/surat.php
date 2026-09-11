@@ -1176,11 +1176,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
                 $pdo,
                 'Surat',
                 'Buat Surat',
-                "Membuat surat {$nomorSurat} (agenda {$nomorAgenda}) - {$perihalSimpan}",
+                "Membuat surat {$nomorSurat} - {$perihalSimpan}",
                 null,
                 ['nomor' => $nomorSurat, 'perihal' => $perihalSimpan, 'tujuan' => $tujuanSimpan, 'status' => $statusInput]
             );
-            $_SESSION['flash'] = ['type' => 'success', 'msg' => "Surat berhasil dibuat dengan nomor {$nomorSurat} (agenda {$nomorAgenda})."];
+            $_SESSION['flash'] = ['type' => 'success', 'msg' => "Surat berhasil dibuat dengan nomor {$nomorSurat}."];
             suratRedirect('surat');
         } catch (Throwable $e) {
             if ($pdo->inTransaction())

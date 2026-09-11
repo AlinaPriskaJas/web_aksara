@@ -996,7 +996,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'catat_s
             $pdo,
             'Surat',
             'Catat Surat Masuk',
-            "Mencatat surat masuk {$nomorSuratInput} dari {$pengirim} (agenda {$nomorAgenda})",
+            "Mencatat surat masuk {$nomorSuratInput} dari {$pengirim}",
             null,
             ['nomor' => $nomorSuratInput, 'pengirim' => $pengirim, 'perihal' => $perihal, 'status' => $status]
         );
@@ -1343,7 +1343,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'import_
                 $pdo,
                 'Surat',
                 'Import Surat',
-                "Import surat {$nomor} ({$arah}) dari file \"{$barisImport['nama_asli']}\" (agenda {$nomorAgenda})",
+                "Import surat {$nomor} ({$arah}) dari file \"{$barisImport['nama_asli']}\"",
                 null,
                 ['nomor' => $nomor, 'arah' => $arah, 'perihal' => $perihal, 'tujuan' => $tujuan]
             );
