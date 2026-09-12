@@ -870,10 +870,20 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
                                 <input type="hidden" name="invoice_sumber_id" id="input-invoice-sumber-id"
                                     value="<?= (int) $invoiceSumberIdTersimpan ?>">
                                 <?php if (!$ada_no_surat_khusus): ?>
-                                    <label class="d-flex align-items-center gap-2 mt-2 text-xs fw-semibold" style="cursor:pointer;">
-                                        <input type="checkbox" name="ikuti_nomor_invoice" id="checkbox-ikuti-nomor-invoice"
-                                            value="1" <?= $ikutiNomorInvoiceChecked ? 'checked' : '' ?>>
+                                    <?php $checkboxIkutiInvoiceTerkunci = $invoiceSumberIdTersimpan > 0; ?>
+                                    <label class="d-flex align-items-center gap-2 mt-2 text-xs fw-semibold"
+                                        style="cursor:<?= $checkboxIkutiInvoiceTerkunci ? 'default' : 'pointer' ?>;">
+                                        <input type="checkbox" id="checkbox-ikuti-nomor-invoice" value="1"
+                                            <?= $ikutiNomorInvoiceChecked ? 'checked' : '' ?>             <?= $checkboxIkutiInvoiceTerkunci ? 'disabled' : 'name="ikuti_nomor_invoice"' ?>>
+                                        <?php if ($checkboxIkutiInvoiceTerkunci && $ikutiNomorInvoiceChecked): ?>
+                                            <!-- Checkbox dikunci (disabled) supaya tidak bisa diubah setelah invoice sumber
+                                            tersimpan; hidden input ini yang membawa nilainya saat form disubmit. -->
+                                            <input type="hidden" name="ikuti_nomor_invoice" value="1">
+                                        <?php endif; ?>
                                         Nomor surat ini mengikuti nomor urut invoice sumber
+                                        <?php if ($checkboxIkutiInvoiceTerkunci): ?>
+                                            <span class="text-secondary fw-normal">(terkunci, tidak dapat diubah)</span>
+                                        <?php endif; ?>
                                     </label>
                                 <?php endif; ?>
                                 <small class="text-secondary text-xs d-block mt-2">

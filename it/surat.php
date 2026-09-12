@@ -978,6 +978,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
             } elseif ($dataInvoiceSumber && $ikutiNomorInvoice) {
                 // HANYA jalan kalau kotak "Nomor mengikuti invoice" dicentang.
                 // Surat lain yang butuh data invoice tapi punya nomor sendiri TIDAK masuk sini.
+                // Yang diikuti HANYA nomor urutnya -- kode, "ARP", bulan romawi, dan tahun
+                // tetap otomatis mengikuti kode template ini sendiri & tanggal hari ini.
                 $noUrutDariInvoice = explode('/', $dataInvoiceSumber['nomor_invoice'])[0] ?? '';
                 if (!ctype_digit($noUrutDariInvoice)) {
                     $noUrutDariInvoice = '';
@@ -1693,6 +1695,7 @@ if ($kodeTerpilih) {
     $counterPreview = arp_hitung_nomor_urut_tertinggi($pdo, (int) $kodeTerpilih['id'], $tahun) + 1;
 
     // ⬇ Pratinjau nomor ikut invoice HANYA kalau checkbox "ikuti_nomor_invoice" dicentang.
+    // Hanya NO URUT-nya saja yang diikuti; bulan & tahun tetap hari ini.
     $invoiceSumberIdPreview = (int) ($_POST['invoice_sumber_id'] ?? 0);
     $ikutiNomorInvoicePreview = isset($_POST['ikuti_nomor_invoice']);
     if ($invoiceSumberIdPreview > 0 && $ikutiNomorInvoicePreview) {
@@ -2350,6 +2353,8 @@ include "../includes/topbar.php";
                                                 if (elTampil) elTampil.value = '';
                                                 return;
                                             }
+                                            // Hanya NO URUT invoice yang dipakai -- kode, ARP, bulan romawi, dan
+                                            // tahun tetap ikut kode template ini sendiri & tanggal hari ini.
                                             var noUrutInvoice = String(inv.nomor || '').split('/')[0];
                                             if (!/^\d+$/.test(noUrutInvoice)) {
                                                 elManual.value = '';
