@@ -381,7 +381,8 @@ if (($_GET['export'] ?? '') === 'rekap_anggaran_kategori_pdf') {
     exit;
 }
 
-// ====== Export Daftar Barang Gudang Keseluruhan (Surat PDF) ======
+// ====== Export Daftar Barang Gudang per Periode/Bulan (Surat PDF) ======
+// ====== Export Daftar Barang Gudang per Periode/Bulan (Surat PDF) ======
 if (($_GET['export'] ?? '') === 'daftar_barang_pdf') {
     require_once "../config/koneksi.php";
     require_once "../includes/stock_import_helper.php";
@@ -398,70 +399,86 @@ if (($_GET['export'] ?? '') === 'daftar_barang_pdf') {
     if (!in_array($jenisPakaiFilterGudang, ['Habis Pakai', 'Tidak Habis Pakai'], true)) {
         $jenisPakaiFilterGudang = '';
     }
-    $bulanFilterGudang = trim($_GET['bulan'] ?? '');
+
+    $bulanFilterGudang = trim($_GET['bulan'] ?? date('Y-m'));
     if (!preg_match('/^\d{4}-\d{2}$/', $bulanFilterGudang)) {
-        $bulanFilterGudang = '';
+        $bulanFilterGudang = date('Y-m');
     }
 
     $namaBulanIndoGudang = [
         1 => 'Januari', 2 => 'Februari', 3 => 'Maret', 4 => 'April', 5 => 'Mei', 6 => 'Juni',
         7 => 'Juli', 8 => 'Agustus', 9 => 'September', 10 => 'Oktober', 11 => 'November', 12 => 'Desember',
     ];
-    $labelBulanGudang = 'Semua Periode (Terkini)';
-    $akhirBulanGudang = null;
-    if ($bulanFilterGudang !== '') {
-        [$thnBg, $blnBg] = explode('-', $bulanFilterGudang);
-        $labelBulanGudang = 's.d. ' . $namaBulanIndoGudang[(int) $blnBg] . ' ' . $thnBg;
-        // Tanggal akhir bulan yang dipilih, dipakai sebagai batas snapshot
-        $akhirBulanGudang = date('Y-m-t', strtotime($bulanFilterGudang . '-01'));
-    }
+    [$thnBg, $blnBg] = explode('-', $bulanFilterGudang);
+    $labelBulanGudang = $namaBulanIndoGudang[(int) $blnBg] . ' ' . $thnBg;
 
-    if ($akhirBulanGudang !== null) {
-        // Snapshot per akhir bulan yang dipilih:
-        // - Stok Awal = total SEMUA mutasi 'Masuk' barang tersebut yang tanggalnya <= akhir bulan
-        // - Pemakaian = total mutasi 'Keluar' barang tersebut yang tanggalnya <= akhir bulan
-        // - Sisa Stok = Stok Awal - Pemakaian (dibatasi minimal 0)
-        // Barang yang belum ada mutasi Masuk sampai akhir bulan itu (belum "lahir") TIDAK ditampilkan
-        // (pakai INNER JOIN, bukan LEFT JOIN) — sesuai tanggal yang diisi saat Tambah Barang / Import.
-        $sqlGudangExport = "SELECT gs.kode_barang, gs.nama_barang, gs.satuan,
-                sm.stok_awal_bulan AS stok_awal,
-                COALESCE(sk.pemakaian_bulan, 0) AS pemakaian,
-                GREATEST(sm.stok_awal_bulan - COALESCE(sk.pemakaian_bulan, 0), 0) AS sisa_stok,
-                COALESCE(gs.jenis_pakai, 'Habis Pakai') AS jenis_pakai,
-                kbg.nama_kategori
-            FROM Gudang_Stok gs
-            JOIN Jenis_Barang_Gudang jbg ON gs.id_jenis = jbg.id_jenis
-            JOIN Kategori_Barang_Gudang kbg ON jbg.id_kategori = kbg.id_kategori
-            INNER JOIN (
-                SELECT barang_id, SUM(jumlah) AS stok_awal_bulan
-                FROM Mutasi_Stok
-                WHERE jenis_mutasi = 'Masuk' AND tanggal <= :akhir_bulan_masuk
-                GROUP BY barang_id
-            ) sm ON sm.barang_id = gs.id
-            LEFT JOIN (
-                SELECT barang_id, SUM(jumlah) AS pemakaian_bulan
-                FROM Mutasi_Stok
-                WHERE jenis_mutasi = 'Keluar' AND tanggal <= :akhir_bulan_keluar
-                GROUP BY barang_id
-            ) sk ON sk.barang_id = gs.id
-            WHERE 1=1";
-        $paramsGudangExport = [
-            'akhir_bulan_masuk' => $akhirBulanGudang,
-            'akhir_bulan_keluar' => $akhirBulanGudang,
-        ];
-    } else {
-        // Tanpa filter bulan = kondisi stok TERKINI (seperti sebelumnya)
-        $sqlGudangExport = "SELECT gs.kode_barang, gs.nama_barang, gs.satuan, gs.stok_awal,
-                GREATEST(gs.stok_awal - gs.stok_sistem, 0) AS pemakaian,
-                gs.stok_sistem AS sisa_stok,
-                COALESCE(gs.jenis_pakai, 'Habis Pakai') AS jenis_pakai,
-                kbg.nama_kategori
-            FROM Gudang_Stok gs
-            JOIN Jenis_Barang_Gudang jbg ON gs.id_jenis = jbg.id_jenis
-            JOIN Kategori_Barang_Gudang kbg ON jbg.id_kategori = kbg.id_kategori
-            WHERE 1=1";
-        $paramsGudangExport = [];
-    }
+    $awalBulanGudang = $bulanFilterGudang . '-01';
+    $akhirBulanGudang = date('Y-m-t', strtotime($awalBulanGudang));
+
+    // ------------------------------------------------------------------
+    // PENJELASAN LOGIKA (penting, sesuai struktur data yang sebenarnya):
+    //
+    // - gs.stok_awal   = KUMULATIF total barang masuk SEPANJANG WAKTU
+    //   (nilai awal saat import/tambah barang, DITAMBAH setiap kali ada
+    //   transaksi "Catat Barang Masuk" -- lihat action 'barang_masuk' yang
+    //   melakukan: stok_awal = stok_awal + jumlah). Field ini BUKAN nilai
+    //   "stok awal periode tertentu", melainkan angka berjalan sampai saat ini.
+    //
+    // - gs.tgl_opname_awal = tanggal barang ini pertama kali tercatat
+    //   (import Stock Opname / Tambah Barang manual). Dipakai untuk
+    //   menentukan apakah barang tsb SUDAH ADA pada bulan yang dipilih.
+    //
+    // - Transaksi "Catat Barang Masuk" SETELAH import awal SELALU tercatat
+    //   di Mutasi_Stok (jenis 'Masuk') dengan tanggal yang jelas. Sedangkan
+    //   qty awal hasil IMPORT tidak punya baris Mutasi_Stok (tidak bertanggal
+    //   spesifik selain tgl_opname_awal) -- makanya kita TIDAK BOLEH pakai
+    //   Mutasi_Stok untuk menentukan "barang ini sudah ada belum", karena
+    //   akan membuang semua barang hasil import (seperti yang terjadi
+    //   sebelumnya: cuma 1 barang yang muncul).
+    //
+    // Rumus per periode (bulan) yang dipilih:
+    //   Stok Awal (periode)   = stok_awal_SEKARANG - SUM(Masuk yang tanggalnya
+    //                            >= awal bulan periode)
+    //                            -> artinya: buang semua penambahan yang
+    //                               terjadi PADA/SESUDAH bulan ini, supaya
+    //                               dapat angka "sebelum bulan ini dimulai".
+    //   Barang Masuk (periode) = SUM(Masuk yang tanggalnya di DALAM bulan ini)
+    //   Pemakaian (periode)    = SUM(Keluar yang tanggalnya di DALAM bulan ini)
+    //   Sisa Stok (periode)    = Stok Awal + Barang Masuk - Pemakaian
+    //
+    // Barang ditampilkan HANYA jika gs.tgl_opname_awal <= akhir bulan periode
+    // (artinya barang tsb sudah tercatat di gudang pada/​sebelum bulan itu).
+    // ------------------------------------------------------------------
+    $sqlGudangExport = "SELECT gs.kode_barang, gs.nama_barang, gs.satuan,
+            COALESCE(gs.jenis_pakai, 'Habis Pakai') AS jenis_pakai,
+            kbg.id_kategori, kbg.nama_kategori,
+            GREATEST(gs.stok_awal - COALESCE(setelah.qty_masuk_setelah, 0), 0) AS stok_awal_periode,
+            COALESCE(bln.qty_masuk_bln, 0) AS barang_masuk_periode,
+            COALESCE(bln.qty_keluar_bln, 0) AS pemakaian_periode
+        FROM Gudang_Stok gs
+        JOIN Jenis_Barang_Gudang jbg ON gs.id_jenis = jbg.id_jenis
+        JOIN Kategori_Barang_Gudang kbg ON jbg.id_kategori = kbg.id_kategori
+        LEFT JOIN (
+            SELECT barang_id, SUM(jumlah) AS qty_masuk_setelah
+            FROM Mutasi_Stok
+            WHERE jenis_mutasi = 'Masuk' AND tanggal >= :awal_bulan_setelah
+            GROUP BY barang_id
+        ) setelah ON setelah.barang_id = gs.id
+        LEFT JOIN (
+            SELECT barang_id,
+                SUM(CASE WHEN jenis_mutasi = 'Masuk' THEN jumlah ELSE 0 END) AS qty_masuk_bln,
+                SUM(CASE WHEN jenis_mutasi = 'Keluar' THEN jumlah ELSE 0 END) AS qty_keluar_bln
+            FROM Mutasi_Stok
+            WHERE tanggal BETWEEN :awal_bulan_bln AND :akhir_bulan_bln
+            GROUP BY barang_id
+        ) bln ON bln.barang_id = gs.id
+        WHERE (gs.tgl_opname_awal IS NULL OR gs.tgl_opname_awal <= :akhir_bulan_lahir)";
+    $paramsGudangExport = [
+        'awal_bulan_setelah' => $awalBulanGudang,
+        'awal_bulan_bln'     => $awalBulanGudang,
+        'akhir_bulan_bln'    => $akhirBulanGudang,
+        'akhir_bulan_lahir'  => $akhirBulanGudang,
+    ];
 
     if ($idKategoriFilterGudang > 0) {
         $sqlGudangExport .= " AND kbg.id_kategori = :id_kategori";
@@ -479,6 +496,15 @@ if (($_GET['export'] ?? '') === 'daftar_barang_pdf') {
     $stmtGudangExport->execute($paramsGudangExport);
     $dataGudangExport = $stmtGudangExport->fetchAll();
 
+    // Sisa Stok periode dihitung di PHP (butuh barang_masuk_periode + pemakaian_periode)
+    foreach ($dataGudangExport as &$row) {
+        $row['sisa_stok_periode'] = max(
+            0,
+            (int) $row['stok_awal_periode'] + (int) $row['barang_masuk_periode'] - (int) $row['pemakaian_periode']
+        );
+    }
+    unset($row);
+
     $namaKategoriLabelGudang = 'Semua Kategori';
     if ($idKategoriFilterGudang > 0) {
         $stmtKatLabelGudang = $conn->prepare("SELECT nama_kategori FROM Kategori_Barang_Gudang WHERE id_kategori = :id");
@@ -490,8 +516,8 @@ if (($_GET['export'] ?? '') === 'daftar_barang_pdf') {
     }
     $labelJenisPakaiGudang = $jenisPakaiFilterGudang !== '' ? $jenisPakaiFilterGudang : 'Semua Jenis Pakai';
 
-    $headersGudangPdf = ['No', 'Kode', 'Nama Barang', 'Kategori', 'Jenis Pakai', 'Stok Awal', 'Pemakaian', 'Sisa Stok', 'Satuan'];
-    $colCharsGudangPdf = [3, 8, 26, 12, 14, 9, 9, 9, 8];
+    $headersGudangPdf = ['No', 'Kode', 'Nama Barang', 'Kategori', 'Jenis Pakai', 'Stok Awal', 'Barang Masuk', 'Pemakaian', 'Sisa Stok', 'Satuan'];
+    $colCharsGudangPdf = [3, 7, 22, 11, 11, 8, 9, 8, 8, 6];
     $rowsGudangPdf = [];
     $noGudang = 1;
     foreach ($dataGudangExport as $d) {
@@ -501,14 +527,15 @@ if (($_GET['export'] ?? '') === 'daftar_barang_pdf') {
             (string) $d['nama_barang'],
             (string) $d['nama_kategori'],
             (string) $d['jenis_pakai'],
-            (string) $d['stok_awal'],
-            (string) $d['pemakaian'],
-            (string) $d['sisa_stok'],
+            (string) $d['stok_awal_periode'],
+            (string) $d['barang_masuk_periode'],
+            (string) $d['pemakaian_periode'],
+            (string) $d['sisa_stok_periode'],
             (string) $d['satuan'],
         ];
     }
     if (empty($rowsGudangPdf)) {
-        $rowsGudangPdf[] = ['-', 'Tidak ada barang gudang untuk kriteria ini.', '', '', '', '', '', '', ''];
+        $rowsGudangPdf[] = ['-', 'Tidak ada barang gudang untuk kriteria ini.', '', '', '', '', '', '', '', ''];
     }
 
     $pdfBytesGudang = buatPdfSederhanaTable(
@@ -520,7 +547,7 @@ if (($_GET['export'] ?? '') === 'daftar_barang_pdf') {
     );
 
     header('Content-Type: application/pdf');
-    header('Content-Disposition: attachment; filename="Daftar-Barang-Gudang-' . date('Y-m-d') . '.pdf"');
+    header('Content-Disposition: attachment; filename="Daftar-Barang-Gudang-' . $bulanFilterGudang . '.pdf"');
     header('Content-Length: ' . strlen($pdfBytesGudang));
     echo $pdfBytesGudang;
     exit;
