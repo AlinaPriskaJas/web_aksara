@@ -1,0 +1,97 @@
+/* assets/css/responsive.css */
+
+/* Tablet Screens (Width <= 992px) */
+@media (max-width: 992px) {
+    :root {
+        --sidebar-width: var(--sidebar-width-tablet); /* 240px */
+        --spacing: 16px;
+        --padding: 16px;
+        --margin: 16px;
+    }
+
+    #sidebar {
+        width: var(--sidebar-width);
+    }
+
+    #topbar {
+        left: var(--sidebar-width);
+    }
+
+    #main-wrapper {
+        margin-left: var(--sidebar-width);
+    }
+}
+
+/* Mobile Screens (Width <= 768px) */
+@media (max-width: 768px) {
+    :root {
+        --sidebar-width: 280px; /* Drawer width */
+    }
+
+    /* Hide sidebar by default */
+    #sidebar {
+        transform: translateX(-100%);
+        box-shadow: none;
+    }
+
+    #sidebar.show {
+        transform: translateX(0);
+        box-shadow: 5px 0 15px rgba(0, 0, 0, 0.25);
+    }
+
+    #topbar {
+        left: 0;
+    }
+
+    #main-wrapper {
+        margin-left: 0;
+    }
+
+    /* Show hamburger icon in header */
+    .hamburger-btn {
+        display: flex;
+    }
+
+    /* Make search box smaller / responsive */
+    .topbar-search {
+        width: 150px;
+    }
+
+    .topbar-search:focus-within {
+        width: 180px;
+    }
+
+    /* Hide online status text, keep dot or hide entirely if space is low */
+    .status-indicator span {
+        display: none;
+    }
+    
+    .status-indicator {
+        padding: 8px;
+        border-radius: 50%;
+    }
+}
+
+@media (max-width: 480px) {
+    .topbar-search {
+        width: 100px;
+    }
+    .topbar-search:focus-within {
+        width: 130px;
+    }
+    
+    .topbar-title {
+        font-size: 1.1rem;
+    }
+}
+
+@media (max-width: 576px) {
+    .table-toolbar-actions {
+        width: 100%;
+    }
+
+    .table-toolbar-actions .search-box-container {
+        width: 100%;
+        flex: 1 1 100%;
+    }
+}
