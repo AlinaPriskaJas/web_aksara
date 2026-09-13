@@ -18,7 +18,9 @@
  * dihitung otomatis oleh sistem (stok_awal - pemakaian).
  */
 
+
 require_once __DIR__ . '/simple_xlsx_reader.php';
+
 
 /**
  * Prefix kode barang standar sesuai kategori (meniru penomoran di file Excel
@@ -45,6 +47,7 @@ if (!function_exists('stockKodePrefix')) {
     }
 }
 
+
 /**
  * Buat kode barang baru berformat "{prefix}.{urutan}" (mis. "1.16") berdasarkan
  * kategori tujuan. Urutan diambil dari nomor terbesar yang sudah dipakai di
@@ -59,6 +62,7 @@ if (!function_exists('stockGenerateKodeBarang')) {
             WHERE jbg.id_kategori = :id_kategori");
         $stmt->execute(['id_kategori' => $id_kategori]);
 
+
         $maxUrut = 0;
         foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $kode) {
             if (preg_match('/^' . preg_quote($prefix, '/') . '\.(\d+)$/', trim((string) $kode), $m)) {
@@ -66,9 +70,11 @@ if (!function_exists('stockGenerateKodeBarang')) {
             }
         }
 
+
         return $prefix . '.' . ($maxUrut + 1);
     }
 }
+
 
 /**
  * Normalisasi 1 baris header mentah menjadi peta: nama_kolom_standar => index kolom
@@ -85,6 +91,7 @@ function stockImportMapHeader(array $headerRow): array
         'harga_satuan' => ['harga satuan', 'harga', 'unit price'],
         'keterangan' => ['keterangan', 'catatan', 'note'],
     ];
+
 
     foreach ($headerRow as $idx => $rawLabel) {
         $label = strtolower(trim((string) $rawLabel));
@@ -104,6 +111,7 @@ function stockImportMapHeader(array $headerRow): array
     return $map;
 }
 
+
 if (!function_exists('buatPdfSederhanaTable')) {
     /**
      * Membuat file PDF berbentuk TABEL RAPI (garis kolom/baris, header
@@ -118,6 +126,7 @@ if (!function_exists('buatPdfSederhanaTable')) {
         $marginTop = 50.0;
         $marginBottom = 30.0;
 
+
         $fontSize = 7.2;
         $fontSizeHeader = 7.2;
         $fontSizeTitle = 13.0;
@@ -127,11 +136,13 @@ if (!function_exists('buatPdfSederhanaTable')) {
         $cellPadY = 3.0;
         $charWidthFactor = 0.6; // rasio lebar karakter Courier terhadap font size
 
+
         $colorHeaderBg = '0.80 0.85 0.92'; // biru keabuan lembut
         $colorAltRowBg = '0.96 0.97 0.98'; // abu sangat muda (baris genap)
         $colorBorder = '0.55 0.58 0.62';
         $colorTextHeader = '0.10 0.14 0.28';
         $colorText = '0.15 0.15 0.15';
+
 
         $escape = function (string $s): string {
             $s = str_replace(['\\', '(', ')'], ['\\\\', '\\(', '\\)'], $s);
@@ -141,6 +152,7 @@ if (!function_exists('buatPdfSederhanaTable')) {
             }
             return $conv;
         };
+
 
         // ----- Lebar kolom proporsional dari bobot $colChars -----
         $usableWidth = $pageWidth - 2 * $marginX;
@@ -156,6 +168,7 @@ if (!function_exists('buatPdfSederhanaTable')) {
             $xJalan += $w;
         }
         $tableWidth = array_sum($colWidths);
+
 
         // ----- Word-wrap berdasarkan LEBAR kolom (pt), bukan jumlah karakter tetap -----
         $wrapByWidth = function (string $text, float $colWidth, float $fs) use ($charWidthFactor, $cellPadX): array {
@@ -193,6 +206,7 @@ if (!function_exists('buatPdfSederhanaTable')) {
             return $lines ?: [''];
         };
 
+
         $siapkanBaris = function (array $sel, bool $isHeader) use ($wrapByWidth, $colWidths, $fontSize, $fontSizeHeader, $lineHeight, $cellPadY): array {
             $fs = $isHeader ? $fontSizeHeader : $fontSize;
             $wrapped = [];
@@ -204,19 +218,23 @@ if (!function_exists('buatPdfSederhanaTable')) {
             return ['wrapped' => $wrapped, 'tinggi' => $tinggi, 'isHeader' => $isHeader];
         };
 
+
         $baris_header = $siapkanBaris($headers, true);
         $semua_baris_data = [];
         foreach ($rows as $row) {
             $semua_baris_data[] = $siapkanBaris($row, false);
         }
 
+
         // ----- Paginasi: susun baris ke dalam beberapa halaman -----
         $usableHeightPertama = $pageHeight - $marginTop - $marginBottom - 34; // dikurangi ruang judul
         $usableHeightLain = $pageHeight - $marginTop - $marginBottom;
 
+
         $halaman = [];
         $halIni = [$baris_header];
         $tinggiTersisa = $usableHeightPertama - $baris_header['tinggi'];
+
 
         foreach ($semua_baris_data as $br) {
             if ($br['tinggi'] > $tinggiTersisa) {
@@ -229,11 +247,13 @@ if (!function_exists('buatPdfSederhanaTable')) {
         }
         $halaman[] = $halIni;
 
+
         // ----- Bangun content stream per halaman -----
         $contentStreams = [];
         foreach ($halaman as $idxHal => $barisHalaman) {
             $ops = "q\n";
             $yTop = $pageHeight - $marginTop;
+
 
             if ($idxHal === 0) {
                 $ops .= sprintf("0 0 0 rg\nBT /F2 %.2f Tf %.2f %.2f Td (%s) Tj ET\n", $fontSizeTitle, $marginX, $yTop, $escape($judul));
@@ -242,13 +262,16 @@ if (!function_exists('buatPdfSederhanaTable')) {
                 $yTop -= 18;
             }
 
+
             $tableTopY = $yTop;
             $yCursor = $tableTopY;
+
 
             foreach ($barisHalaman as $idxBaris => $br) {
                 $tinggiBaris = $br['tinggi'];
                 $yBarisAtas = $yCursor;
                 $yBarisBawah = $yCursor - $tinggiBaris;
+
 
                 // Latar belakang baris
                 if ($br['isHeader']) {
@@ -256,6 +279,7 @@ if (!function_exists('buatPdfSederhanaTable')) {
                 } elseif ($idxBaris % 2 === 0) {
                     $ops .= sprintf("%s rg\n%.2f %.2f %.2f %.2f re f\n", $colorAltRowBg, $marginX, $yBarisBawah, $tableWidth, $tinggiBaris);
                 }
+
 
                 // Teks per kolom
                 $fs = $br['isHeader'] ? $fontSizeHeader : $fontSize;
@@ -271,10 +295,13 @@ if (!function_exists('buatPdfSederhanaTable')) {
                     }
                 }
 
+
                 $yCursor = $yBarisBawah;
             }
 
+
             $tableBottomY = $yCursor;
+
 
             // Garis horizontal (antar baris + batas atas/bawah)
             $ops .= sprintf("%s RG 0.6 w\n", $colorBorder);
@@ -285,6 +312,7 @@ if (!function_exists('buatPdfSederhanaTable')) {
                 $ops .= sprintf("%.2f %.2f m %.2f %.2f l S\n", $marginX, $yGaris, $marginX + $tableWidth, $yGaris);
             }
 
+
             // Garis vertikal (antar kolom + batas kiri/kanan)
             $xGaris = $marginX;
             $ops .= sprintf("%.2f %.2f m %.2f %.2f l S\n", $xGaris, $tableTopY, $xGaris, $tableBottomY);
@@ -293,9 +321,11 @@ if (!function_exists('buatPdfSederhanaTable')) {
                 $ops .= sprintf("%.2f %.2f m %.2f %.2f l S\n", $xGaris, $tableTopY, $xGaris, $tableBottomY);
             }
 
+
             $ops .= "Q\n";
             $contentStreams[] = $ops;
         }
+
 
         // ----- Rakit objek PDF -----
         $numPages = count($contentStreams);
@@ -306,14 +336,17 @@ if (!function_exists('buatPdfSederhanaTable')) {
         $fontF1Obj = 3 + 2 * $numPages;
         $fontF2Obj = $fontF1Obj + 1;
 
+
         $kidsRefs = [];
         for ($i = 0; $i < $numPages; $i++) {
             $kidsRefs[] = ($firstPageObj + $i) . ' 0 R';
         }
 
+
         $objects = [];
         $objects[$objCatalog] = "<< /Type /Catalog /Pages {$objPages} 0 R >>";
         $objects[$objPages] = "<< /Type /Pages /Kids [" . implode(' ', $kidsRefs) . "] /Count {$numPages} >>";
+
 
         for ($i = 0; $i < $numPages; $i++) {
             $pageNum = $firstPageObj + $i;
@@ -324,8 +357,10 @@ if (!function_exists('buatPdfSederhanaTable')) {
             $objects[$contentNum] = "<< /Length " . strlen($stream) . " >>\nstream\n{$stream}endstream";
         }
 
+
         $objects[$fontF1Obj] = "<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>";
         $objects[$fontF2Obj] = "<< /Type /Font /Subtype /Type1 /BaseFont /Courier-Bold >>";
+
 
         ksort($objects);
         $pdf = "%PDF-1.4\n";
@@ -337,6 +372,7 @@ if (!function_exists('buatPdfSederhanaTable')) {
         $xrefStart = strlen($pdf);
         $maxObjNum = max(array_keys($objects));
 
+
         $pdf .= "xref\n0 " . ($maxObjNum + 1) . "\n";
         $pdf .= "0000000000 65535 f \n";
         for ($n = 1; $n <= $maxObjNum; $n++) {
@@ -345,9 +381,11 @@ if (!function_exists('buatPdfSederhanaTable')) {
         $pdf .= "trailer\n<< /Size " . ($maxObjNum + 1) . " /Root {$objCatalog} 0 R >>\n";
         $pdf .= "startxref\n{$xrefStart}\n%%EOF";
 
+
         return $pdf;
     }
 }
+
 
 /**
  * Baca file CSV menjadi array baris (mirip output SimpleXlsxReader::readSheet)
@@ -360,10 +398,12 @@ function stockImportReadCsv(string $path): array
         throw new Exception("File CSV tidak dapat dibuka.");
     }
 
+
     // deteksi delimiter dari baris pertama (koma vs titik koma)
     $firstLine = fgets($handle);
     rewind($handle);
     $delimiter = (substr_count($firstLine, ';') > substr_count($firstLine, ',')) ? ';' : ',';
+
 
     while (($data = fgetcsv($handle, 0, $delimiter)) !== false) {
         $rows[] = array_map('trim', $data);
@@ -372,14 +412,39 @@ function stockImportReadCsv(string $path): array
     return $rows;
 }
 
+
 /**
  * Proses import stok utama.
  *
+ * FIX #1 (parameter periode hilang): fungsi ini sebelumnya hanya menerima 6
+ * parameter, padahal stock.php memanggilnya dengan 7 argumen (termasuk
+ * $tanggalImport, tanggal/periode yang dipilih user di form import). PHP TIDAK
+ * error untuk kelebihan argumen pada fungsi biasa — argumen ke-7 itu dibuang
+ * diam-diam, sehingga tgl_opname_awal SELALU memakai tanggal hari ini,
+ * bukan periode yang dipilih user. Parameter $tanggalImport sekarang
+ * ditambahkan (opsional, default null -> pakai tanggal hari ini kalau
+ * dipanggil dari kode lama yang belum mengirim parameter ini).
+ *
+ * FIX #2 (bug utama — data "Barang Masuk" hilang saat re-import): sebelumnya,
+ * kalau barang yang diimport SUDAH ADA di database (cocok kode_barang atau
+ * nama+jenis), kolom stok_sistem & stok_awal barang tsb LANGSUNG DITIMPA
+ * dengan angka mentah dari file CSV. Ini menghapus semua penambahan stok yang
+ * sudah dicatat lewat "Catat Barang Masuk" di antara dua kali import (mis.
+ * barang sudah ditambah stoknya jadi 50, lalu kategori itu diimport ulang
+ * dengan file yang masih mencatat stok 0 -> stok_sistem balik jadi 0).
+ * Sekarang: untuk barang yang SUDAH ADA, import hanya memperbarui data master
+ * (nama, satuan, harga satuan) dan TIDAK menyentuh stok_sistem/stok_awal yang
+ * sedang berjalan, supaya histori "Catat Barang Masuk" tidak pernah hilang
+ * karena import ulang. Untuk barang BARU (belum ada), stok_awal & stok_sistem
+ * tetap diisi dari file seperti biasa (ini bukan "menimpa", tapi membuat data
+ * pertama kalinya).
+ *
  * @return array{total_baris:int, berhasil:int, gagal:int, duplikat:int, errors:array<int,string>}
  */
-function processStockImport(PDO $conn, string $tmpPath, string $originalName, int $id_kategori, string $nama_kategori, int $user_id): array
+function processStockImport(PDO $conn, string $tmpPath, string $originalName, int $id_kategori, string $nama_kategori, int $user_id, ?string $tanggalImport = null): array
 {
     $ext = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+
 
     if ($ext === 'xlsx') {
         $rows = SimpleXlsxReader::readSheet($tmpPath);
@@ -388,6 +453,7 @@ function processStockImport(PDO $conn, string $tmpPath, string $originalName, in
     } else {
         throw new Exception("Format file tidak didukung. Gunakan file .csv atau .xlsx.");
     }
+
 
     // cari baris header: baris pertama yang punya minimal kolom nama_barang & (stok_awal/satuan)
     $headerRowIdx = null;
@@ -401,17 +467,21 @@ function processStockImport(PDO $conn, string $tmpPath, string $originalName, in
         }
     }
 
+
     if ($headerRowIdx === null) {
         throw new Exception("Header kolom tidak dikenali. Pastikan file memiliki kolom 'Nama Barang' dan 'Volume/Stok Awal'.");
     }
 
+
     $dataRows = array_slice($rows, $headerRowIdx + 1);
+
 
     $totalBaris = 0;
     $berhasil = 0;
     $gagal = 0;
     $duplikat = 0;
     $errors = [];
+
 
     // 1. Pastikan Jenis_Barang_Gudang untuk kategori ini ada (satu jenis umum per kategori,
     //    konsisten dengan alur "Tambah Barang Baru" yang sudah ada di aplikasi)
@@ -426,17 +496,25 @@ function processStockImport(PDO $conn, string $tmpPath, string $originalName, in
         $id_jenis = $conn->lastInsertId();
     }
 
-    $today = date('Y-m-d');
+
+    // FIX #1: pakai periode/tanggal yang dipilih user di form import kalau ada
+    // (format 'YYYY-MM-DD'), fallback ke hari ini kalau tidak dikirim/valid.
+    $today = (is_string($tanggalImport) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $tanggalImport))
+        ? $tanggalImport
+        : date('Y-m-d');
     $rowNoInFile = $headerRowIdx + 1; // untuk pesan error, 1-based termasuk header
+
 
     foreach ($dataRows as $row) {
         $rowNoInFile++;
+
 
         $namaBarang = trim($row[$colMap['nama_barang']] ?? '');
         if ($namaBarang === '') {
             continue; // baris kosong, lewati diam-diam (bukan error)
         }
         $totalBaris++;
+
 
         try {
             $kodeBarang = isset($colMap['kode_barang']) ? trim($row[$colMap['kode_barang']] ?? '') : '';
@@ -445,21 +523,27 @@ function processStockImport(PDO $conn, string $tmpPath, string $originalName, in
                 $satuan = 'Pcs';
             }
 
+
             $stokAwalRaw = isset($colMap['stok_awal']) ? trim((string) ($row[$colMap['stok_awal']] ?? '')) : '';
             $stokAwal = is_numeric($stokAwalRaw) ? (int) round((float) $stokAwalRaw) : 0;
+
 
             $pemakaianRaw = isset($colMap['pemakaian']) ? trim((string) ($row[$colMap['pemakaian']] ?? '')) : '';
             $pemakaian = is_numeric($pemakaianRaw) ? (int) round((float) $pemakaianRaw) : 0;
 
+
             $hargaRaw = isset($colMap['harga_satuan']) ? trim((string) ($row[$colMap['harga_satuan']] ?? '')) : '';
             $hargaSatuan = is_numeric($hargaRaw) ? (float) $hargaRaw : null;
 
+
             $sisaStok = $stokAwal - $pemakaian;
+
 
             // auto-generate kode barang kalau kosong (format "1.x/2.x/3.x/4.x" sesuai kategori)
             if ($kodeBarang === '') {
                 $kodeBarang = stockGenerateKodeBarang($conn, $id_kategori, $nama_kategori);
             }
+
 
             // Cari barang existing: berdasarkan kode_barang dulu, lalu fallback nama+jenis
             $existing = null;
@@ -474,25 +558,29 @@ function processStockImport(PDO $conn, string $tmpPath, string $originalName, in
                 $existing = $stmtCekNama->fetch();
             }
 
+
             if ($existing) {
-                // update (opname ulang / refresh data): reset periode stok_awal
+                // FIX #2: barang SUDAH ADA -> jangan timpa stok_sistem/stok_awal
+                // yang sedang berjalan (bisa sudah berubah lewat "Catat Barang
+                // Masuk" / "Pemakaian"). Import ulang hanya memperbarui data
+                // master (nama, satuan, harga satuan), TIDAK menyentuh angka
+                // stok supaya histori barang masuk tidak pernah hilang.
                 $stmtUpd = $conn->prepare("UPDATE Gudang_Stok
-                    SET nama_barang = :nama, satuan = :satuan, stok_awal = :stok_awal,
-                        stok_sistem = :sisa, tgl_opname_awal = :tgl,
+                    SET nama_barang = :nama, satuan = :satuan,
                         harga_satuan = COALESCE(:harga, harga_satuan)
                     WHERE id = :id");
                 $stmtUpd->execute([
                     'nama' => $namaBarang,
                     'satuan' => $satuan,
-                    'stok_awal' => $stokAwal,
-                    'sisa' => $sisaStok,
-                    'tgl' => $today,
                     'harga' => $hargaSatuan,
                     'id' => $existing['id'],
                 ]);
                 $barangId = $existing['id'];
                 $duplikat++;
+                $errors[] = "Baris {$rowNoInFile} ({$namaBarang}): barang sudah ada di gudang — hanya data nama/satuan/harga yang diperbarui, stok TIDAK diubah otomatis (supaya stok hasil 'Catat Barang Masuk' tidak hilang). Gunakan menu Barang Masuk / Edit Barang kalau memang perlu mengoreksi angka stok.";
             } else {
+                // Barang BARU: ini bukan "menimpa", jadi stok_awal & stok_sistem
+                // diisi pertama kali dari angka di file, sesuai periode yang dipilih.
                 $stmtIns = $conn->prepare("INSERT INTO Gudang_Stok
                     (kode_barang, nama_barang, id_jenis, satuan, stok_sistem, stok_awal, tgl_opname_awal, harga_satuan)
                     VALUES (:kode, :nama, :id_jenis, :satuan, :sisa, :stok_awal, :tgl, :harga)");
@@ -507,19 +595,21 @@ function processStockImport(PDO $conn, string $tmpPath, string $originalName, in
                     'harga' => $hargaSatuan,
                 ]);
                 $barangId = $conn->lastInsertId();
+
+                // catat pemakaian dari file (jika ada) sebagai mutasi Keluar agar tercatat di histori
+                // (hanya relevan untuk barang baru; barang existing tidak disentuh stoknya — lihat FIX #2)
+                if ($pemakaian > 0) {
+                    $stmtMut = $conn->prepare("INSERT INTO Mutasi_Stok (barang_id, jenis_mutasi, jumlah, pemakai, tanggal, keterangan, dibuat_oleh)
+                        VALUES (:barang_id, 'Keluar', :jumlah, NULL, :tanggal, 'Import Stock Opname', :user_id)");
+                    $stmtMut->execute([
+                        'barang_id' => $barangId,
+                        'jumlah' => $pemakaian,
+                        'tanggal' => $today,
+                        'user_id' => $user_id,
+                    ]);
+                }
             }
 
-            // catat pemakaian dari file (jika ada) sebagai mutasi Keluar agar tercatat di histori
-            if ($pemakaian > 0) {
-                $stmtMut = $conn->prepare("INSERT INTO Mutasi_Stok (barang_id, jenis_mutasi, jumlah, pemakai, tanggal, keterangan, dibuat_oleh)
-                    VALUES (:barang_id, 'Keluar', :jumlah, NULL, :tanggal, 'Import Stock Opname', :user_id)");
-                $stmtMut->execute([
-                    'barang_id' => $barangId,
-                    'jumlah' => $pemakaian,
-                    'tanggal' => $today,
-                    'user_id' => $user_id,
-                ]);
-            }
 
             $berhasil++;
         } catch (Exception $e) {
@@ -527,6 +617,7 @@ function processStockImport(PDO $conn, string $tmpPath, string $originalName, in
             $errors[] = "Baris {$rowNoInFile} ({$namaBarang}): " . $e->getMessage();
         }
     }
+
 
     // catat ke import_log
     $stmtLog = $conn->prepare("INSERT INTO Import_Log (nama_file, total_baris, berhasil, gagal, duplikat, detail_error, diupload_oleh)
@@ -540,6 +631,7 @@ function processStockImport(PDO $conn, string $tmpPath, string $originalName, in
         'error' => empty($errors) ? null : implode("\n", $errors),
         'user_id' => $user_id,
     ]);
+
 
     return [
         'total_baris' => $totalBaris,

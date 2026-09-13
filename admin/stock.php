@@ -910,18 +910,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     throw new Exception("Update stok gagal — barang_id tidak ditemukan atau query tidak mengubah baris apapun.");
                 }
 
+                // FIX: commit dulu supaya stok PASTI tersimpan, baru catat audit.
+                // Audit log dibungkus try-catch terpisah: kalau audit gagal,
+                // transaksi stok yang SUDAH di-commit tidak boleh ikut dianggap gagal
+                // (sebelumnya: error di catatAudit() bikin catch block memanggil
+                // rollBack() pada transaksi yang sudah commit -> user lihat "gagal"
+                // padahal stok sebenarnya sudah berubah, jadi datanya tampak
+                // tidak konsisten dengan Daftar Barang Gudang).
                 $conn->commit();
-                catatAudit(
-                    $conn,
-                    'Gudang',
-                    'Barang Masuk',
-                    "Barang masuk {$jumlah} unit untuk barang #{$barang_id}",
-                    null,
-                    ['jumlah' => $jumlah, 'keterangan' => $keterangan]
-                );
+                try {
+                    catatAudit(
+                        $conn,
+                        'Gudang',
+                        'Barang Masuk',
+                        "Barang masuk {$jumlah} unit untuk barang #{$barang_id}",
+                        null,
+                        ['jumlah' => $jumlah, 'keterangan' => $keterangan]
+                    );
+                } catch (Throwable $eAudit) {
+                    // Gagal catat audit tidak boleh menggagalkan transaksi stok yang sudah sukses
+                    error_log('catatAudit gagal (barang_masuk): ' . $eAudit->getMessage());
+                }
                 $success_msg = "Barang masuk berhasil dicatat! Stok telah diperbarui.";
-            } catch (Exception $e) {
-                $conn->rollBack();
+                // FIX: langsung pindah ke tab "Daftar Barang Gudang" supaya user
+                // langsung lihat stok yang baru bertambah, tidak perlu klik tab lain dulu.
+                $active_tab = 'tabGudang';
+            } catch (Throwable $e) {
+                if ($conn->inTransaction()) {
+                    $conn->rollBack();
+                }
                 $error_msg = "Gagal mencatat barang masuk: " . $e->getMessage();
             }
         }
@@ -962,18 +979,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'id' => $mutasi_id,
                 ]);
 
+                // FIX: commit dulu, baru audit log dibungkus try-catch sendiri
+                // (lihat penjelasan di action 'barang_masuk' di atas).
                 $conn->commit();
-                catatAudit(
-                    $conn,
-                    'Gudang',
-                    'Edit Barang Masuk',
-                    "Mengubah transaksi barang masuk #{$mutasi_id} barang #{$old['barang_id']}",
-                    null,
-                    ['sebelum' => $old, 'sesudah' => ['jumlah' => $jumlah_baru, 'tanggal' => $tanggal, 'keterangan' => $keterangan]]
-                );
+                try {
+                    catatAudit(
+                        $conn,
+                        'Gudang',
+                        'Edit Barang Masuk',
+                        "Mengubah transaksi barang masuk #{$mutasi_id} barang #{$old['barang_id']}",
+                        null,
+                        ['sebelum' => $old, 'sesudah' => ['jumlah' => $jumlah_baru, 'tanggal' => $tanggal, 'keterangan' => $keterangan]]
+                    );
+                } catch (Throwable $eAudit) {
+                    error_log('catatAudit gagal (edit_barang_masuk): ' . $eAudit->getMessage());
+                }
                 $success_msg = "Transaksi barang masuk berhasil diperbarui! Stok gudang telah disesuaikan otomatis.";
-            } catch (Exception $e) {
-                $conn->rollBack();
+                // FIX: langsung tampilkan tab Daftar Barang Gudang supaya perubahan stok terlihat.
+                $active_tab = 'tabGudang';
+            } catch (Throwable $e) {
+                if ($conn->inTransaction()) {
+                    $conn->rollBack();
+                }
                 $error_msg = "Gagal memperbarui barang masuk: " . $e->getMessage();
             }
         }
@@ -1002,17 +1029,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmtDel->execute(['id' => $mutasi_id]);
 
             $conn->commit();
-            catatAudit(
-                $conn,
-                'Gudang',
-                'Hapus Barang Masuk',
-                "Menghapus transaksi barang masuk #{$mutasi_id} barang #{$old['barang_id']}",
-                null,
-                $old
-            );
+            try {
+                catatAudit(
+                    $conn,
+                    'Gudang',
+                    'Hapus Barang Masuk',
+                    "Menghapus transaksi barang masuk #{$mutasi_id} barang #{$old['barang_id']}",
+                    null,
+                    $old
+                );
+            } catch (Throwable $eAudit) {
+                error_log('catatAudit gagal (hapus_barang_masuk): ' . $eAudit->getMessage());
+            }
             $success_msg = "Transaksi barang masuk berhasil dihapus! Stok gudang telah dikembalikan otomatis.";
-        } catch (Exception $e) {
-            $conn->rollBack();
+            $active_tab = 'tabGudang';
+        } catch (Throwable $e) {
+            if ($conn->inTransaction()) {
+                $conn->rollBack();
+            }
             $error_msg = "Gagal menghapus barang masuk: " . $e->getMessage();
         }
     }
