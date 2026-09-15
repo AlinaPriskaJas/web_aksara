@@ -277,8 +277,9 @@ include "../includes/topbar.php";
                             <div class="doc-list-subtitle">Terbit <?= date('d F Y', strtotime($dok['created_at'])) ?></div>
                         </div>
                     </div>
-                    <a href="../<?= htmlspecialchars($dok['file_path']) ?>" class="btn-primary-custom"
-                        style="height:34px; padding: 0 14px; font-size:0.8rem;" download>Download</a>
+                    <?php $hrefDok = str_starts_with($dok['file_path'], 'http') ? $dok['file_path'] : '../' . $dok['file_path']; ?>
+                    <a href="<?= htmlspecialchars($hrefDok) ?>" class="btn-primary-custom"
+                        style="height:34px; padding: 0 14px; font-size:0.8rem;" target="_blank">Download</a>
                 </div>
             <?php endforeach; ?>
         <?php endif; ?>

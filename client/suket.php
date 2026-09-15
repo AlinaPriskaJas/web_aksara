@@ -2,17 +2,22 @@
 // client/suket.php
 session_start();
 
+
 // Auth guard: pastikan sudah login dan role-nya memang client
 if (empty($_SESSION['login']) || ($_SESSION['role'] ?? '') !== 'client') {
     header("Location: ../login.php");
     exit;
 }
 
+
 require_once "../config/koneksi.php";
+
 
 $page_title = "Suket K3";
 
+
 $user_id = $_SESSION['user_id'];
+
 
 // ================== AMBIL KLIEN_ID DARI USER YANG LOGIN ==================
 $klien_id = null;
@@ -27,11 +32,13 @@ try {
     $klien_id = null;
 }
 
+
 // ================== PENCARIAN & PAGINATION ==================
 $keyword     = trim($_GET['q'] ?? '');
 $per_page    = 5;
 $page_now    = max(1, (int) ($_GET['page'] ?? 1));
 $offset      = ($page_now - 1) * $per_page;
+
 
 // ================== STATUS REALTIME (mengikuti pola v_sertifikat_ahli_status) ==================
 // Aktif        : masih lebih dari 30 hari sebelum expiry
@@ -46,16 +53,19 @@ $status_case_sql = "
     END
 ";
 
+
 // ================== STAT CARD (dihitung terpisah, tidak kena filter search/pagination) ==================
 $total_dokumen   = 0;
 $total_aktif     = 0;
 $total_peringatan = 0;
+
 
 if ($klien_id) {
     try {
         $stmt = $conn->prepare("SELECT COUNT(*) FROM Suket_K3 WHERE klien_id = :klien_id");
         $stmt->execute([':klien_id' => $klien_id]);
         $total_dokumen = (int) $stmt->fetchColumn();
+
 
         $stmt = $conn->prepare("
             SELECT $status_case_sql AS status_realtime, COUNT(*) AS jumlah
@@ -73,24 +83,29 @@ if ($klien_id) {
     }
 }
 
+
 // ================== DAFTAR SUKET K3 (dengan search + pagination) ==================
 $daftar_suket = [];
 $total_data   = 0;
+
 
 if ($klien_id) {
     try {
         $where = "WHERE sk.klien_id = :klien_id";
         $params = [':klien_id' => $klien_id];
 
+
         if ($keyword !== '') {
             $where .= " AND sk.nomor_laporan LIKE :kw";
             $params[':kw'] = '%' . $keyword . '%';
         }
 
+
         // Hitung total data untuk pagination
         $stmt = $conn->prepare("SELECT COUNT(*) FROM Suket_K3 sk $where");
         $stmt->execute($params);
         $total_data = (int) $stmt->fetchColumn();
+
 
         // Ambil data halaman aktif, join ke Objek_K3 & Jenis_Objek_K3 untuk nama objek
         $stmt = $conn->prepare("
@@ -117,7 +132,9 @@ if ($klien_id) {
     }
 }
 
+
 $total_halaman = max(1, (int) ceil($total_data / $per_page));
+
 
 // Mapping status ke badge class
 $badge_map = [
@@ -127,10 +144,12 @@ $badge_map = [
     'Belum Terbit'     => 'badge-secondary',
 ];
 
+
 include "../includes/header.php";
 include "../includes/sidebar.php";
 include "../includes/topbar.php";
 ?>
+
 
 <main class="main-content">
     <div class="row g-4 mb-4">
@@ -163,6 +182,7 @@ include "../includes/topbar.php";
         </div>
     </div>
 
+
     <div class="card-box">
         <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-3">
             <h5 class="mb-0 fw-bold">Surat Keterangan (Suket) K3</h5>
@@ -172,6 +192,7 @@ include "../includes/topbar.php";
                     value="<?= htmlspecialchars($keyword) ?>">
             </form>
         </div>
+
 
         <?php if (!$klien_id): ?>
             <div class="alert alert-danger-custom mb-0">
@@ -211,7 +232,8 @@ include "../includes/topbar.php";
                                 </td>
                                 <td style="text-align: center;">
                                     <?php if (!empty($row['file_sertifikat_pdf'])): ?>
-                                        <a href="../<?= htmlspecialchars($row['file_sertifikat_pdf']) ?>" target="_blank"
+                                        <?php $hrefSuket = str_starts_with($row['file_sertifikat_pdf'], 'http') ? $row['file_sertifikat_pdf'] : '../' . $row['file_sertifikat_pdf']; ?>
+                                        <a href="<?= htmlspecialchars($hrefSuket) ?>" target="_blank"
                                             class="btn-primary-custom" style="height:32px; padding:0 12px; font-size:0.8rem;">
                                             <i class="bi bi-download"></i> PDF
                                         </a>
@@ -224,6 +246,7 @@ include "../includes/topbar.php";
                     </tbody>
                 </table>
             </div>
+
 
             <!-- Pagination Sungguhan (LIMIT/OFFSET) -->
             <div class="pagination-custom">
@@ -239,6 +262,7 @@ include "../includes/topbar.php";
                         <?php endif; ?>
                     </li>
 
+
                     <?php for ($p = 1; $p <= $total_halaman; $p++): ?>
                         <li class="pagination-item <?= $p === $page_now ? 'active' : '' ?>">
                             <?php if ($p === $page_now): ?>
@@ -248,6 +272,7 @@ include "../includes/topbar.php";
                             <?php endif; ?>
                         </li>
                     <?php endfor; ?>
+
 
                     <li class="pagination-item <?= $page_now >= $total_halaman ? 'disabled' : '' ?>">
                         <?php if ($page_now < $total_halaman): ?>
@@ -262,6 +287,8 @@ include "../includes/topbar.php";
     </div>
 </main>
 
+
 <?php
 include "../includes/footer.php";
 ?>
+
