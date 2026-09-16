@@ -24,15 +24,15 @@ $EKSTENSI_SUKET_DIIZINKAN = ['pdf', 'jpg', 'jpeg', 'png'];
 // Handle Upload / Edit Suket (upload dokumen Suket K3 yang SUDAH JADI, bukan generate baru)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['action']) && $_POST['action'] === 'save') {
-        $id             = isset($_POST['id']) && $_POST['id'] !== '' ? (int) $_POST['id'] : null;
-        $klien_id       = $_POST['klien_id'] ?? '';
-        $objek_id       = $_POST['objek_id'] ?: null; // opsional -- suket boleh diunggah tanpa unit objek spesifik
-        $ahli_k3_id     = $_POST['ahli_k3_id'] ?? '';
-        $nomor_suket    = trim($_POST['nomor_suket'] ?? '');
-        $nomor_laporan  = trim($_POST['nomor_laporan'] ?? '');
-        $jenis_pemeriksaan   = $_POST['jenis_pemeriksaan'] ?? 'Pemeriksaan Berkala';
+        $id = isset($_POST['id']) && $_POST['id'] !== '' ? (int) $_POST['id'] : null;
+        $klien_id = $_POST['klien_id'] ?? '';
+        $objek_id = $_POST['objek_id'] ?: null; // opsional -- suket boleh diunggah tanpa unit objek spesifik
+        $ahli_k3_id = $_POST['ahli_k3_id'] ?? '';
+        $nomor_suket = trim($_POST['nomor_suket'] ?? '');
+        $nomor_laporan = trim($_POST['nomor_laporan'] ?? '');
+        $jenis_pemeriksaan = $_POST['jenis_pemeriksaan'] ?? 'Pemeriksaan Berkala';
         $tanggal_pemeriksaan = $_POST['tanggal_pemeriksaan'] ?: null;
-        $tanggal_expiry      = $_POST['tanggal_expiry'] ?: null;
+        $tanggal_expiry = $_POST['tanggal_expiry'] ?: null;
 
         // Ambil data existing dulu kalau ini mode edit (perlu untuk audit log & file lama)
         $existing = null;
@@ -51,17 +51,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error_msg = "File Suket K3 (hasil cetak/PDF yang sudah jadi) wajib diunggah!";
         } else {
             $file_sertifikat_pdf = $existing['file_sertifikat_pdf'] ?? null;
-            $drive_file_id        = null;
+            $drive_file_id = null;
 
             // Proses upload file (opsional saat edit, wajib saat tambah baru)
             if (isset($_FILES['file_suket']) && $_FILES['file_suket']['error'] === UPLOAD_ERR_OK) {
                 $file = $_FILES['file_suket'];
-                $ext  = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+                $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
 
                 if (!in_array($ext, $EKSTENSI_SUKET_DIIZINKAN, true)) {
                     $error_msg = "Format file tidak didukung. Gunakan PDF, JPG, atau PNG.";
                 } else {
-                    $hasil_drive = arp_upload_ke_drive($file['tmp_name'], $file['name'], $file['type'], 0, 'Suket_K3');
+                    // Folder Drive bertingkat: Suket_K3 / {Tahun} / {Bulan}, mengikuti tanggal pemeriksaan.
+                    $tanggalUntukFolder = $tanggal_pemeriksaan ? new DateTime($tanggal_pemeriksaan) : new DateTime();
+                    $kategori_suket = arp_kategori_suket($tanggalUntukFolder);
+
+                    // Nama file: "SURAT KETERANGAN Nomor {nomor_suket}.{ekstensi}"
+                    $nama_file_suket = arp_nama_file_suket($nomor_suket, $ext);
+
+                    $hasil_drive = arp_upload_ke_drive($file['tmp_name'], $nama_file_suket, $file['type'], 0, $kategori_suket);
                     if ($hasil_drive && !empty($hasil_drive['link'])) {
                         $file_sertifikat_pdf = $hasil_drive['link'];
                         $drive_file_id = $hasil_drive['file_id'] ?? null;
@@ -69,8 +76,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $error_msg = "Gagal mengunggah file Suket ke Drive: " . arp_drive_last_error();
                     }
                 }
-            } elseif (isset($_FILES['file_suket']) && $_FILES['file_suket']['error'] !== UPLOAD_ERR_NO_FILE) {
-                $error_msg = "Gagal mengunggah file Suket (kode error: " . $_FILES['file_suket']['error'] . ").";
             }
 
             if (empty($error_msg)) {
@@ -153,15 +158,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $namaKlien = $namaKlienStmt->fetchColumn() ?: '';
 
                         arp_arsipkan_dokumen($conn, [
-                            'nama_dokumen'  => trim($nomor_suket . ' - ' . $namaKlien),
-                            'kategori'      => 'Suket K3',
-                            'file_path'     => $file_sertifikat_pdf,
+                            'nama_dokumen' => trim($nomor_suket . ' - ' . $namaKlien),
+                            'kategori' => 'Suket K3',
+                            'file_path' => $file_sertifikat_pdf,
                             'drive_file_id' => $drive_file_id,
-                            'drive_link'    => $file_sertifikat_pdf,
-                            'modul_sumber'  => 'Suket K3',
-                            'ref_id'        => $new_suket_id,
-                            'klien_id'      => $klien_id,
-                            'visibilitas'   => 'Client',
+                            'drive_link' => $file_sertifikat_pdf,
+                            'modul_sumber' => 'Suket K3',
+                            'ref_id' => $new_suket_id,
+                            'klien_id' => $klien_id,
+                            'visibilitas' => 'Client',
                             'diupload_oleh' => $current_user_id,
                         ]);
                     }
@@ -269,7 +274,8 @@ $sukets = $conn->query("
                                         <td><?= htmlspecialchars($s['nama_unit'] ?: '-') ?></td>
                                         <td>
                                             <?= htmlspecialchars($s['nama_ahli']) ?>
-                                            <small class="d-block text-muted"><?= htmlspecialchars($s['bidang_ahli']) ?> &middot; SKP:
+                                            <small class="d-block text-muted"><?= htmlspecialchars($s['bidang_ahli']) ?>
+                                                &middot; SKP:
                                                 <?= htmlspecialchars($s['no_skp'] ?: '-') ?></small>
                                         </td>
                                         <td><?= $s['tanggal_pemeriksaan'] ? date('d-m-Y', strtotime($s['tanggal_pemeriksaan'])) : '-' ?>
@@ -278,7 +284,8 @@ $sukets = $conn->query("
                                         </td>
                                         <td style="text-align: center; white-space: nowrap;">
                                             <?php if ($fileHref): ?>
-                                                <a href="<?= htmlspecialchars($fileHref) ?>" target="_blank" class="btn-secondary-custom"
+                                                <a href="<?= htmlspecialchars($fileHref) ?>" target="_blank"
+                                                    class="btn-secondary-custom"
                                                     style="height:32px; padding: 0 10px; font-size:0.8rem;" title="Lihat File">
                                                     <i class="bi bi-file-earmark-pdf"></i>
                                                 </a>
@@ -342,7 +349,8 @@ $sukets = $conn->query("
 
                         <!-- Objek K3 Unit (autocomplete, opsional) -->
                         <div class="col-md-6 autocomplete-wrapper">
-                            <label class="form-label fw-semibold fs-7 mb-1">Objek K3 Unit <span class="text-muted fw-normal">(opsional)</span></label>
+                            <label class="form-label fw-semibold fs-7 mb-1">Objek K3 Unit <span
+                                    class="text-muted fw-normal">(opsional)</span></label>
                             <input type="text" id="form-objek-search" class="form-control-custom"
                                 placeholder="Ketik nama unit / SN / klien... (boleh dikosongkan)" autocomplete="off">
                             <input type="hidden" name="objek_id" id="form-objek-id">
@@ -356,7 +364,8 @@ $sukets = $conn->query("
                                 placeholder="Ketik nama ahli K3..." autocomplete="off">
                             <input type="hidden" name="ahli_k3_id" id="form-ahli-id">
                             <div class="autocomplete-list" id="form-ahli-list"></div>
-                            <small class="d-block text-muted mt-1" id="form-ahli-info">Bidang: - &middot; No SKP: -</small>
+                            <small class="d-block text-muted mt-1" id="form-ahli-info">Bidang: - &middot; No SKP:
+                                -</small>
                         </div>
 
                         <div class="col-md-6">

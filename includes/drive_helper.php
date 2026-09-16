@@ -525,3 +525,40 @@ function arp_timpa_konten_drive(string $fileId, string $pathFileLokalBaru, strin
     }
     return true;
 }
+
+/**
+ * Bangun path kategori Drive untuk Suket K3 dengan struktur bertingkat:
+ * Suket_K3 / {Tahun} / {Bulan}
+ *
+ * $tanggal sebaiknya diisi TANGGAL PEMERIKSAAN suket yang bersangkutan,
+ * supaya suket lama yang diinput belakangan tetap masuk ke folder tahun/bulan yang benar.
+ */
+function arp_kategori_suket(?DateTimeInterface $tanggal = null): string
+{
+    $tanggal = $tanggal ?? new DateTime();
+    $tahun = $tanggal->format('Y');
+    $bulanAngka = (int) $tanggal->format('n');
+    $namaBulan = ARP_NAMA_BULAN_ID[$bulanAngka] ?? (string) $bulanAngka;
+
+    return "Suket_K3/{$tahun}/{$namaBulan}";
+}
+
+/**
+ * Bangun nama file untuk dokumen Suket K3, format:
+ * "SURAT KETERANGAN Nomor {nomor_suket}.{ekstensi}"
+ *
+ * Nomor suket biasanya mengandung "/" (mis. "SK3/ARP-01/2026"), jadi karakter
+ * itu diganti "-" supaya aman jadi nama file (bukan dianggap pemisah folder).
+ */
+function arp_nama_file_suket(string $nomorSuket, string $ekstensi): string
+{
+    $nomor = trim($nomorSuket);
+    if ($nomor === '') {
+        $nomor = 'TanpaNomor';
+    }
+
+    $nomorAman = str_replace(['/', '\\'], '-', $nomor);
+    $ekstensi = strtolower(ltrim($ekstensi, '.')) ?: 'pdf';
+
+    return "SURAT KETERANGAN Nomor {$nomorAman}.{$ekstensi}";
+}
