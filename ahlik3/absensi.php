@@ -1,5 +1,5 @@
 <?php
-// ahlik3/absensi.php
+// ahli_k3/absensi.php
 require_once "../config/koneksi.php";
 require_once "../includes/drive_helper.php";
 
@@ -77,6 +77,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
+        // Catatan penting: kalau sampai titik ini foto SUDAH naik ke Drive
+        // ($drive_file_id / $bukti_foto terisi), tapi proses simpan ke database
+        // di bawah gagal, foto itu akan jadi "nyangkut" di Drive tanpa baris
+        // absensi yang cocok. Kalau itu terjadi, kita coba bersihkan filenya
+        // (lihat blok catch di bawah) supaya tidak menumpuk file yatim.
         if (empty($error_msg)) {
             try {
                 $stmt = $conn->prepare("
@@ -98,33 +103,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ]);
 
                 $absensi_id_baru = $conn->lastInsertId();
-                $stmtDireksiAbsen = $conn->prepare("SELECT id FROM Users WHERE role = 'direksi'");
-                $stmtDireksiAbsen->execute();
-                foreach ($stmtDireksiAbsen->fetchAll(PDO::FETCH_COLUMN) as $direksi_id_notif) {
-                    kirimNotifikasi(
-                        $conn,
-                        (int) $direksi_id_notif,
-                        'Absensi Masuk Hari Ini',
-                        "{$current_user_name} mencatat kehadiran: {$status_kehadiran} pada {$today}.",
-                        'absensi',
-                        (int) $absensi_id_baru
-                    );
-                }
-                $emailDireksiAbsen = getEmailByRole($conn, 'direksi');
-                if (!empty($emailDireksiAbsen)) {
-                    $bodyAbsen = templateEmailNotifikasi(
-                        'Absensi Masuk Hari Ini',
-                        "{$current_user_name} mencatat kehadiran.",
-                        ['Status Kehadiran' => $status_kehadiran, 'Tanggal' => $today],
-                        $base_url . 'admin/absensi.php'
-                    );
-                    kirimEmail($emailDireksiAbsen, 'Absensi Masuk: ' . $current_user_name, $bodyAbsen);
-                }
+
+                // Absensi sudah TERSIMPAN di titik ini. Tandai sukses SEKARANG,
+                // sebelum kirim notifikasi/email — supaya kalau bagian di bawah
+                // lambat atau error, itu tidak membuat absensi yang sudah
+                // berhasil ini kelihatan "gagal" di mata user.
                 $success_msg = "Absen Masuk Berhasil! Selamat bekerja.";
                 $stmtCheck->execute(['user_id' => $current_user_id, 'today' => $today]);
                 $attendance_today = $stmtCheck->fetch();
+
+                // Kirim notifikasi & email ke direksi. Ini best-effort:
+                // dibungkus try/catch Throwable (bukan cuma PDOException) supaya
+                // error apa pun di sini (SMTP timeout, exception dari helper
+                // email, dll) tidak jadi fatal error yang menggagalkan seluruh
+                // response — padahal data absensi sudah aman di database.
+                try {
+                    $stmtDireksiAbsen = $conn->prepare("SELECT id FROM Users WHERE role = 'direksi'");
+                    $stmtDireksiAbsen->execute();
+                    foreach ($stmtDireksiAbsen->fetchAll(PDO::FETCH_COLUMN) as $direksi_id_notif) {
+                        kirimNotifikasi(
+                            $conn,
+                            (int) $direksi_id_notif,
+                            'Absensi Masuk Hari Ini',
+                            "{$current_user_name} mencatat kehadiran: {$status_kehadiran} pada {$today}.",
+                            'absensi',
+                            (int) $absensi_id_baru
+                        );
+                    }
+                    $emailDireksiAbsen = getEmailByRole($conn, 'direksi');
+                    if (!empty($emailDireksiAbsen)) {
+                        $bodyAbsen = templateEmailNotifikasi(
+                            'Absensi Masuk Hari Ini',
+                            "{$current_user_name} mencatat kehadiran.",
+                            ['Status Kehadiran' => $status_kehadiran, 'Tanggal' => $today],
+                            $base_url . 'admin/absensi.php'
+                        );
+                        kirimEmail($emailDireksiAbsen, 'Absensi Masuk: ' . $current_user_name, $bodyAbsen);
+                    }
+                } catch (Throwable $eNotif) {
+                    error_log('Peringatan: absensi_id=' . $absensi_id_baru . ' tersimpan, tapi kirim notifikasi/email gagal: ' . $eNotif->getMessage());
+                }
             } catch (PDOException $e) {
                 $error_msg = "Gagal melakukan absensi: " . $e->getMessage();
+
+                // Best-effort: bersihkan file foto yang sudah keburu naik ke
+                // Drive tapi baris absensinya gagal disimpan, supaya tidak
+                // menumpuk file "nyangkut". Kalau helper penghapusnya belum
+                // ada di drive_helper.php, ini cuma dilewati diam-diam (tidak
+                // bikin error baru) — tapi sebaiknya ditambahkan fungsi
+                // arp_hapus_file_drive($file_id) di drive_helper.php.
+                if (!empty($drive_file_id)) {
+                    try {
+                        if (function_exists('arp_hapus_file_drive')) {
+                            arp_hapus_file_drive($drive_file_id);
+                        } else {
+                            error_log('Info: file Drive yatim (file_id=' . $drive_file_id . ') perlu dihapus manual, arp_hapus_file_drive() belum tersedia.');
+                        }
+                    } catch (Throwable $eCleanup) {
+                        error_log('Gagal membersihkan file Drive yatim (file_id=' . $drive_file_id . '): ' . $eCleanup->getMessage());
+                    }
+                }
             }
         }
     }
@@ -311,7 +349,7 @@ try {
                                         <td>
                                             <?= htmlspecialchars($log['lokasi_masuk']) ?>
                                             <?php if (!empty($log['latitude_masuk']) && !empty($log['longitude_masuk'])): ?>
-                                                <br><a
+                                                <br>
                                                     href="https://www.google.com/maps?q=<?= urlencode($log['latitude_masuk'] . ',' . $log['longitude_masuk']) ?>"
                                                     target="_blank" class="fs-7"><i class="bi bi-geo-alt-fill me-1"></i>Lihat di
                                                     Peta</a>
@@ -401,6 +439,9 @@ try {
                     <div id="previewFotoCheckin" class="mt-2" style="display:none;">
                         <img id="imgPreviewCheckin" src=""
                             style="max-width:100%; border-radius:10px; border:1px solid var(--border-color);">
+                        <button type="button" class="btn-secondary-custom mt-2 w-100" onclick="ambilUlangFotoCheckin()">
+                            <i class="bi bi-arrow-repeat me-1"></i> Ambil Ulang Foto
+                        </button>
                     </div>
                 </div>
                 <div class="mb-4">
@@ -433,6 +474,9 @@ try {
             <video id="videoKameraCheckin" autoplay playsinline muted
                 style="width:100%; border-radius:10px; background:#000; transform:scaleX(-1);"></video>
             <canvas id="canvasKameraCheckin" class="d-none"></canvas>
+            <small id="statusKameraCheckin" class="text-muted d-block mt-2">
+                <span class="spinner-border spinner-border-sm me-1"></span>Menyalakan kamera, mohon tunggu...
+            </small>
             <div id="errorKameraCheckin" class="alert alert-danger-custom mt-3" style="display:none;">
                 <i class="bi bi-exclamation-triangle-fill"></i>
                 <div>Tidak dapat mengakses kamera. Pastikan izin kamera diaktifkan pada browser untuk dapat
@@ -568,12 +612,57 @@ try {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
-    // Minta 1x stream kamera & pasang ke video. Balikin true kalau video
-    // beneran dapat frame nyata (videoWidth > 0), false kalau kamera "nyala"
-    // (getUserMedia sukses, gak ada error) tapi gambarnya tetap hitam --
-    // ini bug umum di sebagian HP/browser saat kamera fisik baru saja
-    // dilepas dari sesi sebelumnya dan diminta lagi terlalu cepat.
-    async function mulaiStreamKameraCheckin(video) {
+    // Cek apakah frame video saat ini benar-benar "hidup" (bukan hitam polos).
+    // videoWidth > 0 saja kadang false-positive di sebagian HP/webcam: kamera
+    // dianggap nyala & videoWidth sudah keisi, tapi framenya tetap hitam total
+    // karena sensor belum benar-benar siap (auto-exposure masih menyesuaikan).
+    // Jadi selain cek dimensi, gambar 1 frame ke canvas kecil & cek rata-rata
+    // kecerahannya. Ambang batasnya sengaja agak tinggi (bukan cuma > 0) supaya
+    // noise sensor pada frame hitam tidak dianggap "sudah hidup".
+    function kecerahanFrame(video) {
+        if (!video.videoWidth || !video.videoHeight) return -1;
+        try {
+            const cek = document.createElement('canvas');
+            cek.width = 16;
+            cek.height = 16;
+            const ctx = cek.getContext('2d');
+            ctx.drawImage(video, 0, 0, 16, 16);
+            const data = ctx.getImageData(0, 0, 16, 16).data;
+            let total = 0;
+            for (let i = 0; i < data.length; i += 4) {
+                total += data[i] + data[i + 1] + data[i + 2];
+            }
+            return total / (data.length / 4 * 3); // skala 0 - 255
+        } catch (e) {
+            return -1;
+        }
+    }
+
+    // Poll berulang (bukan cuma cek 1x di waktu tetap) sampai kamera benar-benar
+    // menyala terang, ATAU waktu maksimum habis. Perlu 2x sample berturut-turut
+    // di atas ambang batas (dengan jeda) supaya 1 sample "kebetulan terang"
+    // karena noise tidak langsung dianggap sudah hidup.
+    async function tungguKameraHidup(video, maksTungguMs, statusBox) {
+        const AMBANG = 18; // dari skala 0-255; hitam polos biasanya jauh di bawah ini
+        const mulai = performance.now();
+        let sampleTerangBerturut = 0;
+
+        while (performance.now() - mulai < maksTungguMs) {
+            const rata = kecerahanFrame(video);
+            if (rata >= AMBANG) {
+                sampleTerangBerturut++;
+                if (sampleTerangBerturut >= 2) return true;
+            } else {
+                sampleTerangBerturut = 0;
+            }
+            await tundaSebentar(200);
+        }
+        return false;
+    }
+
+    // Minta 1x stream kamera & pasang ke video, lalu tunggu sampai frame-nya
+    // benar-benar hidup (lihat tungguKameraHidup). Balikin true/false.
+    async function mulaiStreamKameraCheckin(video, maksTungguMs, statusBox) {
         streamKameraCheckin = await navigator.mediaDevices.getUserMedia({
             video: { facingMode: 'user' },
             audio: false
@@ -585,10 +674,7 @@ try {
             // Diamkan: kalau browser sudah autoplay sendiri, play() di sini
             // kadang ditolak (AbortError) padahal videonya tetap jalan.
         }
-        // Kasih waktu sebentar buat video benar-benar mulai decode frame,
-        // baru dicek apakah videoWidth sudah keisi (artinya ada gambar nyata).
-        await tundaSebentar(800);
-        return video.videoWidth > 0;
+        return await tungguKameraHidup(video, maksTungguMs, statusBox);
     }
 
     async function bukaKameraSelfie() {
@@ -596,18 +682,29 @@ try {
         const video = document.getElementById('videoKameraCheckin');
         const errBox = document.getElementById('errorKameraCheckin');
         const errText = errBox.querySelector('div');
+        const statusBox = document.getElementById('statusKameraCheckin');
         errBox.style.display = 'none';
+        if (statusBox) {
+            statusBox.style.display = 'block';
+            statusBox.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Menyalakan kamera, mohon tunggu...';
+        }
 
         // Penting: pastikan stream/track LAMA (dari sesi jepret sebelumnya)
-        // sudah dilepas & video.srcObject dikosongkan dulu sebelum minta stream
-        // baru.
+        // sudah dilepas & elemen <video> benar-benar direset dulu sebelum
+        // minta stream baru. Sekadar melepas track & mengosongkan srcObject
+        // saja kadang tidak cukup di sebagian browser mobile -- elemen
+        // videonya perlu di-"load()" ulang supaya state internalnya bersih.
         hentikanStreamKameraCheckin();
+        try { video.pause(); } catch (e) { /* diamkan */ }
         video.srcObject = null;
+        video.removeAttribute('src');
+        try { video.load(); } catch (e) { /* diamkan */ }
 
         // Kamera cuma bisa diakses di "secure context" (HTTPS atau localhost).
         // Kalau halaman dibuka lewat http://IP-address, navigator.mediaDevices
         // akan undefined sehingga kamera tidak akan pernah menyala.
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            if (statusBox) statusBox.style.display = 'none';
             errBox.style.display = 'flex';
             if (errText) {
                 errText.textContent = (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1')
@@ -620,40 +717,52 @@ try {
         // Beri jeda sebentar dulu supaya kamera fisik benar-benar release
         // sebelum diminta lagi -- ini bagian penting untuk kasus "kamera
         // nyala tapi layarnya hitam" saat dibuka ulang.
-        await tundaSebentar(300);
+        await tundaSebentar(350);
 
-        try {
-            let dapatFrame = await mulaiStreamKameraCheckin(video);
+        // Coba beberapa kali. Tiap percobaan menunggu (polling, bukan jeda
+        // tetap) sampai beberapa detik untuk kasus kamera yang butuh waktu
+        // lama menyesuaikan exposure/fokus setelah baru saja dilepas.
+        const maksTungguPerCoba = [3000, 4000, 5000];
+        let dapatFrame = false;
 
-            if (!dapatFrame) {
-                // Percobaan pertama gak dapat frame nyata (layar hitam).
-                // Lepas total, kasih jeda lebih lama, lalu coba sekali lagi.
+        for (let i = 0; i < maksTungguPerCoba.length; i++) {
+            if (i > 0) {
                 hentikanStreamKameraCheckin();
                 video.srcObject = null;
-                await tundaSebentar(600);
-                dapatFrame = await mulaiStreamKameraCheckin(video);
+                if (statusBox) {
+                    statusBox.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Kamera belum stabil, mencoba ulang (' + (i + 1) + '/' + maksTungguPerCoba.length + ')...';
+                }
+                await tundaSebentar(800);
             }
-
-            if (!dapatFrame) {
+            try {
+                dapatFrame = await mulaiStreamKameraCheckin(video, maksTungguPerCoba[i], statusBox);
+            } catch (err) {
+                if (statusBox) statusBox.style.display = 'none';
                 errBox.style.display = 'flex';
                 if (errText) {
-                    errText.textContent = 'Kamera menyala tapi gambar tidak muncul. Tekan tombol X, tunggu 2-3 detik, lalu tekan kamera lagi.';
+                    let pesan = 'Tidak dapat mengakses kamera. Pastikan izin kamera diaktifkan pada browser untuk dapat melakukan absensi.';
+                    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                        pesan = 'Izin kamera ditolak. Buka pengaturan situs di browser (ikon gembok di address bar), izinkan akses Kamera, lalu coba lagi.';
+                    } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+                        pesan = 'Kamera tidak ditemukan pada perangkat ini.';
+                    } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+                        pesan = 'Kamera sedang dipakai aplikasi atau tab lain. Tutup aplikasi/tab lain yang memakai kamera, lalu coba lagi.';
+                    } else if (err.name === 'SecurityError') {
+                        pesan = 'Akses kamera diblokir karena halaman tidak diakses lewat HTTPS.';
+                    }
+                    errText.textContent = pesan;
                 }
+                return; // error asli dari getUserMedia (bukan soal hitam), tidak perlu diulang
             }
-        } catch (err) {
+            if (dapatFrame) break;
+        }
+
+        if (statusBox) statusBox.style.display = 'none';
+
+        if (!dapatFrame) {
             errBox.style.display = 'flex';
             if (errText) {
-                let pesan = 'Tidak dapat mengakses kamera. Pastikan izin kamera diaktifkan pada browser untuk dapat melakukan absensi.';
-                if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-                    pesan = 'Izin kamera ditolak. Buka pengaturan situs di browser (ikon gembok di address bar), izinkan akses Kamera, lalu coba lagi.';
-                } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-                    pesan = 'Kamera tidak ditemukan pada perangkat ini.';
-                } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
-                    pesan = 'Kamera sedang dipakai aplikasi atau tab lain. Tutup aplikasi/tab lain yang memakai kamera, lalu coba lagi.';
-                } else if (err.name === 'SecurityError') {
-                    pesan = 'Akses kamera diblokir karena halaman tidak diakses lewat HTTPS.';
-                }
-                errText.textContent = pesan;
+                errText.textContent = 'Kamera menyala tapi gambar tidak muncul (kemungkinan sensor kamera masih menyesuaikan atau tertutup). Tekan tombol X, tunggu beberapa detik, lalu tekan kamera lagi. Jika sudah yakin gambarnya sebenarnya normal, Anda tetap bisa menekan "Jepret Foto".';
             }
         }
     }
@@ -692,6 +801,15 @@ try {
         document.getElementById('imgPreviewCheckin').src = URL.createObjectURL(file);
         document.getElementById('previewFotoCheckin').style.display = 'block';
         document.getElementById('dropzoneCheckin').style.display = 'none';
+    }
+
+    // Tombol "Ambil Ulang Foto" di bawah preview -- sebelumnya tidak ada cara
+    // untuk retake setelah foto pertama diambil karena dropzone-nya disembunyikan.
+    function ambilUlangFotoCheckin() {
+        document.getElementById('previewFotoCheckin').style.display = 'none';
+        document.getElementById('dropzoneCheckin').style.display = 'block';
+        document.getElementById('buktiFotoCheckin').value = '';
+        bukaKameraSelfie();
     }
 
     // ================== LOKASI GPS OTOMATIS (Absen Masuk & Pulang) ==================
