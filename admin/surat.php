@@ -761,6 +761,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'hapus_t
 
         if (!empty($tpl['drive_file_id'])) {
             arp_hapus_file_drive($tpl['drive_file_id']);
+            arp_hapus_cache_fields_template($tpl['drive_file_id']); // bersihkan cache field yg sudah tidak relevan
         }
 
         $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Template "' . $tpl['nama'] . '" beserta file & koneksinya berhasil dihapus.'];
@@ -860,6 +861,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'edit_te
                     }
                 }
             });
+
+            // Field & isi file barusan di-scan ulang langsung dari Drive di
+            // atas, jadi cache lama (yang mungkin masih menyimpan versi
+            // sebelum diedit) harus dibuang supaya halaman Reimburse/Cuti/
+            // Surat langsung memakai versi terbaru, tidak perlu menunggu TTL.
+            arp_hapus_cache_fields_template($tpl['drive_file_id']);
         }
 
         // ----- 4) Update kode surat (kode + nama jenis surat) yang terhubung -----
@@ -910,6 +917,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'edit_te
         if ($pdo->inTransaction())
             $pdo->rollBack();
         $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Gagal memperbarui template: ' . $e->getMessage()];
+    }
+    suratRedirect('template');
+}
+
+// ==========================================
+// [TAB: UPLOAD TEMPLATE] REFRESH CACHE TEMPLATE — dipakai kalau admin baru
+// saja mengedit isi file Word-nya LANGSUNG di Google Drive (bukan lewat
+// form Edit Template di sini) dan mau perubahannya langsung kepakai di
+// halaman Reimburse/Cuti/Surat tanpa menunggu cache 10 menit habis sendiri.
+// ==========================================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'refresh_template_cache') {
+    try {
+        $templateId = (int) ($_POST['template_id'] ?? 0);
+
+        $stmt = $pdo->prepare("SELECT * FROM Template_Master WHERE id = ?");
+        $stmt->execute([$templateId]);
+        $tpl = $stmt->fetch();
+        if (!$tpl) {
+            throw new RuntimeException("Template tidak ditemukan.");
+        }
+        if (empty($tpl['drive_file_id']) || ($tpl['format'] ?? '') !== 'word_pdf') {
+            throw new RuntimeException("Template ini tidak memakai cache Drive (bukan file Word yang tersambung).");
+        }
+
+        // Buang cache lama, lalu langsung scan ulang saat ini juga (bukan
+        // menunggu pengguna lain buka halaman Reimburse/Cuti/Surat) supaya
+        // admin bisa langsung tahu kalau proses refresh-nya berhasil.
+        arp_hapus_cache_fields_template($tpl['drive_file_id']);
+        $tpl['template_id'] = $tpl['id']; // supaya kolom fields_json di DB ikut disinkronkan
+        muatFieldsTemplateLive($pdo, $tpl);
+
+        catatAudit($pdo, 'Surat', 'Refresh Template', "Menyegarkan cache field template \"{$tpl['nama']}\" (#{$templateId}) dari Google Drive");
+        $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Cache template "' . $tpl['nama'] . '" berhasil disegarkan dari Google Drive.'];
+    } catch (Throwable $e) {
+        $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Gagal menyegarkan cache template: ' . $e->getMessage()];
     }
     suratRedirect('template');
 }
@@ -4375,6 +4417,18 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
                                                     data-arp-loading="Membuka Word di Drive...">
                                                     <i class="bi bi-file-earmark-word"></i>
                                                 </a>
+                                                <?php if (($t['format'] ?? '') === 'word_pdf'): ?>
+                                                    <form method="POST" action="surat.php" class="d-inline">
+                                                        <input type="hidden" name="aksi" value="refresh_template_cache">
+                                                        <input type="hidden" name="template_id" value="<?= (int) $t['id'] ?>">
+                                                        <button type="submit" class="btn btn-outline-primary btn-sm py-1"
+                                                            style="font-size:0.75rem;"
+                                                            title="Muat ulang field dari Drive sekarang (kalau baru diedit langsung di Drive)"
+                                                            data-arp-loading="Menyegarkan dari Drive...">
+                                                            <i class="bi bi-arrow-clockwise"></i>
+                                                        </button>
+                                                    </form>
+                                                <?php endif; ?>
                                             <?php endif; ?>
                                             <form method="POST" action="surat.php" class="d-inline"
                                                 onsubmit="return confirm('Hapus template &quot;<?= e(addslashes($t['nama'])) ?>&quot;? Tindakan ini tidak bisa dibatalkan.');">
@@ -5508,4 +5562,4 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
     }
 </script>
 
-<?php include "../includes/footer.php"; ?>
+<?php include "../includes/footer.php"; ?> 

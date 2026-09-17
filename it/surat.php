@@ -755,6 +755,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'hapus_t
 
         if (!empty($tpl['drive_file_id'])) {
             arp_hapus_file_drive($tpl['drive_file_id']);
+            arp_hapus_cache_fields_template($tpl['drive_file_id']); // bersihkan cache field yg sudah tidak relevan
         }
 
         $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Template "' . $tpl['nama'] . '" beserta file & koneksinya berhasil dihapus.'];
@@ -851,6 +852,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'edit_te
                     }
                 }
             });
+
+            // Buang cache lama supaya versi field terbaru langsung kepakai
+            // di halaman Reimburse/Cuti/Surat, tidak perlu tunggu TTL.
+            arp_hapus_cache_fields_template($tpl['drive_file_id']);
         }
 
         $kodeTemplateIds = $_POST['kode_template_id'] ?? [];
@@ -897,6 +902,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'edit_te
         if ($pdo->inTransaction())
             $pdo->rollBack();
         $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Gagal memperbarui template: ' . $e->getMessage()];
+    }
+    suratRedirect('template');
+}
+
+// ==========================================
+// [TAB: UPLOAD TEMPLATE] REFRESH CACHE TEMPLATE — dipakai kalau admin/IT
+// baru saja mengedit isi file Word-nya LANGSUNG di Google Drive dan mau
+// perubahannya langsung kepakai di halaman Reimburse/Cuti/Surat tanpa
+// menunggu cache 10 menit habis sendiri.
+// ==========================================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'refresh_template_cache') {
+    try {
+        $templateId = (int) ($_POST['template_id'] ?? 0);
+
+        $stmt = $pdo->prepare("SELECT * FROM Template_Master WHERE id = ?");
+        $stmt->execute([$templateId]);
+        $tpl = $stmt->fetch();
+        if (!$tpl) {
+            throw new RuntimeException("Template tidak ditemukan.");
+        }
+        if (empty($tpl['drive_file_id']) || ($tpl['format'] ?? '') !== 'word_pdf') {
+            throw new RuntimeException("Template ini tidak memakai cache Drive (bukan file Word yang tersambung).");
+        }
+
+        arp_hapus_cache_fields_template($tpl['drive_file_id']);
+        $tpl['template_id'] = $tpl['id']; // supaya kolom fields_json di DB ikut disinkronkan
+        muatFieldsTemplateLive($pdo, $tpl);
+
+        catatAudit($pdo, 'Surat', 'Refresh Template', "Menyegarkan cache field template \"{$tpl['nama']}\" (#{$templateId}) dari Google Drive");
+        $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Cache template "' . $tpl['nama'] . '" berhasil disegarkan dari Google Drive.'];
+    } catch (Throwable $e) {
+        $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Gagal menyegarkan cache template: ' . $e->getMessage()];
     }
     suratRedirect('template');
 }
@@ -978,8 +1015,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
             } elseif ($dataInvoiceSumber && $ikutiNomorInvoice) {
                 // HANYA jalan kalau kotak "Nomor mengikuti invoice" dicentang.
                 // Surat lain yang butuh data invoice tapi punya nomor sendiri TIDAK masuk sini.
-                // Yang diikuti HANYA nomor urutnya -- kode, "ARP", bulan romawi, dan tahun
-                // tetap otomatis mengikuti kode template ini sendiri & tanggal hari ini.
                 $noUrutDariInvoice = explode('/', $dataInvoiceSumber['nomor_invoice'])[0] ?? '';
                 if (!ctype_digit($noUrutDariInvoice)) {
                     $noUrutDariInvoice = '';
@@ -1695,7 +1730,6 @@ if ($kodeTerpilih) {
     $counterPreview = arp_hitung_nomor_urut_tertinggi($pdo, (int) $kodeTerpilih['id'], $tahun) + 1;
 
     // ⬇ Pratinjau nomor ikut invoice HANYA kalau checkbox "ikuti_nomor_invoice" dicentang.
-    // Hanya NO URUT-nya saja yang diikuti; bulan & tahun tetap hari ini.
     $invoiceSumberIdPreview = (int) ($_POST['invoice_sumber_id'] ?? 0);
     $ikutiNomorInvoicePreview = isset($_POST['ikuti_nomor_invoice']);
     if ($invoiceSumberIdPreview > 0 && $ikutiNomorInvoicePreview) {
@@ -2353,8 +2387,6 @@ include "../includes/topbar.php";
                                                 if (elTampil) elTampil.value = '';
                                                 return;
                                             }
-                                            // Hanya NO URUT invoice yang dipakai -- kode, ARP, bulan romawi, dan
-                                            // tahun tetap ikut kode template ini sendiri & tanggal hari ini.
                                             var noUrutInvoice = String(inv.nomor || '').split('/')[0];
                                             if (!/^\d+$/.test(noUrutInvoice)) {
                                                 elManual.value = '';
@@ -3484,6 +3516,18 @@ include "../includes/topbar.php";
                                                     data-arp-loading="Membuka Word di Drive...">
                                                     <i class="bi bi-file-earmark-word"></i>
                                                 </a>
+                                                <?php if (($t['format'] ?? '') === 'word_pdf'): ?>
+                                                    <form method="POST" action="surat.php" class="d-inline">
+                                                        <input type="hidden" name="aksi" value="refresh_template_cache">
+                                                        <input type="hidden" name="template_id" value="<?= (int) $t['id'] ?>">
+                                                        <button type="submit" class="btn btn-outline-primary btn-sm py-1"
+                                                            style="font-size:0.75rem;"
+                                                            title="Muat ulang field dari Drive sekarang (kalau baru diedit langsung di Drive)"
+                                                            data-arp-loading="Menyegarkan dari Drive...">
+                                                            <i class="bi bi-arrow-clockwise"></i>
+                                                        </button>
+                                                    </form>
+                                                <?php endif; ?>
                                             <?php endif; ?>
                                             <form method="POST" action="surat.php" class="d-inline"
                                                 onsubmit="return confirm('Hapus template &quot;<?= e(addslashes($t['nama'])) ?>&quot;? Tindakan ini tidak bisa dibatalkan.');">

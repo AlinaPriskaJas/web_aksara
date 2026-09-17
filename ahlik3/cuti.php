@@ -606,9 +606,14 @@ foreach ($leavesTahunan as &$leaveTahunanRow) {
 }
 unset($leaveTahunanRow);
 
-// BARU: lampirkan link Surat Cuti (dari tabel Surat, bukan kolom di Cuti)
+// BARU: lampirkan link Surat Cuti -- datanya (kolom drive_link) SUDAH IKUT
+// terambil di query "SELECT * FROM Cuti ..." di atas, jadi cukup dipetakan
+// di memori saja. Sebelumnya kode ini melakukan 1 query database TAMBAHAN
+// untuk SETIAP baris cuti (N+1 query) padahal nilainya identik dengan
+// kolom yang sudah ada -- ini salah satu penyebab halaman Cuti lambat
+// saat riwayat cuti karyawan sudah banyak.
 foreach ($leavesTahunan as &$leaveTahunanRow) {
-    $leaveTahunanRow['surat_cuti_link'] = arp_ambil_link_surat_cuti($conn, (int) $leaveTahunanRow['id']);
+    $leaveTahunanRow['surat_cuti_link'] = (!empty($leaveTahunanRow['drive_link'])) ? $leaveTahunanRow['drive_link'] : null;
 }
 unset($leaveTahunanRow);
 
@@ -1687,3 +1692,4 @@ $dipakaiSakit = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year)
 <?php endif; ?>
 
 <?php include "../includes/footer.php"; ?>
+

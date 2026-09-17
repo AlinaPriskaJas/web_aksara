@@ -14,6 +14,18 @@ if (!defined('SURAT_KELUAR_DIR')) {
 if (!defined('SURAT_MASUK_DIR')) {
     define('SURAT_MASUK_DIR', __DIR__ . '/../storage/surat_masuk/');
 }
+if (!defined('TEMPLATE_FIELDS_CACHE_DIR')) {
+    define('TEMPLATE_FIELDS_CACHE_DIR', __DIR__ . '/../storage/cache_fields/');
+}
+// Berapa lama hasil scan field template (dari Google Drive) boleh dipakai
+// dari cache sebelum diunduh & di-scan ulang. Ini yang tadinya membuat
+// halaman Reimburse & Cuti sangat lambat: SETIAP kali halaman dibuka,
+// server melakukan request ke Google Drive (webapp Apps Script, timeout
+// sampai 60 detik) lalu mem-parsing ulang file .docx-nya -- padahal isi
+// template nyaris tidak pernah berubah dalam rentang beberapa menit.
+if (!defined('TEMPLATE_FIELDS_CACHE_TTL')) {
+    define('TEMPLATE_FIELDS_CACHE_TTL', 600); // detik (10 menit)
+}
 
 
 /**
@@ -2111,6 +2123,44 @@ function mergeFieldsPreservingLabels(array $hasilScanBaru, array $fieldsLamaJson
     ];
 }
 
+/**
+ * Path file cache hasil scan field untuk satu file Drive tertentu.
+ * Dipusatkan di sini supaya muatFieldsTemplateLive() dan fungsi refresh
+ * manual (dipanggil dari menu Kelola Jenis Surat) selalu merujuk ke file
+ * cache yang sama persis.
+ */
+function arp_path_cache_fields_template(string $driveFileId): string
+{
+    return TEMPLATE_FIELDS_CACHE_DIR . 'template_' . preg_replace('/[^a-zA-Z0-9_-]/', '', $driveFileId) . '.json';
+}
+
+/**
+ * Hapus cache hasil scan field template supaya request BERIKUTNYA ke
+ * halaman Reimburse/Cuti/Surat wajib ambil ulang dari Google Drive
+ * (bukan dari cache lama). Dipanggil otomatis setiap kali admin
+ * mengedit/menghapus template dari menu Kelola Jenis Surat, dan juga
+ * dipakai oleh tombol "Refresh" manual.
+ *
+ * @param string|null $driveFileId  ID file Drive tertentu. Kosongkan
+ *                                  (null) untuk membersihkan SEMUA cache.
+ */
+function arp_hapus_cache_fields_template(?string $driveFileId = null): void
+{
+    if (!is_dir(TEMPLATE_FIELDS_CACHE_DIR)) {
+        return;
+    }
+    if ($driveFileId === null || $driveFileId === '') {
+        foreach ((glob(TEMPLATE_FIELDS_CACHE_DIR . 'template_*.json') ?: []) as $f) {
+            @unlink($f);
+        }
+        return;
+    }
+    $cacheFile = arp_path_cache_fields_template($driveFileId);
+    if (is_file($cacheFile)) {
+        @unlink($cacheFile);
+    }
+}
+
 function muatFieldsTemplateLive(PDO $pdo, array $kodeRow): array
 {
     $decodedLama = !empty($kodeRow['fields_json']) ? (json_decode($kodeRow['fields_json'], true) ?: []) : [];
@@ -2125,8 +2175,23 @@ function muatFieldsTemplateLive(PDO $pdo, array $kodeRow): array
         return $fallback;
     }
 
+    // ===== Cache hasil scan Drive =====
+    // Sebelumnya, tiap kali halaman Reimburse/Cuti dibuka, kode ini SELALU
+    // mengunduh file .docx dari Google Drive lalu mem-parsingnya ulang --
+    // itu sebabnya kedua halaman tsb terasa sangat lambat. Sekarang hasil
+    // scan disimpan sebentar ke file cache lokal; selama masih "segar"
+    // (di bawah TEMPLATE_FIELDS_CACHE_TTL detik), request Drive dilewati.
+    $cacheFile = arp_path_cache_fields_template((string) $kodeRow['drive_file_id']);
+
+    if (is_file($cacheFile) && (time() - filemtime($cacheFile)) < TEMPLATE_FIELDS_CACHE_TTL) {
+        $isiCache = json_decode((string) @file_get_contents($cacheFile), true);
+        if (is_array($isiCache)) {
+            return $isiCache;
+        }
+    }
+
     try {
-        return arp_dengan_template_sementara($kodeRow['drive_file_id'], function ($fullPath) use ($pdo, $kodeRow, $decodedLama) {
+        $digabung = arp_dengan_template_sementara($kodeRow['drive_file_id'], function ($fullPath) use ($pdo, $kodeRow, $decodedLama) {
             $hasilScanBaru = scanPlaceholdersFromDocx($fullPath);
             $digabung = mergeFieldsPreservingLabels($hasilScanBaru, $decodedLama);
             $digabung['blocks'] = buildFieldsWithDefaultLabels($hasilScanBaru)['blocks'];
@@ -2142,8 +2207,22 @@ function muatFieldsTemplateLive(PDO $pdo, array $kodeRow): array
 
             return $digabung;
         });
+
+        if (!is_dir(TEMPLATE_FIELDS_CACHE_DIR)) {
+            @mkdir(TEMPLATE_FIELDS_CACHE_DIR, 0775, true);
+        }
+        @file_put_contents($cacheFile, json_encode($digabung, JSON_UNESCAPED_UNICODE));
+
+        return $digabung;
     } catch (\Throwable $e) {
-        // Drive lagi bermasalah -- pakai cache lama, jangan bikin halaman error total.
+        // Drive lagi bermasalah/lambat -- pakai cache lama walau sudah
+        // kedaluwarsa (lebih baik daripada halaman lambat/error total).
+        if (is_file($cacheFile)) {
+            $isiCache = json_decode((string) @file_get_contents($cacheFile), true);
+            if (is_array($isiCache)) {
+                return $isiCache;
+            }
+        }
         return $fallback;
     }
 }
@@ -3064,3 +3143,4 @@ function arp_proses_edit_reimburse(PDO $pdo, array $kodeRow, int $reimburseId, i
         return ['ok' => false, 'msg' => 'Gagal menyimpan perubahan: ' . $e->getMessage()];
     }
 }
+
