@@ -1,0 +1,1 @@
+{"fields":[{"field":"jenik_pekerjaan","label":"Jenik Pekerjaan"},{"field":"nomor_pesanan","label":"Nomor Pesanan"}],"table_fields":[],"invoice_fields":["invoice_tanggal","invoice_total_bayar","invoice_terbilang"],"blocks":[]}

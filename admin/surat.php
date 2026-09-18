@@ -2435,26 +2435,40 @@ if ($active_tab === 'tabPanelBuatSurat' && $kodeIdTerpilih && $templateIdTerpili
     $kodeTerpilih = $stmt->fetch();
 
     if ($kodeTerpilih) {
-        $hasilFields = muatFieldsTemplateLive($pdo, $kodeTerpilih);
-        $fields_dinamis = $hasilFields['fields'];
-        $fields_tabel = $hasilFields['table_fields'];
-        $fields_blok = $hasilFields['blocks'];
-        $fields_invoice = $hasilFields['invoice_fields'] ?? [];
+        try {
+            $hasilFields = muatFieldsTemplateLive($pdo, $kodeTerpilih);
+            $fields_dinamis = $hasilFields['fields'];
+            $fields_tabel = $hasilFields['table_fields'];
+            $fields_blok = $hasilFields['blocks'];
+            $fields_invoice = $hasilFields['invoice_fields'] ?? [];
 
-        if (defined('FIELD_OTOMATIS_SISTEM')) {
-            $fields_dinamis = array_values(array_filter(
-                $fields_dinamis,
-                fn($f) => !in_array(strtolower($f['field'] ?? ''), FIELD_OTOMATIS_SISTEM, true)
-            ));
+            if (defined('FIELD_OTOMATIS_SISTEM')) {
+                $fields_dinamis = array_values(array_filter(
+                    $fields_dinamis,
+                    fn($f) => !in_array(strtolower($f['field'] ?? ''), FIELD_OTOMATIS_SISTEM, true)
+                ));
+            }
+        } catch (Throwable $e) {
+            // ⬅ BARU: tampilkan sebagai flash notice biasa (sama seperti
+            // pemberitahuan sukses/gagal lain di halaman ini), lalu anggap
+            // template ini tidak valid untuk request ini.
+            $flash = ['type' => 'error', 'msg' => 'Gagal membaca template dari Google Drive: ' . $e->getMessage()];
+            $kodeTerpilih = null;
         }
     }
 }
 
 $file_template_hilang = $kodeTerpilih && empty($kodeTerpilih['drive_file_id']);
 
-$auto_fields_template = ($kodeTerpilih && !$file_template_hilang && $kodeTerpilih['format'] === 'word_pdf')
-    ? arp_dengan_template_sementara($kodeTerpilih['drive_file_id'], fn($p) => scanAutoFieldsFromDocx($p))
-    : [];
+$auto_fields_template = [];
+if ($kodeTerpilih && !$file_template_hilang && $kodeTerpilih['format'] === 'word_pdf') {
+    try {
+        $auto_fields_template = arp_dengan_template_sementara($kodeTerpilih['drive_file_id'], fn($p) => scanAutoFieldsFromDocx($p));
+    } catch (Throwable $e) {
+        $flash = ['type' => 'error', 'msg' => 'Gagal membaca template dari Google Drive: ' . $e->getMessage()];
+        $kodeTerpilih = null;
+    }
+}
 $ada_total = in_array('total', $auto_fields_template, true);
 $ada_ppn = in_array('ppn', $auto_fields_template, true);
 $ada_pph23 = in_array('pph_23', $auto_fields_template, true);
@@ -5562,5 +5576,4 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
     }
 </script>
 
-<?php include "../includes/footer.php"; ?> 
-
+<?php include "../includes/footer.php"; ?>

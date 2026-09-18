@@ -41,6 +41,22 @@ function arp_dengan_template_sementara(string $driveFileId, callable $callback)
     if (!$unduhan) {
         throw new RuntimeException('Gagal mengambil template dari Google Drive: ' . arp_drive_last_error());
     }
+
+    // ⬇ TAMBAHAN: pastikan file yang terunduh memang berkas docx/zip yang
+    // valid (signature ZIP selalu diawali byte "PK"). Kadang jaringan
+    // korporat/proxy antivirus menyisipkan halaman HTML "scanning" sebagai
+    // pengganti file asli -- kalau ini tidak divalidasi, error yang muncul
+    // ke pengguna berisi potongan HTML mentah yang membingungkan.
+    $isiAwal = @file_get_contents($unduhan['path'], false, null, 0, 4);
+    if ($isiAwal === false || substr($isiAwal, 0, 2) !== 'PK') {
+        @unlink($unduhan['path']);
+        throw new RuntimeException(
+            'File yang diunduh dari Google Drive bukan dokumen Word yang valid. '
+            . 'Kemungkinan diblokir/diganti oleh sistem keamanan jaringan (proxy/antivirus) saat proses unduh, '
+            . 'atau file di Drive memang rusak. Coba lagi beberapa saat, atau upload ulang template ini.'
+        );
+    }
+
     try {
         return $callback($unduhan['path'], $unduhan['mime_type']);
     } finally {
