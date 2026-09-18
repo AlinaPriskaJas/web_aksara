@@ -406,8 +406,18 @@ if (($_GET['export'] ?? '') === 'daftar_barang_pdf') {
     }
 
     $namaBulanIndoGudang = [
-        1 => 'Januari', 2 => 'Februari', 3 => 'Maret', 4 => 'April', 5 => 'Mei', 6 => 'Juni',
-        7 => 'Juli', 8 => 'Agustus', 9 => 'September', 10 => 'Oktober', 11 => 'November', 12 => 'Desember',
+        1 => 'Januari',
+        2 => 'Februari',
+        3 => 'Maret',
+        4 => 'April',
+        5 => 'Mei',
+        6 => 'Juni',
+        7 => 'Juli',
+        8 => 'Agustus',
+        9 => 'September',
+        10 => 'Oktober',
+        11 => 'November',
+        12 => 'Desember',
     ];
     [$thnBg, $blnBg] = explode('-', $bulanFilterGudang);
     $labelBulanGudang = $namaBulanIndoGudang[(int) $blnBg] . ' ' . $thnBg;
@@ -475,9 +485,9 @@ if (($_GET['export'] ?? '') === 'daftar_barang_pdf') {
         WHERE (gs.tgl_opname_awal IS NULL OR gs.tgl_opname_awal <= :akhir_bulan_lahir)";
     $paramsGudangExport = [
         'awal_bulan_setelah' => $awalBulanGudang,
-        'awal_bulan_bln'     => $awalBulanGudang,
-        'akhir_bulan_bln'    => $akhirBulanGudang,
-        'akhir_bulan_lahir'  => $akhirBulanGudang,
+        'awal_bulan_bln' => $awalBulanGudang,
+        'akhir_bulan_bln' => $akhirBulanGudang,
+        'akhir_bulan_lahir' => $akhirBulanGudang,
     ];
 
     if ($idKategoriFilterGudang > 0) {
@@ -571,6 +581,9 @@ $error_msg = "";
 $import_result = null;
 $current_user_id = $_SESSION['user_id'];
 $active_tab = 'tabGudang';
+if (isset($_GET['tab']) && in_array($_GET['tab'], ['tabGudang', 'tabBarangMasuk', 'tabTransaksi', 'tabKeuangan'], true)) {
+    $active_tab = $_GET['tab'];
+}
 
 function stockKategoriIcon(string $nama): string
 {
@@ -593,14 +606,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['action']) && $_POST['action'] === 'import_stok') {
         $active_tab = 'tabGudang';
         $id_kategori = intval($_POST['id_kategori_import'] ?? 0);
-    
+
         // NEW: bulan/periode data import
         $bulanImport = trim($_POST['bulan_import'] ?? '');
         if (!preg_match('/^\d{4}-\d{2}$/', $bulanImport)) {
             $bulanImport = date('Y-m');
         }
         $tanggalImport = $bulanImport . '-01'; // dipakai sebagai tanggal mutasi 'Masuk' stok awal
-    
+
         if ($id_kategori <= 0 || empty($_FILES['file_import']['name'])) {
             $error_msg = "Pilih kategori dan file (.csv / .xlsx) terlebih dahulu!";
         } else {
@@ -611,7 +624,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!$kat) {
                     throw new Exception("Kategori tidak ditemukan.");
                 }
-    
+
                 $ext = strtolower(pathinfo($_FILES['file_import']['name'], PATHINFO_EXTENSION));
                 if (!in_array($ext, ['csv', 'xlsx'])) {
                     throw new Exception("Hanya file .csv atau .xlsx yang didukung.");
@@ -619,7 +632,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!is_uploaded_file($_FILES['file_import']['tmp_name'])) {
                     throw new Exception("Upload file gagal / mencurigakan.");
                 }
-    
+
                 // NEW: kirim $tanggalImport sebagai parameter ke-7
                 $import_result = processStockImport(
                     $conn,
@@ -630,7 +643,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $current_user_id,
                     $tanggalImport
                 );
-    
+
                 catatAudit(
                     $conn,
                     'Gudang',
@@ -639,7 +652,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     null,
                     $import_result
                 );
-    
+
                 $success_msg = "Import selesai (periode {$bulanImport}): {$import_result['berhasil']} barang baru, {$import_result['duplikat']} diperbarui, {$import_result['gagal']} gagal dari total {$import_result['total_baris']} baris.";
             } catch (Exception $e) {
                 $error_msg = "Gagal import: " . $e->getMessage();
@@ -879,7 +892,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-   // ---- 4. Catat Barang Masuk ----
+    // ---- 4. Catat Barang Masuk ----
     if (isset($_POST['action']) && $_POST['action'] === 'barang_masuk') {
         $active_tab = 'tabBarangMasuk';
         $barang_id = intval($_POST['barang_id']);
@@ -1324,20 +1337,21 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
     <div class="arp-tab-group">
         <div class="arp-tab-nav" style="flex-wrap:wrap;">
             <button type="button" class="arp-tab-btn<?= $active_tab === 'tabGudang' ? ' active' : '' ?>"
-                data-tab-target="tabGudang" onclick="switchTab('tabGudang', this)">
+                data-tab-target="tabGudang" data-tab-key="tabGudang" onclick="switchTab('tabGudang', this)">
                 <i class="bi bi-boxes me-1"></i> Gudang Barang
                 <span class="badge-secondary ms-1"><?= count($semuaItems) ?></span>
             </button>
             <button type="button" class="arp-tab-btn<?= $active_tab === 'tabBarangMasuk' ? ' active' : '' ?>"
-                data-tab-target="tabBarangMasuk" onclick="switchTab('tabBarangMasuk', this)">
+                data-tab-target="tabBarangMasuk" data-tab-key="tabBarangMasuk"
+                onclick="switchTab('tabBarangMasuk', this)">
                 <i class="bi bi-box-arrow-in-down me-1"></i> Barang Masuk
             </button>
             <button type="button" class="arp-tab-btn<?= $active_tab === 'tabTransaksi' ? ' active' : '' ?>"
-                data-tab-target="tabTransaksi" onclick="switchTab('tabTransaksi', this)">
+                data-tab-target="tabTransaksi" data-tab-key="tabTransaksi" onclick="switchTab('tabTransaksi', this)">
                 <i class="bi bi-arrow-left-right me-1"></i> Transaksi
             </button>
             <button type="button" class="arp-tab-btn<?= $active_tab === 'tabKeuangan' ? ' active' : '' ?>"
-                data-tab-target="tabKeuangan" onclick="switchTab('tabKeuangan', this)">
+                data-tab-target="tabKeuangan" data-tab-key="tabKeuangan" onclick="switchTab('tabKeuangan', this)">
                 <i class="bi bi-cash-coin me-1"></i> Keuangan
             </button>
         </div>
@@ -1797,8 +1811,11 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-semibold mb-2">Periode / Bulan Data *</label>
-                        <input type="month" name="bulan_import" class="form-control-custom" value="<?= date('Y-m') ?>" required>
-                        <small class="text-muted">Menentukan tanggal pencatatan stok awal barang hasil import, supaya laporan bulanan nanti akurat sesuai periode data ini (bukan otomatis tanggal hari ini import dilakukan).</small>
+                        <input type="month" name="bulan_import" class="form-control-custom" value="<?= date('Y-m') ?>"
+                            required>
+                        <small class="text-muted">Menentukan tanggal pencatatan stok awal barang hasil import, supaya
+                            laporan bulanan nanti akurat sesuai periode data ini (bukan otomatis tanggal hari ini import
+                            dilakukan).</small>
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-semibold mb-2">File (.csv atau .xlsx) *</label>
@@ -2142,7 +2159,8 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
 
                     <div class="mb-3">
                         <label class="form-label fw-semibold mb-2">Tanggal Stok Awal *</label>
-                        <input type="date" name="tanggal_masuk" class="form-control-custom" value="<?= date('Y-m-d') ?>" required>
+                        <input type="date" name="tanggal_masuk" class="form-control-custom" value="<?= date('Y-m-d') ?>"
+                            required>
                     </div>
 
                     <div class="mb-4">
@@ -2184,9 +2202,10 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
                     <div class="row g-3 mb-3">
                         <div class="col-md-6">
                             <label class="form-label fw-semibold mb-2">Stok Awal *</label>
-                            <input type="number" name="stok_awal" id="editStokAwal" class="form-control-custom" min="0" required>
+                            <input type="number" name="stok_awal" id="editStokAwal" class="form-control-custom" min="0"
+                                required>
                         </div>
-                    
+
                         <div class="col-md-6">
                             <label class="form-label fw-semibold mb-2">Satuan</label>
                             <input type="text" name="satuan" id="editSatuan" class="form-control-custom" required>
@@ -2204,7 +2223,8 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
                         <input type="text" name="lokasi_rak" id="editRak" class="form-control-custom">
                     </div>
                     <div class="d-flex gap-2 justify-content-end">
-                        <button type="button" class="btn-secondary-custom" onclick="closeModal('modalEditBarang')">Batal</button>
+                        <button type="button" class="btn-secondary-custom"
+                            onclick="closeModal('modalEditBarang')">Batal</button>
                         <button type="submit" class="btn-primary-custom">Simpan Perubahan</button>
                     </div>
                 </form>
@@ -2375,7 +2395,7 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
             return;
         }
 
-        const kat = semuaKategoriData.find(function (k) { return k.nama_kategori === namaKategori; });
+        const kat = semuaKategoriData.find(function (k) {return k.nama_kategori === namaKategori;});
         const prefix = stockKodePrefixJs(namaKategori);
         let maxUrut = 0;
         if (kat) {
@@ -2407,7 +2427,7 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
        sendiri (tidak numpang ke initTablePagination bawaan,
        supaya filter kategori/jenis-pakai bisa jalan bareng).
        ========================================================= */
-    const gudangTableState = { rowsPerPage: 10, currentPage: 1, kategoriFilter: '' };
+    const gudangTableState = {rowsPerPage: 10, currentPage: 1, kategoriFilter: ''};
 
     function initGudangTable() {
         renderGudangTable();
@@ -2496,7 +2516,7 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
         const totalPages = Math.max(1, Math.ceil(totalRows / gudangTableState.rowsPerPage));
         if (gudangTableState.currentPage > totalPages) gudangTableState.currentPage = totalPages;
 
-        allRows.forEach(function (row) { row.style.display = 'none'; });
+        allRows.forEach(function (row) {row.style.display = 'none';});
 
         const start = (gudangTableState.currentPage - 1) * gudangTableState.rowsPerPage;
         filteredRows.slice(start, start + gudangTableState.rowsPerPage).forEach(function (row) {
@@ -2536,7 +2556,7 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
         var opsiPerPage = [10, 25, 50, 100];
         if (opsiPerPage.indexOf(gudangTableState.rowsPerPage) === -1) {
             opsiPerPage.push(gudangTableState.rowsPerPage);
-            opsiPerPage.sort(function (a, b) { return a - b; });
+            opsiPerPage.sort(function (a, b) {return a - b;});
         }
 
         var selectHtml = '<select class="pagination-per-page-select" onchange="changeGudangPerPage(this.value)">';

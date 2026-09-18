@@ -2631,19 +2631,19 @@ include "../includes/topbar.php";
     <div class="arp-tab-group">
         <div class="arp-tab-nav">
             <button type="button" class="arp-tab-btn<?= $active_tab === 'tabPanelSuratKeluar' ? ' active' : '' ?>"
-                data-tab-target="tabPanelSuratKeluar" onclick="switchTab('tabPanelSuratKeluar', this)">
+                data-tab-target="tabPanelSuratKeluar" data-tab-key="surat_keluar" onclick="switchTab('tabPanelSuratKeluar', this)">
                 <i class="bi bi-send-check me-1"></i> Surat Keluar
             </button>
             <button type="button" class="arp-tab-btn<?= $active_tab === 'tabPanelSuratMasuk' ? ' active' : '' ?>"
-                data-tab-target="tabPanelSuratMasuk" onclick="switchTab('tabPanelSuratMasuk', this)">
+                data-tab-target="tabPanelSuratMasuk" data-tab-key="surat_masuk" onclick="switchTab('tabPanelSuratMasuk', this)">
                 <i class="bi bi-inbox me-1"></i> Surat Masuk
             </button>
             <button type="button" class="arp-tab-btn<?= $active_tab === 'tabPanelBuatSurat' ? ' active' : '' ?>"
-                data-tab-target="tabPanelBuatSurat" onclick="switchTab('tabPanelBuatSurat', this)">
+                data-tab-target="tabPanelBuatSurat" data-tab-key="buat" onclick="switchTab('tabPanelBuatSurat', this)">
                 <i class="bi bi-file-earmark-plus me-1"></i> Buat Surat
             </button>
             <button type="button" class="arp-tab-btn<?= $active_tab === 'tabPanelTemplate' ? ' active' : '' ?>"
-                data-tab-target="tabPanelTemplate" onclick="switchTab('tabPanelTemplate', this)">
+                data-tab-target="tabPanelTemplate" data-tab-key="template" onclick="switchTab('tabPanelTemplate', this)">
                 <i class="bi bi-file-earmark-word me-1"></i> Upload Template
             </button>
         </div>

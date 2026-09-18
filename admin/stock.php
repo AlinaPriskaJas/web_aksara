@@ -571,6 +571,9 @@ $error_msg = "";
 $import_result = null;
 $current_user_id = $_SESSION['user_id'];
 $active_tab = 'tabGudang';
+if (isset($_GET['tab']) && in_array($_GET['tab'], ['tabGudang', 'tabBarangMasuk', 'tabTransaksi', 'tabKeuangan'], true)) {
+    $active_tab = $_GET['tab'];
+}
 
 function stockKategoriIcon(string $nama): string
 {
@@ -1358,20 +1361,20 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
     <div class="arp-tab-group">
         <div class="arp-tab-nav" style="flex-wrap:wrap;">
             <button type="button" class="arp-tab-btn<?= $active_tab === 'tabGudang' ? ' active' : '' ?>"
-                data-tab-target="tabGudang" onclick="switchTab('tabGudang', this)">
+                data-tab-target="tabGudang" data-tab-key="tabGudang" onclick="switchTab('tabGudang', this)">
                 <i class="bi bi-boxes me-1"></i> Gudang Barang
                 <span class="badge-secondary ms-1"><?= count($semuaItems) ?></span>
             </button>
             <button type="button" class="arp-tab-btn<?= $active_tab === 'tabBarangMasuk' ? ' active' : '' ?>"
-                data-tab-target="tabBarangMasuk" onclick="switchTab('tabBarangMasuk', this)">
+                data-tab-target="tabBarangMasuk" data-tab-key="tabBarangMasuk" onclick="switchTab('tabBarangMasuk', this)">
                 <i class="bi bi-box-arrow-in-down me-1"></i> Barang Masuk
             </button>
             <button type="button" class="arp-tab-btn<?= $active_tab === 'tabTransaksi' ? ' active' : '' ?>"
-                data-tab-target="tabTransaksi" onclick="switchTab('tabTransaksi', this)">
+                data-tab-target="tabTransaksi" data-tab-key="tabTransaksi" onclick="switchTab('tabTransaksi', this)">
                 <i class="bi bi-arrow-left-right me-1"></i> Transaksi
             </button>
             <button type="button" class="arp-tab-btn<?= $active_tab === 'tabKeuangan' ? ' active' : '' ?>"
-                data-tab-target="tabKeuangan" onclick="switchTab('tabKeuangan', this)">
+                data-tab-target="tabKeuangan" data-tab-key="tabKeuangan" onclick="switchTab('tabKeuangan', this)">
                 <i class="bi bi-cash-coin me-1"></i> Keuangan
             </button>
         </div>

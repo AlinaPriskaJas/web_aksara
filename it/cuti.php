@@ -688,19 +688,19 @@ $dipakaiSakit = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year)
     <div class="arp-tab-group">
         <div class="arp-tab-nav">
             <button type="button" class="arp-tab-btn<?= $active_tab === 'tahunan' ? ' active' : '' ?>"
-                data-tab-target="tabPanelTahunan" onclick="switchTab('tabPanelTahunan', this)">
+                data-tab-target="tabPanelTahunan" data-tab-key="tahunan" onclick="switchTab('tabPanelTahunan', this)">
                 <i class="bi bi-calendar-check me-1"></i> Cuti Tahunan
             </button>
             <button type="button" class="arp-tab-btn<?= $active_tab === 'khusus' ? ' active' : '' ?>"
-                data-tab-target="tabPanelKhusus" onclick="switchTab('tabPanelKhusus', this)">
+                data-tab-target="tabPanelKhusus" data-tab-key="khusus" onclick="switchTab('tabPanelKhusus', this)">
                 <i class="bi bi-journal-text me-1"></i> Cuti Khusus
             </button>
             <button type="button" class="arp-tab-btn<?= $active_tab === 'sakit' ? ' active' : '' ?>"
-                data-tab-target="tabPanelSakit" onclick="switchTab('tabPanelSakit', this)">
+                data-tab-target="tabPanelSakit" data-tab-key="sakit" onclick="switchTab('tabPanelSakit', this)">
                 <i class="bi bi-thermometer-half me-1"></i> Izin Sakit
             </button>
             <button type="button" class="arp-tab-btn<?= $active_tab === 'saldo' ? ' active' : '' ?>"
-                data-tab-target="tabPanelSaldo" onclick="switchTab('tabPanelSaldo', this)">
+                data-tab-target="tabPanelSaldo" data-tab-key="saldo" onclick="switchTab('tabPanelSaldo', this)">
                 <i class="bi bi-wallet2 me-1"></i> Saldo Cuti
             </button>
         </div>

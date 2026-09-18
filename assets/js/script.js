@@ -536,7 +536,10 @@ function renderTablePaginationControls(tableId, totalRows, totalPages) {
 }
 
 
-function switchTab(targetId, btnEl) {
+// Terapkan tampilan tab (tampilkan panel target, sembunyikan sisanya)
+// tanpa menyentuh URL. Dipakai baik oleh switchTab() (klik user) maupun
+// oleh listener popstate (tombol back/forward browser).
+function applyTabSwitch(targetId, btnEl) {
     if (!btnEl) return;
     const scope = btnEl.closest('.arp-tab-group') || document;
 
@@ -548,7 +551,53 @@ function switchTab(targetId, btnEl) {
     });
     btnEl.classList.add('active');
 }
+
+// Pindah tab (dipanggil dari onclick tombol tab).
+// Selain memindahkan tampilan panel, fungsi ini juga menyinkronkan
+// URL di address bar (mis. ?tab=surat) lewat history.pushState,
+// TANPA reload halaman -- supaya saat tab diklik, "domain"/URL-nya
+// langsung ikut berubah, dan bisa di-bookmark / share / refresh
+// dan tetap terbuka di tab yang sama.
+function switchTab(targetId, btnEl) {
+    applyTabSwitch(targetId, btnEl);
+    if (!btnEl) return;
+
+    const tabKey = btnEl.getAttribute('data-tab-key');
+    if (!tabKey) return; // tombol lama tanpa data-tab-key: perilaku tetap seperti semula
+
+    const paramName = btnEl.getAttribute('data-tab-param') || 'tab';
+    try {
+        const url = new URL(window.location.href);
+        url.searchParams.set(paramName, tabKey);
+        window.history.pushState({ tabParam: paramName, tabKey: tabKey }, '', url);
+    } catch (e) {
+        // Abaikan kalau History/URL API tidak tersedia
+    }
+}
 window.switchTab = switchTab;
+
+// Saat tombol back/forward browser ditekan, cocokkan kembali tab yang aktif
+// dengan parameter ?tab= yang ada di URL saat itu (tanpa reload halaman).
+window.addEventListener('popstate', function () {
+    document.querySelectorAll('.arp-tab-group').forEach(function (group) {
+        const btns = group.querySelectorAll('.arp-tab-btn[data-tab-key]');
+        if (!btns.length) return;
+
+        const paramName = btns[0].getAttribute('data-tab-param') || 'tab';
+        const params = new URLSearchParams(window.location.search);
+        const currentKey = params.get(paramName);
+        if (currentKey === null) return;
+
+        let matched = null;
+        btns.forEach(function (b) {
+            if (b.getAttribute('data-tab-key') === currentKey) matched = b;
+        });
+        if (matched) {
+            const targetId = matched.getAttribute('data-tab-target');
+            if (targetId) applyTabSwitch(targetId, matched);
+        }
+    });
+});
 
 // Navbar Shadow Saat Scroll
 window.addEventListener("scroll", function () {

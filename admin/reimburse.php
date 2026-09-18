@@ -21,6 +21,9 @@ $current_user_id = $_SESSION['user_id'];
 $success_msg = "";
 $error_msg = "";
 $active_tab = 'tabPanelReimburseSaya';
+if (isset($_GET['tab']) && in_array($_GET['tab'], ['tabPanelReimburseSaya', 'tabPanelReimburseKaryawan'], true)) {
+    $active_tab = $_GET['tab'];
+}
 
 if (isset($_SESSION['flash'])) {
     $flashSurat = $_SESSION['flash'];
@@ -267,11 +270,11 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
     <div class="arp-tab-group">
         <div class="arp-tab-nav">
             <button type="button" class="arp-tab-btn<?= $active_tab === 'tabPanelReimburseSaya' ? ' active' : '' ?>"
-                data-tab-target="tabPanelReimburseSaya" onclick="switchTab('tabPanelReimburseSaya', this)">
+                data-tab-target="tabPanelReimburseSaya" data-tab-key="tabPanelReimburseSaya" onclick="switchTab('tabPanelReimburseSaya', this)">
                 <i class="bi bi-receipt me-1"></i> Reimbursement Pribadi
             </button>
             <button type="button" class="arp-tab-btn<?= $active_tab === 'tabPanelReimburseKaryawan' ? ' active' : '' ?>"
-                data-tab-target="tabPanelReimburseKaryawan" onclick="switchTab('tabPanelReimburseKaryawan', this)">
+                data-tab-target="tabPanelReimburseKaryawan" data-tab-key="tabPanelReimburseKaryawan" onclick="switchTab('tabPanelReimburseKaryawan', this)">
                 <i class="bi bi-people me-1"></i> Reimburse Karyawan
             </button>
         </div>

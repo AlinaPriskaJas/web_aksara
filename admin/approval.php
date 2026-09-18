@@ -979,11 +979,11 @@ include "../includes/topbar.php";
     <div class="arp-tab-group">
         <div class="arp-tab-nav">
             <button type="button" class="arp-tab-btn<?= $tab_aktif === 'pemeriksaan' ? ' active' : '' ?>"
-                data-tab-target="tabPanelPemeriksaan" onclick="switchTab('tabPanelPemeriksaan', this)">
+                data-tab-target="tabPanelPemeriksaan" data-tab-key="pemeriksaan" onclick="switchTab('tabPanelPemeriksaan', this)">
                 <i class="bi bi-clipboard2-check me-1"></i> Pengajuan Pemeriksaan
             </button>
             <button type="button" class="arp-tab-btn<?= $tab_aktif === 'surat' ? ' active' : '' ?>"
-                data-tab-target="tabPanelSurat" onclick="switchTab('tabPanelSurat', this)">
+                data-tab-target="tabPanelSurat" data-tab-key="surat" onclick="switchTab('tabPanelSurat', this)">
                 <i class="bi bi-envelope-paper me-1"></i> Surat
             </button>
         </div>

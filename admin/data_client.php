@@ -705,11 +705,11 @@ include "../includes/topbar.php";
     <div class="arp-tab-group">
         <div class="arp-tab-nav">
             <button type="button" class="arp-tab-btn<?= $active_tab_klien === 'tabPanelDaftarKlien' ? ' active' : '' ?>"
-                data-tab-target="tabPanelDaftarKlien" onclick="switchTab('tabPanelDaftarKlien', this)">
+                data-tab-target="tabPanelDaftarKlien" data-tab-key="daftar" onclick="switchTab('tabPanelDaftarKlien', this)">
                 <i class="bi bi-building me-1"></i> Daftar Client
             </button>
             <button type="button" class="arp-tab-btn<?= $active_tab_klien === 'tabPanelAkunKlien' ? ' active' : '' ?>"
-                data-tab-target="tabPanelAkunKlien" onclick="switchTab('tabPanelAkunKlien', this)">
+                data-tab-target="tabPanelAkunKlien" data-tab-key="akun" onclick="switchTab('tabPanelAkunKlien', this)">
                 <i class="bi bi-people-fill me-1"></i> Akun Client
             </button>
         </div>

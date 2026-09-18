@@ -300,15 +300,15 @@ $lastBackup = count($backupList) > 0 ? $backupList[0] : null;
     <div class="arp-tab-group">
         <div class="arp-tab-nav">
             <button type="button" class="arp-tab-btn<?= $active_tab === 'tabPanelKonfigurasi' ? ' active' : '' ?>"
-                data-tab-target="tabPanelKonfigurasi" onclick="switchTab('tabPanelKonfigurasi', this)">
+                data-tab-target="tabPanelKonfigurasi" data-tab-key="konfigurasi" onclick="switchTab('tabPanelKonfigurasi', this)">
                 <i class="bi bi-gear me-1"></i> Konfigurasi Sistem
             </button>
             <button type="button" class="arp-tab-btn<?= $active_tab === 'tabPanelKeamanan' ? ' active' : '' ?>"
-                data-tab-target="tabPanelKeamanan" onclick="switchTab('tabPanelKeamanan', this)">
+                data-tab-target="tabPanelKeamanan" data-tab-key="keamanan" onclick="switchTab('tabPanelKeamanan', this)">
                 <i class="bi bi-shield-lock me-1"></i> Keamanan
             </button>
             <button type="button" class="arp-tab-btn<?= $active_tab === 'tabPanelBackup' ? ' active' : '' ?>"
-                data-tab-target="tabPanelBackup" onclick="switchTab('tabPanelBackup', this)">
+                data-tab-target="tabPanelBackup" data-tab-key="backup" onclick="switchTab('tabPanelBackup', this)">
                 <i class="bi bi-cloud-arrow-up me-1"></i> Backup & Restore
             </button>
         </div>

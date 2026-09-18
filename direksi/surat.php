@@ -514,9 +514,9 @@ const STATUS_OPSI_MASUK = ['Baru', 'Diproses', 'Didisposisi', 'Selesai', 'Diarsi
 
 // Tab aktif (dipetakan ke id panel arp-tab-panel) — IT/Ahli K3 punya tab
 // Surat, Surat Masuk (read-only), & Buat Surat.
-$tabMap = ['surat' => 'tabPanelSurat', 'masuk' => 'tabPanelSuratMasuk', 'buat' => 'tabPanelBuatSurat'];
+$tabMap = ['surat' => 'tabPanelSuratKeluar', 'masuk' => 'tabPanelSuratMasuk', 'buat' => 'tabPanelBuatSurat'];
 $tabGet = $_GET['tab'] ?? 'surat';
-$active_tab = $tabMap[$tabGet] ?? 'tabPanelSurat';
+$active_tab = $tabMap[$tabGet] ?? 'tabPanelSuratKeluar';
 
 $flash = $_SESSION['flash'] ?? null;
 unset($_SESSION['flash']);
@@ -1370,22 +1370,22 @@ include "../includes/topbar.php";
     <!-- Tab Navigation -->
     <div class="arp-tab-group">
         <div class="arp-tab-nav">
-            <button type="button" class="arp-tab-btn<?= $active_tab === 'tabPanelSurat' ? ' active' : '' ?>"
-                data-tab-target="tabPanelSuratKeluar" onclick="switchTab('tabPanelSuratKeluar', this)">
+            <button type="button" class="arp-tab-btn<?= $active_tab === 'tabPanelSuratKeluar' ? ' active' : '' ?>"
+                data-tab-target="tabPanelSuratKeluar" data-tab-key="surat" onclick="switchTab('tabPanelSuratKeluar', this)">
                 <i class="bi bi-send-check me-1"></i> Surat Keluar
             </button>
             <button type="button" class="arp-tab-btn<?= $active_tab === 'tabPanelSuratMasuk' ? ' active' : '' ?>"
-                data-tab-target="tabPanelSuratMasuk" onclick="switchTab('tabPanelSuratMasuk', this)">
+                data-tab-target="tabPanelSuratMasuk" data-tab-key="masuk" onclick="switchTab('tabPanelSuratMasuk', this)">
                 <i class="bi bi-inbox me-1"></i> Surat Masuk
             </button>
             <button type="button" class="arp-tab-btn<?= $active_tab === 'tabPanelBuatSurat' ? ' active' : '' ?>"
-                data-tab-target="tabPanelBuatSurat" onclick="switchTab('tabPanelBuatSurat', this)">
+                data-tab-target="tabPanelBuatSurat" data-tab-key="buat" onclick="switchTab('tabPanelBuatSurat', this)">
                 <i class="bi bi-file-earmark-plus me-1"></i> Buat Surat
             </button>
         </div>
 
         <!-- ============================== TAB: SURAT ============================== -->
-        <div class="col-12 arp-tab-panel" id="tabPanelSurat" <?= $active_tab === 'tabPanelSurat' ? '' : 'style="display:none;"' ?>>
+        <div class="col-12 arp-tab-panel" id="tabPanelSuratKeluar" <?= $active_tab === 'tabPanelSuratKeluar' ? '' : 'style="display:none;"' ?>>
             <div class="card-box">
                 <div class="table-toolbar">
                     <h5 class="table-toolbar-title fw-bold">Daftar Surat Keluar</h5>

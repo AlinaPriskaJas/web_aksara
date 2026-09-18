@@ -15,6 +15,9 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'it') {
 $success_msg = "";
 $error_msg = "";
 $active_tab = 'tabPanelKendaraan';
+if (isset($_GET['tab']) && in_array($_GET['tab'], ['tabPanelKendaraan', 'tabPanelPeminjaman'], true)) {
+    $active_tab = $_GET['tab'];
+}
 
 // Handle Add/Edit/Status Update
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -200,11 +203,11 @@ $loans = $conn->query("
     <div class="arp-tab-group">
         <div class="arp-tab-nav">
             <button type="button" class="arp-tab-btn<?= $active_tab === 'tabPanelKendaraan' ? ' active' : '' ?>"
-                data-tab-target="tabPanelKendaraan" onclick="switchTab('tabPanelKendaraan', this)">
+                data-tab-target="tabPanelKendaraan" data-tab-key="tabPanelKendaraan" onclick="switchTab('tabPanelKendaraan', this)">
                 <i class="bi bi-truck me-1"></i> Daftar Kendaraan
             </button>
             <button type="button" class="arp-tab-btn<?= $active_tab === 'tabPanelPeminjaman' ? ' active' : '' ?>"
-                data-tab-target="tabPanelPeminjaman" onclick="switchTab('tabPanelPeminjaman', this)">
+                data-tab-target="tabPanelPeminjaman" data-tab-key="tabPanelPeminjaman" onclick="switchTab('tabPanelPeminjaman', this)">
                 <i class="bi bi-journal-text me-1"></i> Pengajuan Peminjaman
             </button>
         </div>
