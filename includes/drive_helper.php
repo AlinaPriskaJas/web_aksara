@@ -228,7 +228,7 @@ function arp_drive_kirim_request(array $config, string $base64, string $nama_fil
     curl_setopt($ch, CURLOPT_POST, true);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true); // wajib: Apps Script selalu redirect ke googleusercontent.com
-    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
     curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
     curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query([
@@ -339,10 +339,10 @@ function arp_upload_ke_drive(string $path_file_lokal, string $nama_file, string 
     $ukuran_dikirim = filesize($path_dikirim) ?: $ukuran_file;
     $base64 = base64_encode(file_get_contents($path_dikirim));
 
-    // Timeout menyesuaikan ukuran file (setelah kompresi): file besar butuh waktu
-    // lebih lama untuk di-upload & diproses Apps Script, minimal 45 detik, maksimal
-    // 120 detik (dinaikkan dari 90s supaya dokumen besar sampai 20MB tetap kebagian waktu cukup).
-    $timeout = (int) min(120, max(45, 45 + ($ukuran_dikirim / 1024 / 1024) * 4));
+    // Timeout dipendekkan sebagai jaga-jaga: batas atas 120s -> 60s dan batas
+    // bawah 45s -> 20s, supaya upload yang macet gagal lebih cepat dan segera
+    // masuk ke retry, bukan menggantung lama di satu percobaan.
+    $timeout = (int) min(60, max(20, 20 + ($ukuran_dikirim / 1024 / 1024) * 3));
 
     $percobaan_maksimum = 3; // 1x percobaan awal + 2x retry
     $hasil = null;

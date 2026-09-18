@@ -24,7 +24,7 @@ if (!defined('TEMPLATE_FIELDS_CACHE_DIR')) {
 // sampai 60 detik) lalu mem-parsing ulang file .docx-nya -- padahal isi
 // template nyaris tidak pernah berubah dalam rentang beberapa menit.
 if (!defined('TEMPLATE_FIELDS_CACHE_TTL')) {
-    define('TEMPLATE_FIELDS_CACHE_TTL', 600); // detik (10 menit)
+    define('TEMPLATE_FIELDS_CACHE_TTL', 168 * 3600); // detik (168 jam / 1 minggu)
 }
 
 
