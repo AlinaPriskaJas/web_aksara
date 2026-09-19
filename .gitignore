@@ -1,0 +1,23 @@
+# File & folder yang di-generate otomatis oleh aplikasi -- JANGAN di-commit.
+# Ini cache/hasil proses runtime, bukan source of truth, dan bisa jadi basi
+# kalau ikut ter-push ke environment lain.
+storage/cache_fields/*.json
+storage/tmp_import/*
+storage/logs/*
+storage/surat_keluar/*
+storage/laporan_pemeriksaan/*
+
+# Tapi struktur foldernya tetap dipertahankan di git via .gitkeep
+!storage/cache_fields/.gitkeep
+!storage/tmp_import/.gitkeep
+!storage/logs/.gitkeep
+!storage/surat_keluar/.gitkeep
+!storage/laporan_pemeriksaan/.gitkeep
+
+# Dependency & konfigurasi berisi kredensial -- jangan ikut di-commit
+vendor/
+config/drive_config.php
+
+# File OS/editor
+.DS_Store
+Thumbs.db

@@ -441,40 +441,75 @@ function arp_unduh_dari_drive(string $fileId): ?array
         return null;
     }
 
-    $ch = curl_init($config['webapp_url']);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 60);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query([
-        'token' => $config['secret_token'],
-        'action' => 'download',
-        'file_id' => $fileId,
-    ]));
-    $response = curl_exec($ch);
-    $curl_error = curl_error($ch);
-    curl_close($ch);
+    // ⬅ BARU: retry ringan (maks 3x, jeda 0.5s/1s) khusus untuk kegagalan yang
+    // sifatnya SEMENTARA (timeout, atau Google membalas halaman interstitial
+    // alih-alih JSON). Kalau percobaan pertama kena "unlucky", percobaan
+    // berikutnya sering langsung berhasil -- daripada user harus refresh
+    // manual & lihat pesan error.
+    $percobaan_maksimum = 3;
+    $isTransient = false;
 
-    if ($curl_error) {
-        arp_drive_set_last_error('Koneksi gagal saat mengunduh template: ' . $curl_error);
-        return null;
+    for ($percobaan = 1; $percobaan <= $percobaan_maksimum; $percobaan++) {
+        $ch = curl_init($config['webapp_url']);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 60);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query([
+            'token' => $config['secret_token'],
+            'action' => 'download',
+            'file_id' => $fileId,
+        ]));
+        $response = curl_exec($ch);
+        $curl_error = curl_error($ch);
+        curl_close($ch);
+
+        if ($curl_error) {
+            arp_drive_set_last_error('Koneksi gagal saat mengunduh template: ' . $curl_error);
+            $isTransient = true;
+        } else {
+            // ⬅ BARU: kadang yang membalas BUKAN Apps Script kita, tapi Google
+            // sendiri -- halaman interstitial/verifikasi (mis. saat quota Apps
+            // Script habis, deployment perlu di-reauthorize, atau traffic dari
+            // IP server ini sempat ditandai "unusual"). Cirinya: responsnya
+            // HTML, bukan JSON, dan biasanya memuat script `ppConfig`.
+            // Ditangkap di sini SEBELUM json_decode supaya pesan error jelas &
+            // tidak menumpahkan HTML mentah ke layar user.
+            $responseStr = (string) $response;
+            if (stripos($responseStr, '<!DOCTYPE html') !== false || stripos($responseStr, '<html') !== false) {
+                $indikasiGoogle = stripos($responseStr, 'ppConfig') !== false || stripos($responseStr, 'google') !== false;
+                arp_drive_set_last_error(
+                    $indikasiGoogle
+                        ? 'Google mengembalikan halaman verifikasi/pembatasan, bukan data template (kemungkinan quota Apps Script habis atau deployment web app perlu di-reauthorize/redeploy). Coba lagi dalam beberapa menit.'
+                        : 'Respons tidak valid (bukan JSON) saat mengunduh template. Kemungkinan jaringan/proxy menyisipkan halaman lain. Coba lagi dalam beberapa menit.'
+                );
+                $isTransient = true;
+            } else {
+                $data = json_decode($responseStr, true);
+                if (!$data || empty($data['success'])) {
+                    arp_drive_set_last_error('Gagal mengunduh template dari Drive: ' . ($data['message'] ?? substr($responseStr, 0, 300)));
+                    $isTransient = false; // respons valid JSON tapi gagal -> kemungkinan bukan sekadar timing, jangan diulang percuma
+                } else {
+                    $ext = strtolower(pathinfo($data['filename'] ?? 'file.docx', PATHINFO_EXTENSION)) ?: 'docx';
+                    $pathSementara = tempnam(sys_get_temp_dir(), 'arp_tpl_') . '.' . $ext;
+                    file_put_contents($pathSementara, base64_decode($data['filedata']));
+
+                    return [
+                        'path' => $pathSementara,
+                        'mime_type' => $data['mimetype'] ?? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                        'filename' => $data['filename'] ?? basename($pathSementara),
+                    ];
+                }
+            }
+        }
+
+        if (!$isTransient || $percobaan === $percobaan_maksimum) {
+            break;
+        }
+        usleep(500000 * $percobaan); // jeda 0.5s, lalu 1s sebelum percobaan berikutnya
     }
 
-    $data = json_decode((string) $response, true);
-    if (!$data || empty($data['success'])) {
-        arp_drive_set_last_error('Gagal mengunduh template dari Drive: ' . ($data['message'] ?? substr((string) $response, 0, 300)));
-        return null;
-    }
-
-    $ext = strtolower(pathinfo($data['filename'] ?? 'file.docx', PATHINFO_EXTENSION)) ?: 'docx';
-    $pathSementara = tempnam(sys_get_temp_dir(), 'arp_tpl_') . '.' . $ext;
-    file_put_contents($pathSementara, base64_decode($data['filedata']));
-
-    return [
-        'path' => $pathSementara,
-        'mime_type' => $data['mimetype'] ?? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'filename' => $data['filename'] ?? basename($pathSementara),
-    ];
+    return null;
 }
 
 /**

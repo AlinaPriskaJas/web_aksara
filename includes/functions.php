@@ -2185,6 +2185,10 @@ function muatFieldsTemplateLive(PDO $pdo, array $kodeRow): array
         'table_fields' => $decodedLama['table_fields'] ?? [],
         'blocks' => $decodedLama['blocks'] ?? [],
         'invoice_fields' => $decodedLama['invoice_fields'] ?? [],
+        // Kosongkan dulu; kalau memang tidak ada template Drive utk di-scan,
+        // pemanggil (surat.php) akan fallback ke scan langsung (lihat catatan
+        // di surat.php) -- jadi tombol invoice tidak hilang begitu saja.
+        'auto_fields' => null,
     ];
 
     if (empty($kodeRow['drive_file_id']) || ($kodeRow['format'] ?? '') !== 'word_pdf') {
@@ -2202,6 +2206,12 @@ function muatFieldsTemplateLive(PDO $pdo, array $kodeRow): array
     if (is_file($cacheFile) && (time() - filemtime($cacheFile)) < TEMPLATE_FIELDS_CACHE_TTL) {
         $isiCache = json_decode((string) @file_get_contents($cacheFile), true);
         if (is_array($isiCache)) {
+            // Cache lama (sebelum auto_fields ikut disimpan) tidak punya key
+            // ini -- tandai null supaya pemanggil tahu harus scan manual sekali,
+            // bukan dianggap "sudah pasti tidak ada auto field".
+            if (!array_key_exists('auto_fields', $isiCache)) {
+                $isiCache['auto_fields'] = null;
+            }
             return $isiCache;
         }
     }
@@ -2211,6 +2221,15 @@ function muatFieldsTemplateLive(PDO $pdo, array $kodeRow): array
             $hasilScanBaru = scanPlaceholdersFromDocx($fullPath);
             $digabung = mergeFieldsPreservingLabels($hasilScanBaru, $decodedLama);
             $digabung['blocks'] = buildFieldsWithDefaultLabels($hasilScanBaru)['blocks'];
+
+            // ⬅ BARU: sekalian scan auto_fields (total/ppn/pph_23/no_surat dsb)
+            // di sini juga, selagi file .docx-nya masih ada di tangan. Sebelumnya
+            // ini di-scan TERPISAH lagi setiap kali halaman Buat Surat dibuka
+            // (arp_dengan_template_sementara dipanggil ulang tanpa cache), jadi
+            // request live ke Google Drive tetap terjadi DUA KALI per page-load
+            // walaupun hasil fields di atas sudah dicache. Dengan digabung di
+            // sini, cukup SATU kali download per siklus cache.
+            $digabung['auto_fields'] = scanAutoFieldsFromDocx($fullPath);
 
             $jsonBaru = json_encode($digabung, JSON_UNESCAPED_UNICODE);
             if (!empty($kodeRow['template_id']) && $jsonBaru !== ($kodeRow['fields_json'] ?? null)) {
@@ -2236,6 +2255,9 @@ function muatFieldsTemplateLive(PDO $pdo, array $kodeRow): array
         if (is_file($cacheFile)) {
             $isiCache = json_decode((string) @file_get_contents($cacheFile), true);
             if (is_array($isiCache)) {
+                if (!array_key_exists('auto_fields', $isiCache)) {
+                    $isiCache['auto_fields'] = null;
+                }
                 return $isiCache;
             }
         }

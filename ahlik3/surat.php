@@ -1215,11 +1215,20 @@ $file_template_hilang = $kodeTerpilih && empty($kodeTerpilih['drive_file_id']);
 
 $auto_fields_template = [];
 if ($kodeTerpilih && !$file_template_hilang && $kodeTerpilih['format'] === 'word_pdf') {
-    try {
-        $auto_fields_template = arp_dengan_template_sementara($kodeTerpilih['drive_file_id'], fn($p) => scanAutoFieldsFromDocx($p));
-    } catch (Throwable $e) {
-        $flash = ['type' => 'error', 'msg' => 'Gagal membaca template dari Google Drive: ' . $e->getMessage()];
-        $kodeTerpilih = null;
+    // â auto_fields sekarang ikut disimpan di cache_fields (lihat
+    // muatFieldsTemplateLive() di includes/functions.php), jadi TIDAK perlu
+    // download ulang file dari Drive di sini. Kalau isinya null berarti
+    // cache-nya masih format lama (dibuat sebelum perbaikan ini) -- baru
+    // fallback scan langsung, sekali saja, sampai cache ke-refresh normal.
+    $auto_fields_template = $hasilFields['auto_fields'] ?? null;
+    if ($auto_fields_template === null) {
+        try {
+            $auto_fields_template = arp_dengan_template_sementara($kodeTerpilih['drive_file_id'], fn($p) => scanAutoFieldsFromDocx($p));
+        } catch (Throwable $e) {
+            $flash = ['type' => 'error', 'msg' => 'Gagal membaca template dari Google Drive: ' . $e->getMessage()];
+            $kodeTerpilih = null;
+            $auto_fields_template = [];
+        }
     }
 }
 $ada_total = in_array('total', $auto_fields_template, true);
