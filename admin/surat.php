@@ -3479,7 +3479,7 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
                             <?php endif; ?>
 
 
-                            <?php if (empty($fields_dinamis) && empty($fields_tabel) && empty($fields_blok)): ?>
+                            <?php if (empty($fields_dinamis) && empty($fields_tabel) && empty($fields_blok) && empty($fields_invoice)): ?>
                                 <div class="alert alert-danger-custom text-xs">
                                     <i class="bi bi-exclamation-triangle-fill"></i>
                                     <div>Template ini belum punya placeholder <code>${...}</code> yang terbaca. Upload

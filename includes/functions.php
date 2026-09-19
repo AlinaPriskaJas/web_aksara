@@ -500,17 +500,18 @@ const PREFIX_INVOICE = 'invoice_';
 function mapFieldInvoiceKeTemplate(array $dataInvoice): array
 {
     return [
-        'invoice_nomor' => $dataInvoice['nomor_invoice'] ?? '-',
-        'invoice_tanggal' => !empty($dataInvoice['tanggal_invoice'])
+        'invoice_nomor'       => $dataInvoice['nomor_invoice'] ?? '-',
+        'invoice_nomor_full'  => $dataInvoice['nomor_invoice'] ?? '-', // ⬅ TAMBAHKAN BARIS INI
+        'invoice_tanggal'     => !empty($dataInvoice['tanggal_invoice'])
             ? formatTanggalIndonesia($dataInvoice['tanggal_invoice'])
             : '-',
-        'invoice_perihal' => $dataInvoice['perihal_invoice'] ?? '-',
-        'invoice_nama_perusahaan' => $dataInvoice['nama_perusahaan'] ?? '-',
-        'invoice_item_deskripsi' => $dataInvoice['item_deskripsi'] ?? '-',
-        'invoice_nomor_pesanan' => $dataInvoice['nomor_pesanan'] ?? '-',
-        'invoice_grand_total' => $dataInvoice['grand_total_format'] ?? formatRupiah(0),
-        'invoice_total_bayar' => $dataInvoice['total_bayar_format'] ?? formatRupiah(0),
-        'invoice_terbilang' => $dataInvoice['terbilang'] ?? (terbilang(0) . ' Rupiah'),
+        'invoice_perihal'          => $dataInvoice['perihal_invoice'] ?? '-',
+        'invoice_nama_perusahaan'  => $dataInvoice['nama_perusahaan'] ?? '-',
+        'invoice_item_deskripsi'   => $dataInvoice['item_deskripsi'] ?? '-',
+        'invoice_nomor_pesanan'    => $dataInvoice['nomor_pesanan'] ?? '-',
+        'invoice_grand_total'      => $dataInvoice['grand_total_format'] ?? formatRupiah(0),
+        'invoice_total_bayar'      => $dataInvoice['total_bayar_format'] ?? formatRupiah(0),
+        'invoice_terbilang'        => $dataInvoice['terbilang'] ?? (terbilang(0) . ' Rupiah'),
     ];
 }
 
