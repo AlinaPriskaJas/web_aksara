@@ -3656,20 +3656,6 @@ include "../includes/topbar.php";
                 <input type="hidden" name="aksi" value="edit_template">
                 <input type="hidden" name="template_id" id="editTplId" value="">
 
-                <div id="editTplBukaWordWrapper" class="mb-3" style="display:none;">
-                    <a href="#" id="editTplBukaWordLink" target="_blank" class="btn-secondary-custom"
-                        data-arp-loading="Membuka Word di Drive..."
-                        style="display:inline-flex; align-items:center; gap:6px; text-decoration:none;">
-                        <i class="bi bi-file-earmark-word"></i> Lihat &amp; Edit Word di Drive
-                    </a>
-                    <small class="text-secondary text-xs d-block mt-1">
-                        Membuka file asli langsung di Google Docs (mode Word). Perubahan yang Anda simpan di sana
-                        <b>otomatis tersimpan balik</b> ke file yang sama. Untuk mengganti nama field
-                        <code>${...}</code>,
-                        gunakan tabel di bawah lalu klik "Simpan Perubahan".
-                    </small>
-                </div>
-
                 <div class="mb-3">
                     <label class="form-label fw-semibold mb-2">Nama Template *</label>
                     <input type="text" name="nama_template" id="editTplNama" class="form-control-custom" required>
@@ -4001,66 +3987,116 @@ include "../includes/topbar.php";
 </script>
 
 <script>
+    var __editTplRequestId = 0;
+
     function bukaModalEditTemplate(templateId) {
-        openModal('modalEditTemplate');
+        // Naikkan dulu SEBELUM apa pun lain, supaya fetch lama (mis. Template A
+        // yang masih pending) langsung dianggap basi begitu fungsi ini dipanggil lagi.
+        var requestId = ++__editTplRequestId;
 
-        var loadingEl = document.getElementById('editTemplateLoading');
-        var errorEl = document.getElementById('editTemplateError');
-        var formEl = document.getElementById('formEditTemplate');
+        try {
+            var loadingEl = document.getElementById('editTemplateLoading');
+            var errorEl = document.getElementById('editTemplateError');
+            var formEl = document.getElementById('formEditTemplate');
 
-        var semuaDataTemplate = JSON.parse(document.getElementById('data-template-full').textContent);
-        var data = semuaDataTemplate[templateId];
+            if (!loadingEl || !errorEl || !formEl) {
+                console.error('Modal Edit Template: elemen HTML tidak ditemukan.', { loadingEl, errorEl, formEl });
+                // JANGAN buka modal (yang isinya masih data template sebelumnya).
+                // Tutup dulu kalau kebetulan masih terbuka, baru kasih tahu user.
+                closeModal('modalEditTemplate');
+                alert('Terjadi kesalahan tampilan pada modal edit template. Silakan muat ulang (refresh) halaman ini, lalu coba lagi.');
+                return;
+            }
 
-        loadingEl.style.display = 'none'; // tidak ada loading sama sekali, data sudah ada
+            // Baru buka modal SETELAH dipastikan elemen-elemennya ada.
+            openModal('modalEditTemplate');
 
-        if (!data) {
-            errorEl.textContent = 'Data template tidak ditemukan.';
-            errorEl.style.display = 'block';
+            // Reset dulu isi form lama.
             formEl.style.display = 'none';
-            return;
+            errorEl.style.display = 'none';
+            loadingEl.style.display = 'block';
+            document.getElementById('editTplId').value = '';
+            document.getElementById('editTplNama').value = '';
+            document.getElementById('editTplDeskripsi').value = '';
+            document.getElementById('editTplKodeList').innerHTML = '';
+
+            var templateIdInt = parseInt(templateId, 10);
+
+            fetch('surat.php?ajax=get_template&id=' + encodeURIComponent(templateIdInt))
+                .then(function (res) {
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    return res.text();
+                })
+                .then(function (text) {
+                    if (requestId !== __editTplRequestId) return; // fetch lama (template sebelumnya), abaikan
+
+                    var data;
+                    try {
+                        data = JSON.parse(text);
+                    } catch (parseErr) {
+                        console.error('Modal Edit Template: response bukan JSON valid.', text);
+                        loadingEl.style.display = 'none';
+                        errorEl.textContent = 'Server mengembalikan data tidak valid. Cek console (F12) untuk detail, atau hubungi IT.';
+                        errorEl.style.display = 'block';
+                        formEl.style.display = 'none';
+                        return;
+                    }
+
+                    loadingEl.style.display = 'none';
+
+                    if (!data || data.error || !data.template || parseInt(data.template.id, 10) !== templateIdInt) {
+                        errorEl.textContent = (data && data.error) ? data.error : 'Data template tidak ditemukan / tidak cocok.';
+                        errorEl.style.display = 'block';
+                        formEl.style.display = 'none';
+                        return;
+                    }
+
+                    document.getElementById('editTplId').value = data.template.id;
+                    document.getElementById('editTplNama').value = data.template.nama || '';
+                    document.getElementById('editTplDeskripsi').value = data.template.deskripsi || '';
+
+                    var kodeListEl = document.getElementById('editTplKodeList');
+                    kodeListEl.innerHTML = '';
+
+                    if (!data.kode_terhubung || data.kode_terhubung.length === 0) {
+                        kodeListEl.innerHTML = '<p class="text-secondary text-xs">Template ini belum terhubung ke kode surat manapun.</p>';
+                    } else {
+                        data.kode_terhubung.forEach(function (k) {
+                            var row = document.createElement('div');
+                            row.className = 'row g-2 mb-2 align-items-center';
+                            row.innerHTML =
+                                '<input type="hidden" name="kode_template_id[]" value="' + k.kode_template_id + '">' +
+                                '<div class="col-md-5">' +
+                                '<input type="text" name="kode_baru[]" class="form-control-custom" style="text-transform:uppercase;" ' +
+                                'value="' + escapeHtmlAttr(k.kode) + '" placeholder="Kode (cth: ST)">' +
+                                '</div>' +
+                                '<div class="col-md-6">' +
+                                '<input type="text" name="nama_kode_baru[]" class="form-control-custom" ' +
+                                'value="' + escapeHtmlAttr(k.nama_kode) + '" placeholder="Nama jenis surat">' +
+                                '</div>' +
+                                '<div class="col-md-1 text-center">' +
+                                (k.is_default == 1 ? '<span class="badge-success" title="Default">Def</span>' : '') +
+                                '</div>';
+                            kodeListEl.appendChild(row);
+                        });
+                    }
+
+                    errorEl.style.display = 'none';
+                    formEl.style.display = 'block';
+                })
+                .catch(function (err) {
+                    console.error('Modal Edit Template: fetch gagal.', err);
+                    if (requestId !== __editTplRequestId) return;
+                    loadingEl.style.display = 'none';
+                    errorEl.textContent = 'Gagal memuat data template dari server (' + err.message + '). Coba lagi.';
+                    errorEl.style.display = 'block';
+                    formEl.style.display = 'none';
+                });
+        } catch (e) {
+            console.error('Modal Edit Template: exception tak terduga.', e);
+            closeModal('modalEditTemplate');
+            alert('Terjadi kesalahan saat membuka modal edit: ' + e.message + '. Silakan muat ulang halaman.');
         }
-        errorEl.style.display = 'none';
-
-        document.getElementById('editTplId').value = data.template.id;
-        document.getElementById('editTplNama').value = data.template.nama || '';
-        document.getElementById('editTplDeskripsi').value = data.template.deskripsi || '';
-
-        var wrapperBukaWord = document.getElementById('editTplBukaWordWrapper');
-        var linkBukaWord = document.getElementById('editTplBukaWordLink');
-        if (data.template.drive_file_id) {
-            linkBukaWord.href = 'https://docs.google.com/document/d/' + data.template.drive_file_id + '/edit';
-            wrapperBukaWord.style.display = 'block';
-        } else {
-            wrapperBukaWord.style.display = 'none';
-        }
-
-        var kodeListEl = document.getElementById('editTplKodeList');
-        kodeListEl.innerHTML = '';
-
-        if (!data.kode_terhubung || data.kode_terhubung.length === 0) {
-            kodeListEl.innerHTML = '<p class="text-secondary text-xs">Template ini belum terhubung ke kode surat manapun.</p>';
-        } else {
-            data.kode_terhubung.forEach(function (k) {
-                var row = document.createElement('div');
-                row.className = 'row g-2 mb-2 align-items-center';
-                row.innerHTML =
-                    '<input type="hidden" name="kode_template_id[]" value="' + k.kode_template_id + '">' +
-                    '<div class="col-md-5">' +
-                    '<input type="text" name="kode_baru[]" class="form-control-custom" style="text-transform:uppercase;" ' +
-                    'value="' + escapeHtmlAttr(k.kode) + '" placeholder="Kode (cth: ST)">' +
-                    '</div>' +
-                    '<div class="col-md-6">' +
-                    '<input type="text" name="nama_kode_baru[]" class="form-control-custom" ' +
-                    'value="' + escapeHtmlAttr(k.nama_kode) + '" placeholder="Nama jenis surat">' +
-                    '</div>' +
-                    '<div class="col-md-1 text-center">' +
-                    (k.is_default == 1 ? '<span class="badge-success" title="Default">Def</span>' : '') +
-                    '</div>';
-                kodeListEl.appendChild(row);
-            });
-        }
-
-        formEl.style.display = 'block';
     }
 
     function escapeHtmlAttr(str) {
