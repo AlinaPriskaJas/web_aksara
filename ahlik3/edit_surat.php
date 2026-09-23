@@ -257,6 +257,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
                 }
             }
 
+            $rowsAkumulasi = [];
+            foreach ($_POST['akumulasi'] ?? [] as $baris) {
+                $baris = array_map('trim', (array) $baris);
+                if (($baris['nama_pemohon'] ?? '') === '' && ($baris['jumlah'] ?? '') === '')
+                    continue;
+                $rowsAkumulasi[] = $baris;
+            }
+
             // ==========================================
             // FIELD ${invoice_...} DARI INVOICE SUMBER -- generik, di-refresh
             // setiap kali surat ini disimpan/direvisi. Tidak menimpa field
@@ -287,7 +295,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
                 'sisa_pelunasan' => isset($_POST['sertakan_sisa_pelunasan']),
             ];
 
-            $fileHasilBaruLokal = arp_dengan_template_sementara($kode['drive_file_id'], function ($pathTemplateLokal) use ($dataForm, $items, $nomorBaru, $blocksData, $kode, $tujuanManual, $ringkasanDisertakan, $revisiKeDipakai) {
+            $fileHasilBaruLokal = arp_dengan_template_sementara($kode['drive_file_id'], function ($pathTemplateLokal) use ($dataForm, $items, $nomorBaru, $blocksData, $kode, $tujuanManual, $ringkasanDisertakan, $revisiKeDipakai, $rowsAkumulasi) {
                 return generateSuratDocx(
                     $pathTemplateLokal,
                     $dataForm,
@@ -297,7 +305,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
                     $kode['nama'],
                     $tujuanManual !== '' ? $tujuanManual : null,
                     $ringkasanDisertakan,
-                    $revisiKeDipakai
+                    $revisiKeDipakai,
+                    $rowsAkumulasi
                 );
             });
 
@@ -357,6 +366,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'simpan_
                 $isiDataDisimpan['__blok'] = $blocksData;
             }
             $isiDataDisimpan['__ringkasan'] = $ringkasanDisertakan;
+
+            if (!empty($rowsAkumulasi)) {
+                $isiDataDisimpan['__akumulasi'] = $rowsAkumulasi;
+            }
 
             if ($tandaiRevisiBaru) {
                 // REVISI = baris BARU di tabel surat, nomor sama persis dengan asalnya.
@@ -512,6 +525,7 @@ if ($kodeIdTerpilih && $templateIdTerpilih) {
         $fields_tabel = $hasilFields['table_fields'];
         $fields_blok = $hasilFields['blocks'];
         $fields_invoice = $hasilFields['invoice_fields'] ?? [];
+        $fields_akumulasi = $hasilFields['akumulasi'] ?? false;
 
         if (defined('FIELD_OTOMATIS_SISTEM')) {
             $fields_dinamis = array_values(array_filter(
@@ -587,6 +601,22 @@ foreach ($fields_tabel as $kolom) {
         $tabel_item_punya_harga = true;
         break;
     }
+}
+
+$adaTabelAkumulasi = $hasilFields['akumulasi'] ?? false;
+$nilaiAkumulasi = $_POST['akumulasi'] ?? ($isiDataAsli['__akumulasi'] ?? []);
+if (empty($nilaiAkumulasi) && $adaTabelAkumulasi) {
+    $nilaiAkumulasi = [
+        [
+            'nama_pemohon' => '',
+            'tanggal' => date('Y-m-d'),
+            'nama_perusahaan' => '',
+            'lokasi' => '',
+            'tujuan' => '',
+            'item' => '',
+            'jumlah' => '',
+        ]
+    ];
 }
 
 include "../includes/header.php";
@@ -1046,7 +1076,7 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
                         </div>
                     <?php endif; ?>
 
-                    <?php if (empty($fields_dinamis) && empty($fields_tabel) && empty($fields_blok)): ?>
+                    <?php if (empty($fields_dinamis) && empty($fields_tabel) && empty($fields_blok) && empty($fields_akumulasi)): ?>
                         <div class="alert alert-danger-custom text-xs">
                             <i class="bi bi-exclamation-triangle-fill"></i>
                             <div>Template ini belum punya placeholder <code>${...}</code> yang terbaca. Upload
@@ -1480,6 +1510,116 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
                         </script>
                     <?php endif; ?>
 
+                    <?php if ($adaTabelAkumulasi): ?>
+                        <div class="mt-3">
+                            <label class="form-label fw-semibold mb-2">Rincian Akumulasi (dikelompokkan per Nama)</label>
+                            <div class="table-responsive-custom">
+                                <table class="table-custom" id="tabel-akumulasi">
+                                    <thead>
+                                        <tr>
+                                            <th style="width:36px;">No</th>
+                                            <th>Nama Pemohon</th>
+                                            <th>Tanggal</th>
+                                            <th>Nama Perusahaan</th>
+                                            <th>Lokasi</th>
+                                            <th>Tujuan</th>
+                                            <th>Item</th>
+                                            <th>Jumlah</th>
+                                            <th style="width:36px;"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tabel-akumulasi-body">
+                                        <?php foreach ($nilaiAkumulasi as $i => $b): ?>
+                                            <tr class="baris-akumulasi" data-baris-index="<?= (int) $i ?>">
+                                                <td class="nomor-baris"><?= $i + 1 ?></td>
+                                                <td><input type="text" name="akumulasi[<?= $i ?>][nama_pemohon]"
+                                                        class="form-control-custom" value="<?= e($b['nama_pemohon'] ?? '') ?>"></td>
+                                                <td><input type="date" name="akumulasi[<?= $i ?>][tanggal]"
+                                                        class="form-control-custom"
+                                                        value="<?= e($b['tanggal'] ?? date('Y-m-d')) ?>"></td>
+                                                <td><input type="text" name="akumulasi[<?= $i ?>][nama_perusahaan]"
+                                                        class="form-control-custom" value="<?= e($b['nama_perusahaan'] ?? '') ?>">
+                                                </td>
+                                                <td><input type="text" name="akumulasi[<?= $i ?>][lokasi]"
+                                                        class="form-control-custom" value="<?= e($b['lokasi'] ?? '') ?>"></td>
+                                                <td><input type="text" name="akumulasi[<?= $i ?>][tujuan]"
+                                                        class="form-control-custom" value="<?= e($b['tujuan'] ?? '') ?>"></td>
+                                                <td><input type="text" name="akumulasi[<?= $i ?>][item]" class="form-control-custom"
+                                                        value="<?= e($b['item'] ?? '') ?>"></td>
+                                                <td><input type="text" name="akumulasi[<?= $i ?>][jumlah]"
+                                                        class="form-control-custom" inputmode="decimal"
+                                                        placeholder="cth: 1.500.000 atau 1500,75"
+                                                        value="<?= e($b['jumlah'] ?? '') ?>"></td>
+                                                <td><button type="button"
+                                                        class="btn btn-outline-danger btn-sm tombol-hapus-baris-akumulasi"><i
+                                                            class="bi bi-x-lg"></i></button></td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <button type="button" id="tombol-tambah-akumulasi" class="btn btn-outline-primary btn-sm mt-2">
+                                <i class="bi bi-plus-lg"></i> Tambah Baris
+                            </button>
+                            <p class="text-secondary text-xs mt-2 mb-0">Baris dengan <b>Nama Pemohon</b> yang sama otomatis
+                                dikelompokkan jadi satu blok, lengkap TOTAL &amp; terbilang per orang.</p>
+                        </div>
+                        <div class="mt-3" id="preview-akumulasi-grup"></div>
+                        <script>
+                            (function () {
+                                const tbody = document.getElementById('tabel-akumulasi-body');
+                                const previewBox = document.getElementById('preview-akumulasi-grup');
+                                const tombolTambah = document.getElementById('tombol-tambah-akumulasi');
+                                if (!tbody) return;
+                                let idx = tbody.querySelectorAll('tr').length;
+                                function parseAngkaJs(teks) {
+                                    teks = String(teks || '').trim();
+                                    var m = teks.match(/-?\d[\d.,]*/);
+                                    if (!m) return 0;
+                                    var angka = m[0];
+                                    if (angka.indexOf(',') !== -1 && angka.indexOf('.') !== -1) angka = angka.replace(/\./g, '').replace(',', '.');
+                                    else if (angka.indexOf(',') !== -1) angka = angka.replace(',', '.');
+                                    else { var bagian = angka.split('.'); if (bagian.length > 1 && bagian[bagian.length - 1].length === 3) angka = angka.split('.').join(''); }
+                                    var hasil = parseFloat(angka);
+                                    return isNaN(hasil) ? 0 : hasil;
+                                }
+                                function formatRupiahJs(n) { return 'Rp. ' + Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.'); }
+                                function renderPreview() {
+                                    const grup = {}; const urutanNama = [];
+                                    tbody.querySelectorAll('tr.baris-akumulasi').forEach(function (tr) {
+                                        const nama = tr.querySelector('[name*="[nama_pemohon]"]').value.trim() || '-';
+                                        const jumlah = parseAngkaJs(tr.querySelector('[name*="[jumlah]"]').value);
+                                        if (!grup[nama]) { grup[nama] = []; urutanNama.push(nama); }
+                                        grup[nama].push(jumlah);
+                                    });
+                                    let html = '';
+                                    urutanNama.forEach(function (nama) {
+                                        const total = grup[nama].reduce((a, b) => a + b, 0);
+                                        html += '<div class="ringkasan-total-row"><b>' + nama + '</b><span style="font-family:monospace;">' + formatRupiahJs(total) + '</span></div>';
+                                    });
+                                    if (html === '') html = '<p class="text-secondary text-xs fst-italic mb-0">Belum ada data.</p>';
+                                    previewBox.innerHTML = html;
+                                    var previewBoxKanan = document.getElementById('preview-akumulasi-grup-kanan');
+                                    if (previewBoxKanan) previewBoxKanan.innerHTML = html;
+                                }
+                                function renumber() { tbody.querySelectorAll('tr.baris-akumulasi').forEach(function (tr, i) { tr.querySelector('.nomor-baris').textContent = i + 1; }); }
+                                tbody.addEventListener('input', renderPreview);
+                                tombolTambah.addEventListener('click', function () {
+                                    const tr = tbody.querySelector('tr.baris-akumulasi').cloneNode(true);
+                                    tr.querySelectorAll('input').forEach(function (inp) { inp.value = ''; inp.name = inp.name.replace(/\[\d+\]/, '[' + idx + ']'); });
+                                    tbody.appendChild(tr); idx++; renumber(); renderPreview();
+                                });
+                                tbody.addEventListener('click', function (e) {
+                                    if (e.target.closest('.tombol-hapus-baris-akumulasi')) {
+                                        if (tbody.querySelectorAll('tr').length > 1) e.target.closest('tr').remove();
+                                        renumber(); renderPreview();
+                                    }
+                                });
+                                renderPreview();
+                            })();
+                        </script>
+                    <?php endif; ?>
+
 
                     <div class="d-flex gap-2 mt-4">
                         <button type="submit" name="preview_only" value="1" class="btn-secondary-custom">
@@ -1908,6 +2048,75 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
                             })();
                         </script>
                     <?php endif; ?>
+                <?php endif; ?>
+                <?php if (!empty($adaTabelAkumulasi) && !empty($nilaiAkumulasi)): ?>
+                    <?php
+                    $grupAkumulasiPreview = [];
+                    foreach ($nilaiAkumulasi as $b) {
+                        $namaP = trim((string) ($b['nama_pemohon'] ?? '')) ?: '-';
+                        $grupAkumulasiPreview[$namaP][] = $b;
+                    }
+                    $grandTotalAkumulasiPreview = 0.0;
+                    ?>
+                    <span class="text-xs fw-bold text-secondary text-uppercase d-block mb-2 mt-3">Rincian Akumulasi
+                        (dikelompokkan per Nama)</span>
+                    <div class="table-responsive-custom mb-3">
+                        <table class="table-custom">
+                            <thead>
+                                <tr>
+                                    <th style="width:36px;">No</th>
+                                    <th>Tanggal</th>
+                                    <th>Nama Perusahaan</th>
+                                    <th>Lokasi</th>
+                                    <th>Tujuan</th>
+                                    <th>Item</th>
+                                    <th style="text-align:right;">Jumlah</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($grupAkumulasiPreview as $namaPemohon => $barisGrup): ?>
+                                    <?php $subtotalPreview = 0.0; ?>
+                                    <tr style="background:#eef2f7;">
+                                        <td colspan="7"><strong><?= e($namaPemohon) ?></strong></td>
+                                    </tr>
+                                    <?php foreach (array_values($barisGrup) as $i => $b): ?>
+                                        <?php
+                                        $jumlahPreview = parseAngka($b['jumlah'] ?? '0') ?? 0.0;
+                                        $subtotalPreview += $jumlahPreview;
+                                        $tglTampil = '-';
+                                        if (!empty($b['tanggal'])) {
+                                            $ts = strtotime($b['tanggal']);
+                                            $tglTampil = $ts ? date('d/m/Y', $ts) : $b['tanggal'];
+                                        }
+                                        ?>
+                                        <tr>
+                                            <td><?= $i + 1 ?></td>
+                                            <td><?= e($tglTampil) ?></td>
+                                            <td><?= e($b['nama_perusahaan'] ?? '-') ?></td>
+                                            <td><?= e($b['lokasi'] ?? '-') ?></td>
+                                            <td><?= e($b['tujuan'] ?? '-') ?></td>
+                                            <td><?= e($b['item'] ?? '-') ?></td>
+                                            <td style="text-align:right; font-family:monospace;">
+                                                <?= e(formatRupiah($jumlahPreview)) ?>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                    <tr style="background:#f8fafc;">
+                                        <td colspan="6" style="text-align:right;"><strong>TOTAL</strong></td>
+                                        <td style="text-align:right; font-family:monospace;">
+                                            <strong><?= e(formatRupiah($subtotalPreview)) ?></strong>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td colspan="7" class="text-secondary fst-italic" style="font-size:0.8rem;">
+                                            "<?= e(terbilang($subtotalPreview)) ?> Rupiah"
+                                        </td>
+                                    </tr>
+                                    <?php $grandTotalAkumulasiPreview += $subtotalPreview; ?>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
                 <?php endif; ?>
             <?php endif; ?>
         </section>

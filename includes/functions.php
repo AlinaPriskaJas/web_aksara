@@ -500,18 +500,18 @@ const PREFIX_INVOICE = 'invoice_';
 function mapFieldInvoiceKeTemplate(array $dataInvoice): array
 {
     return [
-        'invoice_nomor'       => $dataInvoice['nomor_invoice'] ?? '-',
-        'invoice_nomor_full'  => $dataInvoice['nomor_invoice'] ?? '-', // ⬅ TAMBAHKAN BARIS INI
-        'invoice_tanggal'     => !empty($dataInvoice['tanggal_invoice'])
+        'invoice_nomor' => $dataInvoice['nomor_invoice'] ?? '-',
+        'invoice_nomor_full' => $dataInvoice['nomor_invoice'] ?? '-', // ⬅ TAMBAHKAN BARIS INI
+        'invoice_tanggal' => !empty($dataInvoice['tanggal_invoice'])
             ? formatTanggalIndonesia($dataInvoice['tanggal_invoice'])
             : '-',
-        'invoice_perihal'          => $dataInvoice['perihal_invoice'] ?? '-',
-        'invoice_nama_perusahaan'  => $dataInvoice['nama_perusahaan'] ?? '-',
-        'invoice_item_deskripsi'   => $dataInvoice['item_deskripsi'] ?? '-',
-        'invoice_nomor_pesanan'    => $dataInvoice['nomor_pesanan'] ?? '-',
-        'invoice_grand_total'      => $dataInvoice['grand_total_format'] ?? formatRupiah(0),
-        'invoice_total_bayar'      => $dataInvoice['total_bayar_format'] ?? formatRupiah(0),
-        'invoice_terbilang'        => $dataInvoice['terbilang'] ?? (terbilang(0) . ' Rupiah'),
+        'invoice_perihal' => $dataInvoice['perihal_invoice'] ?? '-',
+        'invoice_nama_perusahaan' => $dataInvoice['nama_perusahaan'] ?? '-',
+        'invoice_item_deskripsi' => $dataInvoice['item_deskripsi'] ?? '-',
+        'invoice_nomor_pesanan' => $dataInvoice['nomor_pesanan'] ?? '-',
+        'invoice_grand_total' => $dataInvoice['grand_total_format'] ?? formatRupiah(0),
+        'invoice_total_bayar' => $dataInvoice['total_bayar_format'] ?? formatRupiah(0),
+        'invoice_terbilang' => $dataInvoice['terbilang'] ?? (terbilang(0) . ' Rupiah'),
     ];
 }
 
@@ -526,7 +526,192 @@ function mapFieldInvoiceKeTemplate(array $dataInvoice): array
 // ==========================================
 const PREFIX_BLOK = 'blok_';
 
+// ==========================================
+// TABEL AKUMULASI: dikelompokkan per ${akum_pemohon}, tiap kelompok punya
+// baris TOTAL (${akum_total}) & TERBILANG (${akum_terbilang}) sendiri.
+// BEDA dari item_... (flat qty x harga): di sini jumlah KELOMPOK dan jumlah
+// BARIS PER KELOMPOK dua-duanya dinamis, jadi tidak bisa pakai cloneRow biasa.
+// Karena itu diproses lewat manipulasi XML langsung, SETELAH $processor->saveAs()
+// -- sama seperti hapusBarisTidakDisertakan() / mergeGrupKolomVertikalDocx().
+// ==========================================
+const PREFIX_AKUMULASI = 'akum_';
+const ANCHOR_AKUMULASI = 'akum_no';
+const AKUM_FIELD_PEMOHON = 'akum_pemohon';
+const AKUM_FIELD_TOTAL = 'akum_total';
+const AKUM_FIELD_TERBILANG = 'akum_terbilang';
+const AKUM_FIELD_GRAND_TOTAL = 'akumulasi_grand_total';
+const AKUM_FIELD_GRAND_TERBILANG = 'akumulasi_grand_terbilang';
 
+// Kolom yang boleh diisi manual lewat form (selain nama_pemohon & jumlah,
+// yang punya perlakuan khusus).
+const AKUM_KOLOM_MANUAL = ['tanggal', 'nama_perusahaan', 'lokasi', 'tujuan', 'item'];
+
+/**
+ * $rowsMentah: [ ['nama_pemohon'=>'Arya Rizki Pratama','tanggal'=>'2026-06-03',
+ *                 'nama_perusahaan'=>'UPTD ...','lokasi'=>'Kota Garut',
+ *                 'tujuan'=>'Pengiriman Berkas','item'=>'Paket','jumlah'=>'8000'], ... ]
+ *
+ * Dikelompokkan MEMPERTAHANKAN urutan kemunculan pertama tiap nama (bukan
+ * diurutkan abjad), supaya urutan grup di Word persis seperti urutan input
+ * di form (Arya dulu baru Rio, dst).
+ */
+function arp_kelompokkan_akumulasi(array $rowsMentah): array
+{
+    $grup = [];
+    foreach ($rowsMentah as $baris) {
+        $nama = trim((string) ($baris['nama_pemohon'] ?? '')) ?: '-';
+        $grup[$nama][] = $baris;
+    }
+
+    $hasil = [];
+    foreach ($grup as $namaPemohon => $barisGrup) {
+        $subtotal = 0.0;
+        $barisSiapTempel = [];
+
+        foreach (array_values($barisGrup) as $i => $b) {
+            $jumlah = parseAngka($b['jumlah'] ?? '0') ?? 0.0;
+            $subtotal += $jumlah;
+
+            $satuBaris = ['akum_no' => (string) ($i + 1)];
+            foreach (AKUM_KOLOM_MANUAL as $kolom) {
+                $nilaiKolom = trim((string) ($b[$kolom] ?? '-'));
+
+                // ${akum_tanggal} disimpan mentah dari <input type="date">
+                // (format Y-m-d, cth "2026-06-30"). Format ulang jadi
+                // d/m/Y (cth "30/06/2026") supaya tampil rapi di Word.
+                if ($kolom === 'tanggal' && $nilaiKolom !== '' && $nilaiKolom !== '-') {
+                    $tsTanggal = strtotime($nilaiKolom);
+                    if ($tsTanggal) {
+                        $nilaiKolom = date('d/m/Y', $tsTanggal);
+                    }
+                }
+
+                $satuBaris['akum_' . $kolom] = $nilaiKolom;
+            }
+            $satuBaris['akum_jumlah'] = formatRupiah($jumlah);
+            $barisSiapTempel[] = $satuBaris;
+        }
+
+        $hasil[] = [
+            'nama_pemohon' => $namaPemohon,
+            'items' => $barisSiapTempel,
+            'subtotal' => $subtotal,
+            'subtotal_format' => formatRupiah($subtotal),
+            'terbilang' => terbilang($subtotal) . ' Rupiah',
+        ];
+    }
+    return $hasil;
+}
+
+/** Cari batas satu <w:tr>...</w:tr> yang memuat placeholder $marker. */
+function arp_cari_baris_placeholder(string $xml, string $marker): ?array
+{
+    $pos = strpos($xml, '${' . $marker . '}');
+    if ($pos === false) {
+        return null;
+    }
+    if (!preg_match_all('/<w:tr\b/', substr($xml, 0, $pos), $m, PREG_OFFSET_CAPTURE) || empty($m[0])) {
+        return null;
+    }
+    $mulai = end($m[0])[1];
+    $akhirTag = strpos($xml, '</w:tr>', $pos);
+    if ($akhirTag === false) {
+        return null;
+    }
+    return [$mulai, $akhirTag + strlen('</w:tr>')];
+}
+
+/**
+ * Tempel tabel akumulasi ke file .docx HASIL GENERATE (dipanggil setelah
+ * $processor->saveAs()). Kalau template tidak punya ke-4 placeholder yang
+ * dibutuhkan, fungsi ini diam saja (bukan error) -- supaya tidak mengganggu
+ * template lain yang tidak memakai fitur ini.
+ */
+function arp_tempel_tabel_akumulasi(string $docxPath, array $rowsMentah): void
+{
+    if (empty($rowsMentah)) {
+        return;
+    }
+    $kelompok = arp_kelompokkan_akumulasi($rowsMentah);
+    if (empty($kelompok)) {
+        return;
+    }
+
+    $zip = new ZipArchive();
+    if ($zip->open($docxPath) !== true) {
+        return;
+    }
+    $xml = $zip->getFromName('word/document.xml');
+    if ($xml === false) {
+        $zip->close();
+        return;
+    }
+
+    $posPemohon = arp_cari_baris_placeholder($xml, AKUM_FIELD_PEMOHON);
+    $posData = arp_cari_baris_placeholder($xml, ANCHOR_AKUMULASI);
+    $posTotal = arp_cari_baris_placeholder($xml, AKUM_FIELD_TOTAL);
+    $posTerbilang = arp_cari_baris_placeholder($xml, AKUM_FIELD_TERBILANG);
+
+    if (!$posPemohon || !$posData || !$posTotal || !$posTerbilang) {
+        $zip->close();
+        return;
+    }
+
+    $satuBarisTotalTerbilang = ($posTotal[0] === $posTerbilang[0] && $posTotal[1] === $posTerbilang[1]);
+
+    $mulaiBlok = $posPemohon[0];
+    $akhirBlok = $posTerbilang[1];
+
+    $xmlHeader = substr($xml, $posPemohon[0], $posPemohon[1] - $posPemohon[0]);
+    $xmlDataTpl = substr($xml, $posData[0], $posData[1] - $posData[0]);
+    $xmlTotal = substr($xml, $posTotal[0], $posTotal[1] - $posTotal[0]);
+    $xmlTerbilang = substr($xml, $posTerbilang[0], $posTerbilang[1] - $posTerbilang[0]);
+
+    $isi = function (string $xmlBaris, array $nilai): string {
+        foreach ($nilai as $k => $v) {
+            $xmlBaris = str_replace('${' . $k . '}', htmlspecialchars((string) $v, ENT_QUOTES), $xmlBaris);
+        }
+        return $xmlBaris;
+    };
+
+    $hasilSemuaGrup = '';
+    $grandTotal = 0.0;
+    foreach ($kelompok as $grup) {
+        $hasilSemuaGrup .= $isi($xmlHeader, [AKUM_FIELD_PEMOHON => $grup['nama_pemohon']]);
+        foreach ($grup['items'] as $baris) {
+            $hasilSemuaGrup .= $isi($xmlDataTpl, $baris);
+        }
+
+        if ($satuBarisTotalTerbilang) {
+            $hasilSemuaGrup .= $isi($xmlTotal, [
+                AKUM_FIELD_TOTAL => $grup['subtotal_format'],
+                AKUM_FIELD_TERBILANG => $grup['terbilang'],
+            ]);
+        } else {
+            $hasilSemuaGrup .= $isi($xmlTotal, [AKUM_FIELD_TOTAL => $grup['subtotal_format']]);
+            $hasilSemuaGrup .= $isi($xmlTerbilang, [AKUM_FIELD_TERBILANG => $grup['terbilang']]);
+        }
+
+        $grandTotal += $grup['subtotal'];
+    }
+
+    $xmlBaru = substr($xml, 0, $mulaiBlok) . $hasilSemuaGrup . substr($xml, $akhirBlok);
+
+    $xmlBaru = str_replace('${' . AKUM_FIELD_GRAND_TOTAL . '}', htmlspecialchars(formatRupiah($grandTotal), ENT_QUOTES), $xmlBaru);
+    $xmlBaru = str_replace('${' . AKUM_FIELD_GRAND_TERBILANG . '}', htmlspecialchars(terbilang($grandTotal) . ' Rupiah', ENT_QUOTES), $xmlBaru);
+
+    $zip->addFromString('word/document.xml', $xmlBaru);
+    $zip->close();
+}
+
+/** Deteksi apakah template ini memakai struktur tabel akumulasi. */
+function templateMemakaiTabelAkumulasi(string $teksPolosDokumen): bool
+{
+    return strpos($teksPolosDokumen, '${' . AKUM_FIELD_PEMOHON . '}') !== false
+        && strpos($teksPolosDokumen, '${' . ANCHOR_AKUMULASI . '}') !== false
+        && strpos($teksPolosDokumen, '${' . AKUM_FIELD_TOTAL . '}') !== false
+        && strpos($teksPolosDokumen, '${' . AKUM_FIELD_TERBILANG . '}') !== false;
+}
 // ==========================================
 // HITUNG RINGKASAN TOTAL (Total, Diskon, PPN, PPH23, Grand Total, DP,
 // Total Bayar, Sisa Pelunasan, Terbilang) DARI SATU SET ITEMS.
@@ -771,8 +956,9 @@ function daftarSuratInvoice(PDO $pdo): array
 //             harga), tapi tetap menghitung ${total_alat} = jumlah semua
 //             kolom kuantitas (qty-like) digabung, cth "13 Unit".
 // ==========================================
-function generateSuratDocx(string $templatePath, array $dataForm, array $items, string $nomorSurat, array $blocks = [], string $jenisSurat = '', ?string $tujuanManual = null, array $ringkasanDisertakan = [], int $revisiKe = 0): string
+function generateSuratDocx(string $templatePath, array $dataForm, array $items, string $nomorSurat, array $blocks = [], string $jenisSurat = '', ?string $tujuanManual = null, array $ringkasanDisertakan = [], int $revisiKe = 0, array $rowsAkumulasi = []): string
 {
+
     if (!file_exists($templatePath)) {
         throw new RuntimeException("File template master tidak ditemukan: {$templatePath}");
     }
@@ -1243,6 +1429,8 @@ function generateSuratDocx(string $templatePath, array $dataForm, array $items, 
     $processor->saveAs($outputPath);
 
     replaceBraceOnlyPlaceholders($outputPath, $fields);
+
+    arp_tempel_tabel_akumulasi($outputPath, $rowsAkumulasi);
 
     // Hapus baris/paragraf ringkasan (PPN/PPH23/Diskon) yang tidak dicentang.
     $fieldRingkasanDihapus = [];
@@ -1752,7 +1940,7 @@ if (!function_exists('arp_buat_nama_file_surat_masuk')) {
         $tanggalFormat = $ts ? date('Ymd', $ts) : date('Ymd');
 
         $pengirim = trim($pengirim) !== '' ? trim($pengirim) : '-';
-        $perihal  = trim($perihal)  !== '' ? trim($perihal)  : '-';
+        $perihal = trim($perihal) !== '' ? trim($perihal) : '-';
 
         $namaFileMentah = $tanggalFormat . '_' . $pengirim . '_' . $perihal;
 
@@ -1811,9 +1999,12 @@ function scanPlaceholdersFromDocx(string $fullPath): array
 
     // Field yang selalu diisi otomatis oleh sistem (nomor surat & hasil hitungan
     // total/ppn/pph/total_bayar/terbilang/total_alat) tidak boleh jadi input form manual.
+    $adaTabelAkumulasi = templateMemakaiTabelAkumulasi($plain);
+
     $semuaField = array_values(array_filter(
         $semuaField,
-        fn($f) => !in_array(strtolower($f), FIELD_OTOMATIS_SISTEM, true)
+        fn($f) => stripos($f, PREFIX_AKUMULASI) !== 0
+            && !in_array($f, [AKUM_FIELD_GRAND_TOTAL, AKUM_FIELD_GRAND_TERBILANG], true)
     ));
 
     $fields = [];
@@ -1859,6 +2050,7 @@ function scanPlaceholdersFromDocx(string $fullPath): array
         'table_fields' => array_values(array_unique($tableFields)),
         'blocks' => $blocks,
         'invoice_fields' => array_values(array_unique($invoiceFields)),
+        'akumulasi' => $adaTabelAkumulasi,   // ⬅ TAMBAHAN
     ];
 }
 
@@ -2104,6 +2296,7 @@ function buildFieldsWithDefaultLabels(array $hasilScan): array
         'table_fields' => $buatLabel($hasilScan['table_fields'] ?? []),
         'blocks' => $blocksLabel,
         'invoice_fields' => $hasilScan['invoice_fields'] ?? [],
+        'akumulasi' => $hasilScan['akumulasi'] ?? false,
     ];
 }
 
@@ -2137,6 +2330,7 @@ function mergeFieldsPreservingLabels(array $hasilScanBaru, array $fieldsLamaJson
         'fields' => $gabung($hasilScanBaru['fields'] ?? [], $labelLamaFields),
         'table_fields' => $gabung($hasilScanBaru['table_fields'] ?? [], $labelLamaTabel),
         'invoice_fields' => $hasilScanBaru['invoice_fields'] ?? [],
+        'akumulasi' => $hasilScan['akumulasi'] ?? false,
     ];
 }
 
@@ -2222,7 +2416,7 @@ function muatFieldsTemplateLive(PDO $pdo, array $kodeRow): array
             $hasilScanBaru = scanPlaceholdersFromDocx($fullPath);
             $digabung = mergeFieldsPreservingLabels($hasilScanBaru, $decodedLama);
             $digabung['blocks'] = buildFieldsWithDefaultLabels($hasilScanBaru)['blocks'];
-
+            $digabung['akumulasi'] = $hasilScanBaru['akumulasi'] ?? false;
             // ⬅ BARU: sekalian scan auto_fields (total/ppn/pph_23/no_surat dsb)
             // di sini juga, selagi file .docx-nya masih ada di tangan. Sebelumnya
             // ini di-scan TERPISAH lagi setiap kali halaman Buat Surat dibuka

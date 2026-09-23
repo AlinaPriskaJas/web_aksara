@@ -1,5 +1,5 @@
 <?php
-// direksi/surat.php — Modul Persuratan untuk Direksi (tab Surat & Buat Surat saja)
+// direksi/surat.php — Modul Persuratan untuk Ahli K3 (tab Surat & Buat Surat saja)
 require_once "../config/koneksi.php";
 
 if (session_status() === PHP_SESSION_NONE)
@@ -664,6 +664,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
                 $itemsMentah[] = $barisMentah;
             }
 
+            $rowsAkumulasi = [];
+            foreach ($_POST['akumulasi'] ?? [] as $baris) {
+                $baris = array_map('trim', (array) $baris);
+                if (($baris['nama_pemohon'] ?? '') === '' && ($baris['jumlah'] ?? '') === '')
+                    continue;
+                $rowsAkumulasi[] = $baris;
+            }
+
             $blocksData = [];
             foreach ($_POST['blok'] ?? [] as $namaBlok => $barisList) {
                 foreach ((array) $barisList as $baris) {
@@ -708,10 +716,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
             ];
 
 
-            $fileHasilRelatif = arp_dengan_template_sementara($kode['drive_file_id'], function ($pathTemplateLokal) use ($dataForm, $items, $nomorSurat, $blocksData, $kode, $ringkasanDisertakan) {
-                return generateSuratDocx($pathTemplateLokal, $dataForm, $items, $nomorSurat, $blocksData, $kode['nama'], null, $ringkasanDisertakan);
+            $fileHasilRelatif = arp_dengan_template_sementara($kode['drive_file_id'], function ($pathTemplateLokal) use ($dataForm, $items, $nomorSurat, $blocksData, $kode, $ringkasanDisertakan, $rowsAkumulasi) {
+                return generateSuratDocx($pathTemplateLokal, $dataForm, $items, $nomorSurat, $blocksData, $kode['nama'], null, $ringkasanDisertakan, 0, $rowsAkumulasi);
             });
-
             // Baca perihal SEBELUM upload, karena file lokal akan dihapus setelahnya.
             $perihalDariWord = extractPerihalFromDocxText(BASE_PATH . '/' . $fileHasilRelatif);
 
@@ -764,6 +771,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
             }
             $isiDataDisimpan['__ringkasan'] = $ringkasanDisertakan;
 
+            if (!empty($rowsAkumulasi)) {
+                $isiDataDisimpan['__akumulasi'] = $rowsAkumulasi;
+            }
 
             $insert = $pdo->prepare("INSERT INTO Surat
                 (nomor_agenda, nomor, kode_id, template_id, perihal, status, arah, tujuan, dibuat_oleh, tgl_dibuat, tanggal_diterima, file_hasil, drive_file_id, drive_link, isi_data)
@@ -1194,6 +1204,7 @@ if ($active_tab === 'tabPanelBuatSurat' && $kodeIdTerpilih && $templateIdTerpili
             $fields_tabel = $hasilFields['table_fields'];
             $fields_blok = $hasilFields['blocks'];
             $fields_invoice = $hasilFields['invoice_fields'] ?? [];
+            $fields_akumulasi = $hasilFields['akumulasi'] ?? false;
 
             if (defined('FIELD_OTOMATIS_SISTEM')) {
                 $fields_dinamis = array_values(array_filter(
@@ -1279,6 +1290,22 @@ foreach ($fields_blok as $namaBlok => $daftarFieldBlok) {
         }
         $nilai_blok[$namaBlok] = [$barisKosongBlok];
     }
+}
+
+$adaTabelAkumulasi = $hasilFields['akumulasi'] ?? false;
+$nilaiAkumulasi = $_POST['akumulasi'] ?? [];
+if (empty($nilaiAkumulasi) && $adaTabelAkumulasi) {
+    $nilaiAkumulasi = [
+        [
+            'nama_pemohon' => '',
+            'tanggal' => date('Y-m-d'),
+            'nama_perusahaan' => '',
+            'lokasi' => '',
+            'tujuan' => '',
+            'item' => '',
+            'jumlah' => '',
+        ]
+    ];
 }
 
 $preview_nomor = '(otomatis saat disimpan)';
@@ -1380,11 +1407,13 @@ include "../includes/topbar.php";
     <div class="arp-tab-group">
         <div class="arp-tab-nav">
             <button type="button" class="arp-tab-btn<?= $active_tab === 'tabPanelSuratKeluar' ? ' active' : '' ?>"
-                data-tab-target="tabPanelSuratKeluar" data-tab-key="surat" onclick="switchTab('tabPanelSuratKeluar', this)">
+                data-tab-target="tabPanelSuratKeluar" data-tab-key="surat"
+                onclick="switchTab('tabPanelSuratKeluar', this)">
                 <i class="bi bi-send-check me-1"></i> Surat Keluar
             </button>
             <button type="button" class="arp-tab-btn<?= $active_tab === 'tabPanelSuratMasuk' ? ' active' : '' ?>"
-                data-tab-target="tabPanelSuratMasuk" data-tab-key="masuk" onclick="switchTab('tabPanelSuratMasuk', this)">
+                data-tab-target="tabPanelSuratMasuk" data-tab-key="masuk"
+                onclick="switchTab('tabPanelSuratMasuk', this)">
                 <i class="bi bi-inbox me-1"></i> Surat Masuk
             </button>
             <button type="button" class="arp-tab-btn<?= $active_tab === 'tabPanelBuatSurat' ? ' active' : '' ?>"
@@ -2116,7 +2145,7 @@ include "../includes/topbar.php";
                                 </script>
                             <?php endif; ?>
 
-                            <?php if (empty($fields_dinamis) && empty($fields_tabel) && empty($fields_blok) && empty($fields_invoice)): ?>
+                            <?php if (empty($fields_dinamis) && empty($fields_tabel) && empty($fields_blok) && empty($fields_invoice) && empty($fields_akumulasi)): ?>
                                 <div class="alert alert-danger-custom text-xs">
                                     <i class="bi bi-exclamation-triangle-fill"></i>
                                     <div>Template ini belum punya placeholder <code>${...}</code> yang terbaca. Hubungi
@@ -2561,6 +2590,127 @@ include "../includes/topbar.php";
                                 </script>
                             <?php endif; ?>
 
+                            <?php if ($adaTabelAkumulasi): ?>
+                                <div class="mt-3">
+                                    <label class="form-label fw-semibold mb-2">Rincian Akumulasi (dikelompokkan per
+                                        Nama)</label>
+                                    <div class="table-responsive-custom">
+                                        <table class="table-custom" id="tabel-akumulasi">
+                                            <thead>
+                                                <tr>
+                                                    <th style="width:36px;">No</th>
+                                                    <th>Nama Pemohon</th>
+                                                    <th>Tanggal</th>
+                                                    <th>Nama Perusahaan</th>
+                                                    <th>Lokasi</th>
+                                                    <th>Tujuan</th>
+                                                    <th>Item</th>
+                                                    <th>Jumlah</th>
+                                                    <th style="width:36px;"></th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="tabel-akumulasi-body">
+                                                <?php foreach ($nilaiAkumulasi as $i => $b): ?>
+                                                    <tr class="baris-akumulasi" data-baris-index="<?= (int) $i ?>">
+                                                        <td class="nomor-baris"><?= $i + 1 ?></td>
+                                                        <td><input type="text" name="akumulasi[<?= $i ?>][nama_pemohon]"
+                                                                class="form-control-custom" list="daftar-nama-pemohon"
+                                                                value="<?= e($b['nama_pemohon'] ?? '') ?>"></td>
+                                                        <td><input type="date" name="akumulasi[<?= $i ?>][tanggal]"
+                                                                class="form-control-custom"
+                                                                value="<?= e($b['tanggal'] ?? date('Y-m-d')) ?>"></td>
+                                                        <td><input type="text" name="akumulasi[<?= $i ?>][nama_perusahaan]"
+                                                                class="form-control-custom"
+                                                                value="<?= e($b['nama_perusahaan'] ?? '') ?>"></td>
+                                                        <td><input type="text" name="akumulasi[<?= $i ?>][lokasi]"
+                                                                class="form-control-custom" value="<?= e($b['lokasi'] ?? '') ?>">
+                                                        </td>
+                                                        <td><input type="text" name="akumulasi[<?= $i ?>][tujuan]"
+                                                                class="form-control-custom" value="<?= e($b['tujuan'] ?? '') ?>">
+                                                        </td>
+                                                        <td><input type="text" name="akumulasi[<?= $i ?>][item]"
+                                                                class="form-control-custom" value="<?= e($b['item'] ?? '') ?>"></td>
+                                                        <td><input type="text" name="akumulasi[<?= $i ?>][jumlah]"
+                                                                class="form-control-custom" data-tipe="harga"
+                                                                value="<?= e($b['jumlah'] ?? '') ?>"></td>
+                                                        <td><button type="button"
+                                                                class="btn btn-outline-danger btn-sm tombol-hapus-baris-akumulasi"><i
+                                                                    class="bi bi-x-lg"></i></button></td>
+                                                    </tr>
+                                                <?php endforeach; ?>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <button type="button" id="tombol-tambah-akumulasi"
+                                        class="btn btn-outline-primary btn-sm mt-2">
+                                        <i class="bi bi-plus-lg"></i> Tambah Baris
+                                    </button>
+                                    <p class="text-secondary text-xs mt-2 mb-0">
+                                        Baris dengan <b>Nama Pemohon</b> yang sama akan otomatis dikelompokkan jadi satu blok di
+                                        dokumen,
+                                        lengkap dengan TOTAL dan terbilang per orang.
+                                    </p>
+                                </div>
+
+                                <!-- Pratinjau langsung dikelompokkan (mirror tampilan gambar) -->
+                                <div class="mt-3" id="preview-akumulasi-grup"></div>
+
+                                <script>
+                                    (function () {
+                                        const tbody = document.getElementById('tabel-akumulasi-body');
+                                        const previewBox = document.getElementById('preview-akumulasi-grup');
+                                        const tombolTambah = document.getElementById('tombol-tambah-akumulasi');
+                                        if (!tbody) return;
+                                        let idx = tbody.querySelectorAll('tr').length;
+
+                                        function parseAngkaJs(t) { t = String(t || '').replace(/[^\d]/g, ''); return t === '' ? 0 : parseInt(t, 10); }
+                                        function formatRupiahJs(n) { return 'Rp. ' + Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.'); }
+                                        // terbilang sederhana di sisi klien hanya untuk preview kasar (server tetap sumber kebenaran)
+
+                                        function renderPreview() {
+                                            const grup = {};
+                                            tbody.querySelectorAll('tr.baris-akumulasi').forEach(function (tr) {
+                                                const nama = tr.querySelector('[name*="[nama_pemohon]"]').value.trim() || '-';
+                                                const jumlah = parseAngkaJs(tr.querySelector('[name*="[jumlah]"]').value);
+                                                (grup[nama] = grup[nama] || []).push(jumlah);
+                                            });
+                                            let html = '';
+                                            Object.keys(grup).forEach(function (nama) {
+                                                const total = grup[nama].reduce((a, b) => a + b, 0);
+                                                html += '<div class="ringkasan-total-row"><b>' + nama + '</b><span style="font-family:monospace;">' + formatRupiahJs(total) + '</span></div>';
+                                            });
+                                            previewBox.innerHTML = html;
+                                        }
+
+                                        function renumber() {
+                                            tbody.querySelectorAll('tr.baris-akumulasi').forEach(function (tr, i) {
+                                                tr.querySelector('.nomor-baris').textContent = i + 1;
+                                            });
+                                        }
+
+                                        tbody.addEventListener('input', renderPreview);
+                                        tombolTambah.addEventListener('click', function () {
+                                            const tr = tbody.querySelector('tr.baris-akumulasi').cloneNode(true);
+                                            tr.querySelectorAll('input').forEach(function (inp) {
+                                                inp.value = '';
+                                                inp.name = inp.name.replace(/\[\d+\]/, '[' + idx + ']');
+                                            });
+                                            tbody.appendChild(tr);
+                                            idx++;
+                                            renumber();
+                                            renderPreview();
+                                        });
+                                        tbody.addEventListener('click', function (e) {
+                                            if (e.target.closest('.tombol-hapus-baris-akumulasi')) {
+                                                if (tbody.querySelectorAll('tr').length > 1) e.target.closest('tr').remove();
+                                                renumber(); renderPreview();
+                                            }
+                                        });
+                                        renderPreview();
+                                    })();
+                                </script>
+                            <?php endif; ?>
+
                             <div class="d-flex gap-2 mt-4">
                                 <button type="submit" name="preview_only" value="1" class="btn-secondary-custom">
                                     <i class="bi bi-arrow-repeat"></i> Update Preview
@@ -2990,6 +3140,76 @@ include "../includes/topbar.php";
                                     })();
                                 </script>
                             <?php endif; ?>
+                        <?php endif; ?>
+
+                        <?php if (!empty($adaTabelAkumulasi) && !empty($nilaiAkumulasi)): ?>
+                            <?php
+                            $grupAkumulasiPreview = [];
+                            foreach ($nilaiAkumulasi as $b) {
+                                $namaP = trim((string) ($b['nama_pemohon'] ?? '')) ?: '-';
+                                $grupAkumulasiPreview[$namaP][] = $b;
+                            }
+                            $grandTotalAkumulasiPreview = 0.0;
+                            ?>
+                            <span class="text-xs fw-bold text-secondary text-uppercase d-block mb-2 mt-3">Rincian Akumulasi
+                                (dikelompokkan per Nama)</span>
+                            <div class="table-responsive-custom mb-3">
+                                <table class="table-custom">
+                                    <thead>
+                                        <tr>
+                                            <th style="width:36px;">No</th>
+                                            <th>Tanggal</th>
+                                            <th>Nama Perusahaan</th>
+                                            <th>Lokasi</th>
+                                            <th>Tujuan</th>
+                                            <th>Item</th>
+                                            <th style="text-align:right;">Jumlah</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($grupAkumulasiPreview as $namaPemohon => $barisGrup): ?>
+                                            <?php $subtotalPreview = 0.0; ?>
+                                            <tr style="background:#eef2f7;">
+                                                <td colspan="7"><strong><?= e($namaPemohon) ?></strong></td>
+                                            </tr>
+                                            <?php foreach (array_values($barisGrup) as $i => $b): ?>
+                                                <?php
+                                                $jumlahPreview = parseAngka($b['jumlah'] ?? '0') ?? 0.0;
+                                                $subtotalPreview += $jumlahPreview;
+                                                $tglTampil = '-';
+                                                if (!empty($b['tanggal'])) {
+                                                    $ts = strtotime($b['tanggal']);
+                                                    $tglTampil = $ts ? date('d/m/Y', $ts) : $b['tanggal'];
+                                                }
+                                                ?>
+                                                <tr>
+                                                    <td><?= $i + 1 ?></td>
+                                                    <td><?= e($tglTampil) ?></td>
+                                                    <td><?= e($b['nama_perusahaan'] ?? '-') ?></td>
+                                                    <td><?= e($b['lokasi'] ?? '-') ?></td>
+                                                    <td><?= e($b['tujuan'] ?? '-') ?></td>
+                                                    <td><?= e($b['item'] ?? '-') ?></td>
+                                                    <td style="text-align:right; font-family:monospace;">
+                                                        <?= e(formatRupiah($jumlahPreview)) ?>
+                                                    </td>
+                                                </tr>
+                                            <?php endforeach; ?>
+                                            <tr style="background:#f8fafc;">
+                                                <td colspan="6" style="text-align:right;"><strong>TOTAL</strong></td>
+                                                <td style="text-align:right; font-family:monospace;">
+                                                    <strong><?= e(formatRupiah($subtotalPreview)) ?></strong>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td colspan="7" class="text-secondary fst-italic" style="font-size:0.8rem;">
+                                                    "<?= e(terbilang($subtotalPreview)) ?> Rupiah"
+                                                </td>
+                                            </tr>
+                                            <?php $grandTotalAkumulasiPreview += $subtotalPreview; ?>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
                         <?php endif; ?>
                     <?php endif; ?>
                 </section>
