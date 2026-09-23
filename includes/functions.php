@@ -542,6 +542,14 @@ const AKUM_FIELD_TERBILANG = 'akum_terbilang';
 const AKUM_FIELD_GRAND_TOTAL = 'akumulasi_grand_total';
 const AKUM_FIELD_GRAND_TERBILANG = 'akumulasi_grand_terbilang';
 
+// Tabel ringkasan DATAR (tanpa dikelompokkan per pemohon) di bagian
+// "A. AKUMULASI" pada template Word. Prefix-nya SENGAJA beda dari tabel B
+// (akum_...) supaya pencarian posisi baris di XML tidak tertukar -- kedua
+// tabel sama-sama punya kolom "no", "tanggal", dst dengan nama field yang
+// persis sama kalau tidak dibedakan begini.
+const PREFIX_AKUMULASI_FLAT = 'akumulasi_';
+const ANCHOR_AKUMULASI_FLAT = 'akumulasi_no';
+
 // Kolom yang boleh diisi manual lewat form (selain nama_pemohon & jumlah,
 // yang punya perlakuan khusus).
 const AKUM_KOLOM_MANUAL = ['tanggal', 'nama_perusahaan', 'lokasi', 'tujuan', 'item'];
@@ -621,6 +629,48 @@ function arp_cari_baris_placeholder(string $xml, string $marker): ?array
     return [$mulai, $akhirTag + strlen('</w:tr>')];
 }
 
+// true  = baris diurutkan dulu berdasarkan tanggal (terlama -> terbaru, urutan input
+//         dipertahankan untuk tanggal yang sama) supaya tanggal yang sama pasti
+//         berdekatan dan bisa digabung.
+// false = urutan sesuai input; hanya tanggal sama yang BERURUTAN yang digabung.
+const AKUM_FLAT_URUTKAN_TANGGAL = true;
+
+/**
+ * Jadikan sel (<w:tc>) yang memuat ${$marker} bagian dari merge vertikal.
+ * $mode: 'restart' = sel pertama grup (isi tetap), 'continue' = sel lanjutan (isi dikosongkan).
+ */
+function arp_atur_vmerge_sel_placeholder(string $xmlBaris, string $marker, string $mode): string
+{
+    $target = '${' . $marker . '}';
+
+    return preg_replace_callback('/<w:tc\b[^>]*>.*?<\/w:tc>/s', function ($m) use ($target, $mode) {
+        $tc = $m[0];
+        if (strpos($tc, $target) === false) {
+            return $tc;
+        }
+
+        $vm = $mode === 'restart' ? '<w:vMerge w:val="restart"/>' : '<w:vMerge/>';
+
+        if (preg_match('/<w:tcPr>(.*?)<\/w:tcPr>/s', $tc, $mp)) {
+            $inner = preg_replace('/<w:vMerge\b[^>]*\/>/', '', $mp[1]);
+            // vMerge harus setelah tcW / gridSpan / hMerge agar urutan skema Word benar
+            if (preg_match('/^((?:\s*<w:cnfStyle\b[^>]*\/>)?(?:\s*<w:tcW\b[^>]*\/>)?(?:\s*<w:gridSpan\b[^>]*\/>)?(?:\s*<w:hMerge\b[^>]*\/>)?)/', $inner, $pre)) {
+                $innerBaru = $pre[1] . $vm . substr($inner, strlen($pre[1]));
+            } else {
+                $innerBaru = $vm . $inner;
+            }
+            $tc = str_replace($mp[0], '<w:tcPr>' . $innerBaru . '</w:tcPr>', $tc);
+        } else {
+            $tc = preg_replace('/^(<w:tc\b[^>]*>)/', '$1<w:tcPr>' . $vm . '</w:tcPr>', $tc, 1);
+        }
+
+        if ($mode === 'continue') {
+            $tc = str_replace($target, '', $tc); // kosongkan isi sel lanjutan
+        }
+        return $tc;
+    }, $xmlBaris);
+}
+
 /**
  * Tempel tabel akumulasi ke file .docx HASIL GENERATE (dipanggil setelah
  * $processor->saveAs()). Kalau template tidak punya ke-4 placeholder yang
@@ -630,10 +680,6 @@ function arp_cari_baris_placeholder(string $xml, string $marker): ?array
 function arp_tempel_tabel_akumulasi(string $docxPath, array $rowsMentah): void
 {
     if (empty($rowsMentah)) {
-        return;
-    }
-    $kelompok = arp_kelompokkan_akumulasi($rowsMentah);
-    if (empty($kelompok)) {
         return;
     }
 
@@ -647,26 +693,6 @@ function arp_tempel_tabel_akumulasi(string $docxPath, array $rowsMentah): void
         return;
     }
 
-    $posPemohon = arp_cari_baris_placeholder($xml, AKUM_FIELD_PEMOHON);
-    $posData = arp_cari_baris_placeholder($xml, ANCHOR_AKUMULASI);
-    $posTotal = arp_cari_baris_placeholder($xml, AKUM_FIELD_TOTAL);
-    $posTerbilang = arp_cari_baris_placeholder($xml, AKUM_FIELD_TERBILANG);
-
-    if (!$posPemohon || !$posData || !$posTotal || !$posTerbilang) {
-        $zip->close();
-        return;
-    }
-
-    $satuBarisTotalTerbilang = ($posTotal[0] === $posTerbilang[0] && $posTotal[1] === $posTerbilang[1]);
-
-    $mulaiBlok = $posPemohon[0];
-    $akhirBlok = $posTerbilang[1];
-
-    $xmlHeader = substr($xml, $posPemohon[0], $posPemohon[1] - $posPemohon[0]);
-    $xmlDataTpl = substr($xml, $posData[0], $posData[1] - $posData[0]);
-    $xmlTotal = substr($xml, $posTotal[0], $posTotal[1] - $posTotal[0]);
-    $xmlTerbilang = substr($xml, $posTerbilang[0], $posTerbilang[1] - $posTerbilang[0]);
-
     $isi = function (string $xmlBaris, array $nilai): string {
         foreach ($nilai as $k => $v) {
             $xmlBaris = str_replace('${' . $k . '}', htmlspecialchars((string) $v, ENT_QUOTES), $xmlBaris);
@@ -674,33 +700,141 @@ function arp_tempel_tabel_akumulasi(string $docxPath, array $rowsMentah): void
         return $xmlBaris;
     };
 
-    $hasilSemuaGrup = '';
-    $grandTotal = 0.0;
-    foreach ($kelompok as $grup) {
-        $hasilSemuaGrup .= $isi($xmlHeader, [AKUM_FIELD_PEMOHON => $grup['nama_pemohon']]);
-        foreach ($grup['items'] as $baris) {
-            $hasilSemuaGrup .= $isi($xmlDataTpl, $baris);
+    // ==========================================
+    // BAGIAN A: TABEL RINGKASAN DATAR (${akumulasi_...}) -- SATU baris per
+    // item, TIDAK dikelompokkan per pemohon (beda dari Bagian B). Nomor urut
+    // jalan terus 1,2,3,... untuk SEMUA baris gabungan semua pemohon.
+    // ==========================================
+    $posDataFlat = arp_cari_baris_placeholder($xml, ANCHOR_AKUMULASI_FLAT);
+    if ($posDataFlat) {
+        $xmlDataFlatTpl = substr($xml, $posDataFlat[0], $posDataFlat[1] - $posDataFlat[0]);
+
+        // Urutkan (stabil) berdasarkan tanggal supaya tanggal yang sama berdekatan
+        $barisFlat = array_values($rowsMentah);
+        if (AKUM_FLAT_URUTKAN_TANGGAL) {
+            $dekorasi = [];
+            foreach ($barisFlat as $idx => $b) {
+                $ts = strtotime(trim((string) ($b['tanggal'] ?? '')));
+                $dekorasi[] = [$ts ?: PHP_INT_MAX, $idx, $b];
+            }
+            usort($dekorasi, fn($x, $y) => [$x[0], $x[1]] <=> [$y[0], $y[1]]);
+            $barisFlat = array_column($dekorasi, 2);
         }
 
-        if ($satuBarisTotalTerbilang) {
-            $hasilSemuaGrup .= $isi($xmlTotal, [
-                AKUM_FIELD_TOTAL => $grup['subtotal_format'],
-                AKUM_FIELD_TERBILANG => $grup['terbilang'],
-            ]);
-        } else {
-            $hasilSemuaGrup .= $isi($xmlTotal, [AKUM_FIELD_TOTAL => $grup['subtotal_format']]);
-            $hasilSemuaGrup .= $isi($xmlTerbilang, [AKUM_FIELD_TERBILANG => $grup['terbilang']]);
+        // Siapkan data tiap baris
+        $dataFlat = [];
+        foreach ($barisFlat as $baris) {
+            $tanggalTampil = trim((string) ($baris['tanggal'] ?? ''));
+            if ($tanggalTampil !== '') {
+                $tsTanggal = strtotime($tanggalTampil);
+                $tanggalTampil = $tsTanggal ? date('d/m/Y', $tsTanggal) : $tanggalTampil;
+            } else {
+                $tanggalTampil = '-';
+            }
+
+            $dataFlat[] = [
+                'akumulasi_tanggal' => $tanggalTampil,
+                'akumulasi_nama_perusahaan' => trim((string) ($baris['nama_perusahaan'] ?? '')) ?: '-',
+                'akumulasi_lokasi' => trim((string) ($baris['lokasi'] ?? '')) ?: '-',
+                'akumulasi_tujuan' => trim((string) ($baris['tujuan'] ?? '')) ?: '-',
+                'akumulasi_item' => trim((string) ($baris['item'] ?? '')) ?: '-',
+                'akumulasi_jumlah' => formatRupiah(parseAngka($baris['jumlah'] ?? '0') ?? 0.0),
+            ];
         }
 
-        $grandTotal += $grup['subtotal'];
+        $hasilBarisFlat = '';
+        $noGrup = 0;
+        $jumlahFlat = count($dataFlat);
+
+        for ($i = 0; $i < $jumlahFlat; $i++) {
+            $tgl = $dataFlat[$i]['akumulasi_tanggal'];
+            $samaDenganSebelumnya = $i > 0 && $tgl !== '-' && $tgl === $dataFlat[$i - 1]['akumulasi_tanggal'];
+            $samaDenganBerikutnya = $i < $jumlahFlat - 1 && $tgl !== '-' && $tgl === $dataFlat[$i + 1]['akumulasi_tanggal'];
+
+            if (!$samaDenganSebelumnya) {
+                $noGrup++; // nomor naik hanya saat masuk grup tanggal baru
+            }
+
+            $xmlBaris = $xmlDataFlatTpl;
+
+            if ($samaDenganSebelumnya) {
+                // Baris lanjutan grup: sel No & Tanggal digabung ke atas, isinya kosong
+                $xmlBaris = arp_atur_vmerge_sel_placeholder($xmlBaris, 'akumulasi_no', 'continue');
+                $xmlBaris = arp_atur_vmerge_sel_placeholder($xmlBaris, 'akumulasi_tanggal', 'continue');
+                $nilai = $dataFlat[$i];
+            } else {
+                if ($samaDenganBerikutnya) {
+                    // Baris pertama grup dengan anggota lebih dari satu
+                    $xmlBaris = arp_atur_vmerge_sel_placeholder($xmlBaris, 'akumulasi_no', 'restart');
+                    $xmlBaris = arp_atur_vmerge_sel_placeholder($xmlBaris, 'akumulasi_tanggal', 'restart');
+                }
+                $nilai = array_merge(['akumulasi_no' => (string) $noGrup], $dataFlat[$i]);
+            }
+
+            $hasilBarisFlat .= $isi($xmlBaris, $nilai);
+        }
+
+        $xml = substr($xml, 0, $posDataFlat[0]) . $hasilBarisFlat . substr($xml, $posDataFlat[1]);
     }
 
-    $xmlBaru = substr($xml, 0, $mulaiBlok) . $hasilSemuaGrup . substr($xml, $akhirBlok);
+    // ==========================================
+    // BAGIAN B: TABEL RINCIAN DIKELOMPOKKAN PER PEMOHON (${akum_...}) --
+    // perilaku LAMA, tidak berubah sama sekali: tiap pemohon tetap punya
+    // TOTAL & terbilang sendiri-sendiri.
+    // ==========================================
+    $kelompok = arp_kelompokkan_akumulasi($rowsMentah);
+    if (!empty($kelompok)) {
+        $posPemohon = arp_cari_baris_placeholder($xml, AKUM_FIELD_PEMOHON);
+        $posData = arp_cari_baris_placeholder($xml, ANCHOR_AKUMULASI);
+        $posTotal = arp_cari_baris_placeholder($xml, AKUM_FIELD_TOTAL);
+        $posTerbilang = arp_cari_baris_placeholder($xml, AKUM_FIELD_TERBILANG);
 
-    $xmlBaru = str_replace('${' . AKUM_FIELD_GRAND_TOTAL . '}', htmlspecialchars(formatRupiah($grandTotal), ENT_QUOTES), $xmlBaru);
-    $xmlBaru = str_replace('${' . AKUM_FIELD_GRAND_TERBILANG . '}', htmlspecialchars(terbilang($grandTotal) . ' Rupiah', ENT_QUOTES), $xmlBaru);
+        if ($posPemohon && $posData && $posTotal && $posTerbilang) {
+            $satuBarisTotalTerbilang = ($posTotal[0] === $posTerbilang[0] && $posTotal[1] === $posTerbilang[1]);
 
-    $zip->addFromString('word/document.xml', $xmlBaru);
+            $mulaiBlok = $posPemohon[0];
+            $akhirBlok = $posTerbilang[1];
+
+            $xmlHeader = substr($xml, $posPemohon[0], $posPemohon[1] - $posPemohon[0]);
+            $xmlDataTpl = substr($xml, $posData[0], $posData[1] - $posData[0]);
+            $xmlTotal = substr($xml, $posTotal[0], $posTotal[1] - $posTotal[0]);
+            $xmlTerbilang = substr($xml, $posTerbilang[0], $posTerbilang[1] - $posTerbilang[0]);
+
+            $hasilSemuaGrup = '';
+            foreach ($kelompok as $grup) {
+                $hasilSemuaGrup .= $isi($xmlHeader, [AKUM_FIELD_PEMOHON => $grup['nama_pemohon']]);
+                foreach ($grup['items'] as $baris) {
+                    $hasilSemuaGrup .= $isi($xmlDataTpl, $baris);
+                }
+
+                if ($satuBarisTotalTerbilang) {
+                    $hasilSemuaGrup .= $isi($xmlTotal, [
+                        AKUM_FIELD_TOTAL => $grup['subtotal_format'],
+                        AKUM_FIELD_TERBILANG => $grup['terbilang'],
+                    ]);
+                } else {
+                    $hasilSemuaGrup .= $isi($xmlTotal, [AKUM_FIELD_TOTAL => $grup['subtotal_format']]);
+                    $hasilSemuaGrup .= $isi($xmlTerbilang, [AKUM_FIELD_TERBILANG => $grup['terbilang']]);
+                }
+            }
+
+            $xml = substr($xml, 0, $mulaiBlok) . $hasilSemuaGrup . substr($xml, $akhirBlok);
+        }
+    }
+
+    // ==========================================
+    // GRAND TOTAL & GRAND TERBILANG -- dihitung dari SEMUA baris ($rowsMentah)
+    // tanpa peduli pemohonnya siapa, dipakai untuk baris TOTAL di Tabel A.
+    // Ini scalar biasa (bukan baris tabel), jadi cukup str_replace langsung.
+    // ==========================================
+    $grandTotal = 0.0;
+    foreach ($rowsMentah as $baris) {
+        $grandTotal += parseAngka($baris['jumlah'] ?? '0') ?? 0.0;
+    }
+    $xml = str_replace('${' . AKUM_FIELD_GRAND_TOTAL . '}', htmlspecialchars(formatRupiah($grandTotal), ENT_QUOTES), $xml);
+    $xml = str_replace('${' . AKUM_FIELD_GRAND_TERBILANG . '}', htmlspecialchars(terbilang($grandTotal) . ' Rupiah', ENT_QUOTES), $xml);
+
+    $zip->addFromString('word/document.xml', $xml);
     $zip->close();
 }
 
@@ -2004,7 +2138,7 @@ function scanPlaceholdersFromDocx(string $fullPath): array
     $semuaField = array_values(array_filter(
         $semuaField,
         fn($f) => stripos($f, PREFIX_AKUMULASI) !== 0
-            && !in_array($f, [AKUM_FIELD_GRAND_TOTAL, AKUM_FIELD_GRAND_TERBILANG], true)
+            && stripos($f, PREFIX_AKUMULASI_FLAT) !== 0   // ⬅ BARU: exclude field akumulasi_... juga
     ));
 
     $fields = [];
