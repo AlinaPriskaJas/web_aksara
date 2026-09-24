@@ -772,3 +772,192 @@ setupDropzone('dzSertifikatGanti', 'inputSertifikatGanti', 'fileListSertifikatGa
     }, 5000);
 
 })();
+
+// ============================================================
+// Freeze Panes untuk tabel (.table-responsive-custom .table-custom)
+// Membekukan N kolom pertama (default 3) saat tabel di-scroll ke samping,
+// seperti "Freeze Panes" di Excel. Styling ada di components.css.
+//
+// Opsi per tabel (atribut di <table> atau di wrapper .table-responsive-custom):
+//   data-freeze-cols="2"  -> bekukan 2 kolom pertama
+//   data-freeze-cols="0"  -> matikan freeze untuk tabel tsb
+//
+// Otomatis dihitung ulang saat ukuran berubah (resize, sidebar toggle,
+// modal dibuka) atau baris tabel ditambah/dihapus lewat JS.
+// Fallback: jika kolom beku memakan > 60% lebar wrapper (mis. layar HP),
+// freeze dimatikan otomatis agar area scroll tetap lega.
+// Catatan: baris dengan colspan pada kolom awal (mis. "Tidak ada data")
+// tidak ikut dibekukan; rowspan tidak didukung.
+// ============================================================
+(function () {
+    var DEFAULT_FREEZE_COLS = 3;
+    var MAX_FROZEN_RATIO = 0.6;
+
+    var queue = [];
+    var rafId = null;
+
+    function getFreezeCount(table, wrap) {
+        var attr = table.getAttribute('data-freeze-cols');
+        if (attr === null) attr = wrap.getAttribute('data-freeze-cols');
+        if (attr === null) return DEFAULT_FREEZE_COLS;
+        var n = parseInt(attr, 10);
+        return isNaN(n) || n < 0 ? 0 : n;
+    }
+
+    function clearFreeze(table, wrap) {
+        table.classList.remove('has-freeze');
+        var frozen = table.querySelectorAll('.is-frozen');
+        for (var i = 0; i < frozen.length; i++) {
+            frozen[i].classList.remove('is-frozen', 'is-frozen-last');
+            frozen[i].style.left = '';
+        }
+        wrap.classList.remove('is-scrolled');
+    }
+
+    // Cari baris acuan (biasanya baris header) yang punya > n kolom
+    // dan n sel pertamanya tidak memakai colspan.
+    function findReferenceRow(table, n) {
+        var rows = table.rows;
+        for (var r = 0; r < rows.length; r++) {
+            var cells = rows[r].cells;
+            if (cells.length <= n) continue;
+            var ok = true;
+            for (var c = 0; c < n; c++) {
+                if (cells[c].colSpan !== 1) { ok = false; break; }
+            }
+            if (ok) return rows[r];
+        }
+        return null;
+    }
+
+    function applyFreeze(table) {
+        var wrap = table.closest('.table-responsive-custom');
+        if (!wrap) return;
+
+        var n = getFreezeCount(table, wrap);
+        if (!n) { clearFreeze(table, wrap); return; }
+
+        var ref = findReferenceRow(table, n);
+        if (!ref) { clearFreeze(table, wrap); return; }
+
+        // Ukur lebar tiap kolom beku -> offset `left` kumulatif
+        var offsets = [];
+        var total = 0;
+        for (var c = 0; c < n; c++) {
+            var w = ref.cells[c].getBoundingClientRect().width;
+            if (!w) { clearFreeze(table, wrap); return; }   // tabel tersembunyi (mis. modal tertutup)
+            offsets.push(total);
+            total += w;
+        }
+
+        // Layar sempit: kolom beku terlalu lebar -> jangan bekukan
+        if (total > wrap.clientWidth * MAX_FROZEN_RATIO) {
+            clearFreeze(table, wrap);
+            return;
+        }
+
+        // Reset dulu supaya idempoten (aman dipanggil berulang)
+        var old = table.querySelectorAll('.is-frozen');
+        for (var i = 0; i < old.length; i++) {
+            old[i].classList.remove('is-frozen', 'is-frozen-last');
+            old[i].style.left = '';
+        }
+
+        table.classList.add('has-freeze');
+
+        var rows = table.rows;
+        for (var r = 0; r < rows.length; r++) {
+            var cells = rows[r].cells;
+            var col = 0;
+            for (var k = 0; k < cells.length && col < n; k++) {
+                var cell = cells[k];
+                var span = cell.colSpan || 1;
+                if (span === 1) {
+                    cell.classList.add('is-frozen');
+                    if (col === n - 1) cell.classList.add('is-frozen-last');
+                    cell.style.left = offsets[col] + 'px';
+                }
+                col += span;
+            }
+        }
+
+        updateScrollState(wrap);
+    }
+
+    function updateScrollState(wrap) {
+        wrap.classList.toggle('is-scrolled', wrap.scrollLeft > 0);
+    }
+
+    function flush() {
+        rafId = null;
+        var list = queue;
+        queue = [];
+        for (var i = 0; i < list.length; i++) applyFreeze(list[i]);
+    }
+
+    // Debounce lewat requestAnimationFrame; hindari antrean ganda per tabel
+    function schedule(table) {
+        if (queue.indexOf(table) === -1) queue.push(table);
+        if (rafId === null) rafId = requestAnimationFrame(flush);
+    }
+
+    var resizeObserver = ('ResizeObserver' in window)
+        ? new ResizeObserver(function (entries) {
+            entries.forEach(function (entry) {
+                var t = entry.target;
+                if (t.classList.contains('table-custom')) {
+                    schedule(t);
+                } else {
+                    var inner = t.querySelectorAll('.table-custom');
+                    for (var i = 0; i < inner.length; i++) schedule(inner[i]);
+                }
+            });
+        })
+        : null;
+
+    var mutationObserver = ('MutationObserver' in window)
+        ? new MutationObserver(function (mutations) {
+            mutations.forEach(function (m) {
+                var el = m.target.nodeType === 1 ? m.target : m.target.parentElement;
+                var t = el && el.closest ? el.closest('.table-custom') : null;
+                if (t) schedule(t);
+            });
+        })
+        : null;
+
+    function setup(table) {
+        var wrap = table.closest('.table-responsive-custom');
+        if (!wrap) return;
+
+        if (!wrap.__freezeBound) {
+            wrap.__freezeBound = true;
+            wrap.addEventListener('scroll', function () { updateScrollState(wrap); }, { passive: true });
+            if (resizeObserver) resizeObserver.observe(wrap);
+        }
+        if (!table.__freezeBound) {
+            table.__freezeBound = true;
+            if (resizeObserver) resizeObserver.observe(table);
+            if (mutationObserver) mutationObserver.observe(table, { childList: true, subtree: true });
+        }
+        schedule(table);
+    }
+
+    function initAll() {
+        var tables = document.querySelectorAll('.table-responsive-custom .table-custom');
+        for (var i = 0; i < tables.length; i++) setup(tables[i]);
+    }
+
+    // Bisa dipanggil manual jika ada tabel baru yang disisipkan lewat JS
+    window.refreshFreezePanes = initAll;
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initAll);
+    } else {
+        initAll();
+    }
+    // Font/gambar yang selesai dimuat bisa mengubah lebar kolom
+    window.addEventListener('load', initAll);
+    if (document.fonts && document.fonts.ready) {
+        document.fonts.ready.then(initAll);
+    }
+})();

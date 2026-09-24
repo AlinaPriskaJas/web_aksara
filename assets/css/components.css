@@ -1644,3 +1644,65 @@
 @media (prefers-reduced-motion: reduce) {
   .page-loader-ring-spin { animation: none; }
 }
+
+/* ============================================================
+   FREEZE PANES — kolom awal tabel dibekukan saat scroll ke samping
+   Dipasang otomatis oleh assets/js/script.js pada setiap
+   .table-responsive-custom .table-custom (default: 3 kolom pertama).
+
+   Opsi per tabel (opsional, taruh di <table> atau wrapper-nya):
+     data-freeze-cols="2"   -> bekukan 2 kolom pertama
+     data-freeze-cols="0"   -> matikan freeze untuk tabel ini
+   Class .has-freeze / .is-frozen / .is-frozen-last / .is-scrolled
+   ditambahkan oleh JS — tidak perlu ditulis manual di halaman PHP.
+   ============================================================ */
+
+/* border-collapse:collapse membuat border sel sticky ikut "tertinggal"
+   saat scroll; mode separate + spacing 0 tampilannya identik tapi border
+   ikut menempel pada sel yang dibekukan. */
+.table-custom.has-freeze {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.table-custom.has-freeze .is-frozen {
+  position: sticky;      /* nilai `left` diisi JS sesuai lebar kolom */
+  background-clip: padding-box;
+}
+
+/* Header kolom beku: di atas th sticky biasa (z-index 10) */
+.table-custom.has-freeze th.is-frozen {
+  z-index: 15;
+  background-color: #f1f5f9;
+}
+
+/* Sel isi kolom beku HARUS solid (tidak transparan) supaya isi kolom
+   lain yang bergeser tidak tembus. Warna meniru zebra & hover tabel. */
+.table-custom.has-freeze tbody tr td.is-frozen {
+  z-index: 5;
+  background-color: var(--card-bg, #ffffff);
+}
+
+.table-custom.has-freeze tbody tr:nth-of-type(even) td.is-frozen {
+  background-color: #fbfcfd;
+}
+
+.table-custom.has-freeze tbody tr:hover td.is-frozen {
+  background-color: #f8fafc;
+}
+
+.table-custom.has-freeze tbody tr:nth-of-type(even):hover td.is-frozen {
+  background-color: #f8fafc;
+}
+
+/* Garis pemisah tipis di sisi kanan kolom beku terakhir */
+.table-custom.has-freeze .is-frozen-last {
+  box-shadow: inset -1px 0 0 var(--border-color);
+}
+
+/* Bayangan lembut muncul hanya setelah tabel digeser ke samping */
+.table-responsive-custom.is-scrolled .table-custom.has-freeze .is-frozen-last {
+  box-shadow:
+    inset -1px 0 0 var(--border-color),
+    6px 0 8px -4px rgba(15, 23, 42, 0.15);
+}
