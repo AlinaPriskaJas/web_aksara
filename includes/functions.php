@@ -27,6 +27,9 @@ if (!defined('TEMPLATE_FIELDS_CACHE_TTL')) {
     define('TEMPLATE_FIELDS_CACHE_TTL', 168 * 3600); // detik (168 jam / 1 minggu)
 }
 
+if (!defined('TEMPLATE_FIELDS_CACHE_RETENTION')) {
+    define('TEMPLATE_FIELDS_CACHE_RETENTION', 14 * 24 * 3600); // 2 minggu
+}
 
 /**
  * Ambil salinan lokal SEMENTARA dari template yang tersimpan di Drive,
@@ -2430,7 +2433,7 @@ function buildFieldsWithDefaultLabels(array $hasilScan): array
         'table_fields' => $buatLabel($hasilScan['table_fields'] ?? []),
         'blocks' => $blocksLabel,
         'invoice_fields' => $hasilScan['invoice_fields'] ?? [],
-        'akumulasi' => $hasilScan['akumulasi'] ?? false,
+        'akumulasi' => $hasilScanBaru['akumulasi'] ?? false,
     ];
 }
 
@@ -2576,6 +2579,8 @@ function muatFieldsTemplateLive(PDO $pdo, array $kodeRow): array
             @mkdir(TEMPLATE_FIELDS_CACHE_DIR, 0775, true);
         }
         @file_put_contents($cacheFile, json_encode($digabung, JSON_UNESCAPED_UNICODE));
+
+        arp_bersihkan_cache_fields_kedaluwarsa();
 
         return $digabung;
     } catch (\Throwable $e) {
