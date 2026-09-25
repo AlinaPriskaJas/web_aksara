@@ -4,18 +4,22 @@ require_once "../config/koneksi.php";
 require_once "../includes/drive_helper.php";
 require_once "../includes/functions.php";
 
+
 if (session_status() === PHP_SESSION_NONE)
     session_start();
+
 
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
     header("Location: ../login.php");
     exit;
 }
 
+
 $page_title = "Kelola Reimbursement";
 include "../includes/header.php";
 include "../includes/sidebar.php";
 include "../includes/topbar.php";
+
 
 $current_user_id = $_SESSION['user_id'];
 $success_msg = "";
@@ -24,6 +28,7 @@ $active_tab = 'tabPanelReimburseSaya';
 if (isset($_GET['tab']) && in_array($_GET['tab'], ['tabPanelReimburseSaya', 'tabPanelReimburseKaryawan'], true)) {
     $active_tab = $_GET['tab'];
 }
+
 
 if (isset($_SESSION['flash'])) {
     $flashSurat = $_SESSION['flash'];
@@ -35,7 +40,9 @@ if (isset($_SESSION['flash'])) {
     }
 }
 
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+
 
     if (isset($_POST['action']) && $_POST['action'] === 'submit') {
     $kodeReimburse = arp_muat_template_reimburse($conn);
@@ -57,41 +64,64 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+
         // ===== Aksi: Proses Pengajuan Karyawan (Setujui/Tolak/Bayarkan) =====
     } elseif (isset($_POST['action']) && $_POST['action'] === 'process') {
         $active_tab = 'tabPanelReimburseKaryawan';
         $reimburse_id = $_POST['reimburse_id'];
         $status = $_POST['status']; // Disetujui, Ditolak, Dibayarkan
+        $catatanProses = trim((string) ($_POST['catatan'] ?? ''));
+
 
         try {
             $conn->beginTransaction();
+
 
             $getReim = $conn->prepare("SELECT * FROM Reimburse WHERE id = :id");
             $getReim->execute(['id' => $reimburse_id]);
             $reim = $getReim->fetch();
 
+
             if ($reim) {
                 $approval_id = $reim['approval_id'];
                 if (!$approval_id) {
-                    $appStmt = $conn->prepare("INSERT INTO Approval (jenis_pengajuan, ref_id, requester_id, approver_id, level, status, tgl_aksi) VALUES ('Reimburse', :ref_id, :requester, :approver, 1, :status, NOW())");
+                    $appStmt = $conn->prepare("INSERT INTO Approval (jenis_pengajuan, ref_id, requester_id, approver_id, level, status, catatan, tgl_aksi) VALUES ('Reimburse', :ref_id, :requester, :approver, 1, :status, :catatan, NOW())");
                     $appStatus = ($status === 'Dibayarkan') ? 'Disetujui' : $status;
                     $appStmt->execute([
                         'ref_id' => $reimburse_id,
                         'requester' => $reim['user_id'],
                         'approver' => $current_user_id,
-                        'status' => $appStatus
+                        'status' => $appStatus,
+                        'catatan' => $catatanProses !== '' ? $catatanProses : null
                     ]);
                     $approval_id = $conn->lastInsertId();
                 } else {
                     $appStatus = ($status === 'Dibayarkan') ? 'Disetujui' : $status;
-                    $appStmt = $conn->prepare("UPDATE Approval SET status = :status, approver_id = :approver, tgl_aksi = NOW() WHERE id = :app_id");
-                    $appStmt->execute(['status' => $appStatus, 'approver' => $current_user_id, 'app_id' => $approval_id]);
+                    // Kalau admin isi catatan baru saat Bayarkan, tambahkan (bukan
+                    // menimpa) catatan lama dari waktu Setujui/Tolak sebelumnya,
+                    // supaya riwayatnya tidak hilang.
+                    $getCatatanLama = $conn->prepare("SELECT catatan FROM Approval WHERE id = :id");
+                    $getCatatanLama->execute(['id' => $approval_id]);
+                    $catatanLama = (string) $getCatatanLama->fetchColumn();
+                    $catatanGabung = $catatanLama;
+                    if ($catatanProses !== '') {
+                        $catatanGabung = $catatanLama !== '' ? ($catatanLama . ' | ' . $catatanProses) : $catatanProses;
+                    }
+                    $appStmt = $conn->prepare("UPDATE Approval SET status = :status, approver_id = :approver, catatan = :catatan, tgl_aksi = NOW() WHERE id = :app_id");
+                    $appStmt->execute([
+                        'status' => $appStatus,
+                        'approver' => $current_user_id,
+                        'catatan' => $catatanGabung !== '' ? $catatanGabung : null,
+                        'app_id' => $approval_id
+                    ]);
                 }
+
 
                 $surat_id = $reim['surat_id'];
                 if (($status === 'Disetujui' || $status === 'Dibayarkan') && !$surat_id) {
                     $nomor_surat = "SR-REIMB/" . date('Ymd') . "/" . $reimburse_id;
                     $perihal = "Pencairan Reimburse - " . $reim['keterangan'];
+
 
                     $surStmt = $conn->prepare("INSERT INTO Surat (nomor, kode_id, perihal, status, arah, dibuat_oleh, tgl_dibuat, reimburse_id) VALUES (:nomor, 1, :perihal, 'Draft', 'Keluar', :dibuat_oleh, NOW(), :reimburse_id)");
                     $surStmt->execute([
@@ -103,6 +133,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $surat_id = $conn->lastInsertId();
                 }
 
+
                 $updStmt = $conn->prepare("UPDATE Reimburse SET status = :status, approval_id = :approval_id, surat_id = :surat_id WHERE id = :id");
                 $updStmt->execute([
                     'status' => $status,
@@ -111,8 +142,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'id' => $reimburse_id
                 ]);
 
+
                 $conn->commit();
                 $success_msg = "Reimburse #" . $reimburse_id . " berhasil diperbarui ke status: " . $status;
+
 
                 $conn->commit();
                 catatAudit(
@@ -136,11 +169,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $active_tab = 'tabPanelReimburseSaya';
         $reimburse_id = (int) ($_POST['reimburse_id'] ?? 0);
 
+
         $hasilAjukan = arp_ajukan_reimburse($conn, $reimburse_id, $current_user_id);
         if ($hasilAjukan['ok']) {
             $success_msg = $hasilAjukan['msg'];
         } else {
             $error_msg = $hasilAjukan['msg'];
+        }
+    } elseif (isset($_POST['action']) && $_POST['action'] === 'hapus') {
+        $active_tab = 'tabPanelReimburseSaya';
+        $reimburse_id = (int) ($_POST['reimburse_id'] ?? 0);
+
+        $hasilHapus = arp_hapus_reimburse($conn, $reimburse_id, $current_user_id);
+        if ($hasilHapus['ok']) {
+            $success_msg = $hasilHapus['msg'];
+        } else {
+            $error_msg = $hasilHapus['msg'];
         }
     } elseif (isset($_POST['action']) && $_POST['action'] === 'edit') {
         $active_tab = 'tabPanelReimburseSaya';
@@ -166,13 +210,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+
 // Riwayat reimburse milik sendiri
 $my_reimbursements = [];
 try {
     $stmtMine = $conn->prepare("
-    SELECT r.*, s.nomor AS nomor_surat_pengajuan, s.drive_link AS link_surat_drive, s.file_hasil AS link_surat_file, s.isi_data AS isi_data_surat
+    SELECT r.*, s.nomor AS nomor_surat_pengajuan, s.drive_link AS link_surat_drive, s.file_hasil AS link_surat_file, s.isi_data AS isi_data_surat,
+        a.tgl_aksi AS tgl_approval, a.catatan AS catatan_approval, ap.nama_lengkap AS nama_approver
     FROM Reimburse r
     LEFT JOIN Surat s ON r.surat_id = s.id
+    LEFT JOIN Approval a ON r.approval_id = a.id
+    LEFT JOIN Users ap ON a.approver_id = ap.id
     WHERE r.user_id = :user_id
     ORDER BY r.created_at DESC
 ");
@@ -182,20 +230,24 @@ try {
     $my_reimbursements = [];
 }
 
+
 // Seluruh pengajuan reimburse karyawan
 $reimbursements = $conn->query("
-    SELECT r.*, u.nama_lengkap, u.email 
+    SELECT r.*, u.nama_lengkap, u.email
     FROM Reimburse r
     JOIN Users u ON r.user_id = u.id
     ORDER BY r.created_at DESC
 ")->fetchAll();
 
+
 // Total Financial Recap
 $totalPaid = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 'Dibayarkan'")->fetchColumn() ?: 0;
+
 
 $kodeReimburse = arp_muat_template_reimburse($conn);
 $fields_reimburse = ['fields' => [], 'table_fields' => [], 'blocks' => []];
 $reimburse_template_belum_terhubung = !$kodeReimburse;
+
 
 // ===== Hitung preview nomor urut surat reimburse (sama seperti di surat.php) =====
 $preview_nomor_reimburse = '(otomatis saat disimpan)';
@@ -205,6 +257,7 @@ $tahunReimburse = (int) date('Y');
 if ($kodeReimburse) {
     $bulanRomawiReimburse = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'][date('n') - 1];
     $counterDariKodeSurat = ((int) $kodeReimburse['tahun_counter'] === $tahunReimburse) ? (int) $kodeReimburse['counter'] : 0;
+
 
     $stmtMaxNomorReim = $conn->prepare("SELECT nomor FROM Surat WHERE kode_id = ? AND nomor LIKE ?");
     $stmtMaxNomorReim->execute([$kodeReimburse['id'], '%/' . $kodeReimburse['kode'] . '/ARP/%/' . $tahunReimburse]);
@@ -219,12 +272,15 @@ if ($kodeReimburse) {
     $preview_nomor_reimburse = sprintf('%03d/%s/ARP/%s/%d', $counterPreviewReimburse, $kodeReimburse['kode'], $bulanRomawiReimburse, $tahunReimburse);
 }
 
+
 if ($kodeReimburse) {
     $fields_reimburse = muatFieldsTemplateLive($conn, $kodeReimburse);
 }
 
+
 $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 'Menunggu'")->fetchColumn() ?: 0;
 ?>
+
 
 <main class="main-content">
     <?php if ($success_msg): ?>
@@ -239,6 +295,7 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
             <div><?= htmlspecialchars($error_msg) ?></div>
         </div>
     <?php endif; ?>
+
 
     <!-- Recap Cards -->
     <div class="row g-4 mb-4">
@@ -266,6 +323,7 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
         </div>
     </div>
 
+
     <!-- Tab Navigation -->
     <div class="arp-tab-group">
         <div class="arp-tab-nav">
@@ -278,6 +336,7 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
                 <i class="bi bi-people me-1"></i> Reimburse Karyawan
             </button>
         </div>
+
 
         <div class="row g-4">
             <!-- Card 1: Riwayat Pengajuan Reimbursement Anda -->
@@ -297,6 +356,7 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
                             </button>
                         </div>
                     </div>
+
 
                     <div class="table-responsive-custom">
                         <table class="table-custom" id="tabelReimburseSaya">
@@ -366,8 +426,32 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
                                                     if ($r['status'] === 'Disetujui') $badgeClass = "badge-success";
                                                     if ($r['status'] === 'Dibayarkan') $badgeClass = "badge-success";
                                                     if ($r['status'] === 'Ditolak') $badgeClass = "badge-danger";
+
+                                                    // ===== Info tambahan status: kapan diproses, oleh siapa,
+                                                    // dan catatan (mis. alasan penolakan) kalau ada. Ditaruh di
+                                                    // atribut title supaya muncul saat kursor dihover di badge,
+                                                    // tanpa perlu tambahan modal/JS lain.
+                                                    $infoStatus = '';
+                                                    if ($r['status'] === 'Menunggu') {
+                                                        $infoStatus = 'Menunggu diproses' . (!empty($r['nama_approver']) ? (' oleh ' . $r['nama_approver']) : '') . '.';
+                                                    } else {
+                                                        $infoStatus = 'Status "' . $r['status'] . '"';
+                                                        if (!empty($r['nama_approver'])) {
+                                                            $infoStatus .= ' oleh ' . $r['nama_approver'];
+                                                        }
+                                                        if (!empty($r['tgl_approval'])) {
+                                                            $infoStatus .= ' pada ' . date('d-m-Y H:i', strtotime($r['tgl_approval']));
+                                                        }
+                                                        $infoStatus .= '.';
+                                                        $infoStatus .= ' Catatan: ' . (!empty($r['catatan_approval']) ? $r['catatan_approval'] : 'Tidak ada catatan tambahan.');
+                                                    }
                                                 ?>
-                                                    <span class="<?= $badgeClass ?>"><?= htmlspecialchars($r['status']) ?></span>
+                                                    <span class="<?= $badgeClass ?>" style="cursor:help;"
+                                                        title="<?= htmlspecialchars($infoStatus) ?>"><?= htmlspecialchars($r['status']) ?></span>
+                                                    <?php if ($r['status'] === 'Ditolak' && !empty($r['catatan_approval'])): ?>
+                                                        <i class="bi bi-info-circle text-danger ms-1" style="cursor:help;"
+                                                            title="<?= htmlspecialchars('Alasan: ' . $r['catatan_approval']) ?>"></i>
+                                                    <?php endif; ?>
                                                 <?php endif; ?>
                                             </td>
                                             <?php
@@ -381,16 +465,36 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
                                                 ];
                                             ?>
                                             <td style="text-align:center;">
-                                                <?php if ($r['status'] === 'Draft'): ?>
-                                                    <button type="button" class="btn btn-outline-secondary btn-sm tombol-edit-reimburse"
-                                                        style="height:28px; width:28px; padding:0; border-radius:8px;"
-                                                        title="Edit Reimbursement"
-                                                        data-edit="<?= htmlspecialchars(json_encode($dataEditJs, JSON_UNESCAPED_UNICODE), ENT_QUOTES) ?>">
-                                                        <i class="bi bi-pencil"></i>
-                                                    </button>
-                                                <?php else: ?>
-                                                    <span class="text-muted">-</span>
-                                                <?php endif; ?>
+                                                <div class="table-actions" style="display:inline-flex; gap:4px; justify-content:center;">
+                                                    <?php if (!empty($r['nomor_surat_pengajuan']) && $linkSurat): ?>
+                                                        <a href="<?= htmlspecialchars(hrefBerkas($linkSurat)) ?>" target="_blank"
+                                                            class="btn btn-outline-secondary btn-sm py-1"
+                                                            style="height:28px; width:28px; padding:0; border-radius:8px;"
+                                                            title="Lihat Dokumen">
+                                                            <i class="bi bi-eye"></i>
+                                                        </a>
+                                                    <?php endif; ?>
+                                                    <?php if ($r['status'] === 'Draft'): ?>
+                                                        <button type="button" class="btn btn-outline-secondary btn-sm tombol-edit-reimburse"
+                                                            style="height:28px; width:28px; padding:0; border-radius:8px;"
+                                                            title="Edit Reimbursement"
+                                                            data-edit="<?= htmlspecialchars(json_encode($dataEditJs, JSON_UNESCAPED_UNICODE), ENT_QUOTES) ?>">
+                                                            <i class="bi bi-pencil"></i>
+                                                        </button>
+                                                        <form method="POST" action="reimburse.php" style="display:inline-block;"
+                                                            onsubmit="return confirm('Hapus pengajuan reimburse ini? Tindakan ini tidak bisa dibatalkan.');">
+                                                            <input type="hidden" name="action" value="hapus">
+                                                            <input type="hidden" name="reimburse_id" value="<?= $r['id'] ?>">
+                                                            <button type="submit" class="btn btn-outline-danger btn-sm"
+                                                                style="height:28px; width:28px; padding:0; border-radius:8px;"
+                                                                title="Hapus Reimbursement">
+                                                                <i class="bi bi-trash"></i>
+                                                            </button>
+                                                        </form>
+                                                    <?php elseif (empty($r['nomor_surat_pengajuan']) || !$linkSurat): ?>
+                                                        <span class="text-muted">-</span>
+                                                    <?php endif; ?>
+                                                </div>
                                             </td>
                                         </tr>
                                     <?php endforeach; ?>
@@ -401,6 +505,7 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
                     <div class="pagination-custom" id="pagination-tabelReimburseSaya"></div>
                 </div>
             </div>
+
 
             <!-- Card 2: Daftar Pengajuan Reimburse Karyawan -->
             <div class="col-12 arp-tab-panel" id="tabPanelReimburseKaryawan"
@@ -416,6 +521,7 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
                             </div>
                         </div>
                     </div>
+
 
                     <div class="table-responsive-custom">
                         <table class="table-custom" id="tabelReimburse">
@@ -468,10 +574,13 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
                                                         <button type="submit" class="btn-primary-custom"
                                                             style="height:28px; padding:0 8px; font-size:0.75rem;">Setujui</button>
                                                     </form>
-                                                    <form method="POST" action="reimburse.php" style="display:inline-block;">
+                                                    <form method="POST" action="reimburse.php" style="display:inline-block;"
+                                                        class="form-tolak-reimburse"
+                                                        onsubmit="return isiCatatanTolakReimburse(this);">
                                                         <input type="hidden" name="action" value="process">
                                                         <input type="hidden" name="reimburse_id" value="<?= $r['id'] ?>">
                                                         <input type="hidden" name="status" value="Ditolak">
+                                                        <input type="hidden" name="catatan" class="input-catatan-tolak" value="">
                                                         <button type="submit" class="btn-danger-custom"
                                                             style="height:28px; padding:0 8px; font-size:0.75rem;">Tolak</button>
                                                     </form>
@@ -501,6 +610,7 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
     </div>
 </main>
 
+
 <!-- Modal: Ajukan Reimburse Sendiri -->
 <div id="modalRemburse" class="arp-modal-overlay" onclick="closeModalOutside(event, 'modalRemburse')">
     <div class="arp-modal-box">
@@ -520,6 +630,7 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
             <?php else: ?>
             <form method="POST" action="reimburse.php" id="form-reimburse">
                 <input type="hidden" name="action" value="submit">
+
 
                 <div class="row g-3 mb-2">
                     <div class="col-12">
@@ -541,6 +652,7 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
                     </div>
                 </div>
 
+
                 <div class="row g-3 mb-2">
                     <?php foreach ($fields_reimburse['fields'] as $f): ?>
                         <?php $isTanggal = (bool) preg_match('/tanggal|tgl/i', $f['field']); ?>
@@ -556,6 +668,7 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
                         </div>
                     <?php endforeach; ?>
                 </div>
+
 
                 <label class="form-label fw-semibold fs-7 mb-2">Rincian Pengeluaran *</label>
                 <div class="table-responsive-custom mb-2">
@@ -596,10 +709,12 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
                     <i class="bi bi-plus-lg"></i> Tambah Baris
                 </button>
 
+
                 <div class="ringkasan-total-row total-bayar mb-4">
                     <span>Total Reimburse</span>
                     <span id="preview-total-reimburse" style="font-family:monospace;">Rp. 0</span>
                 </div>
+
 
                 <div class="d-flex gap-2">
                     <button type="button" class="btn-secondary-custom flex-grow-1"
@@ -613,6 +728,7 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
         </div>
     </div>
 </div>
+
 
 <!-- Modal: Edit Reimburse (hanya untuk status Draft) -->
 <div id="modalEditReimburse" class="arp-modal-overlay" onclick="closeModalOutside(event, 'modalEditReimburse')">
@@ -629,6 +745,7 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
             <form method="POST" action="reimburse.php" id="form-edit-reimburse">
                 <input type="hidden" name="action" value="edit">
                 <input type="hidden" name="reimburse_id" id="edit-reimburse-id" value="">
+
 
                 <div class="row g-3 mb-2">
                     <?php foreach ($fields_reimburse['fields'] as $f): ?>
@@ -647,6 +764,7 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
                         </div>
                     <?php endforeach; ?>
                 </div>
+
 
                 <label class="form-label fw-semibold fs-7 mb-2">Rincian Pengeluaran *</label>
                 <div class="table-responsive-custom mb-2">
@@ -668,10 +786,12 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
                     <i class="bi bi-plus-lg"></i> Tambah Baris
                 </button>
 
+
                 <div class="ringkasan-total-row total-bayar mb-4">
                     <span>Total Reimburse</span>
                     <span id="preview-total-edit-reimburse" style="font-family:monospace;">Rp. 0</span>
                 </div>
+
 
                 <div class="d-flex gap-2">
                     <button type="button" class="btn-secondary-custom flex-grow-1"
@@ -686,12 +806,15 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
     </div>
 </div>
 
+
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         initTablePagination('tabelReimburseSaya', 10);
         initTablePagination('tabelReimburse', 10);
     });
 </script>
+
+
 
 
 <script>
@@ -701,8 +824,10 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
     var elTotal = document.getElementById('preview-total-reimburse');
     if (!tbody || !tombolTambah) return;
 
+
     var kolomList = <?= json_encode(array_column($fields_reimburse['table_fields'], 'field')) ?>;
     var idx = 1;
+
 
     function parseAngkaJs(teks) {
         teks = String(teks || '').trim();
@@ -768,6 +893,7 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
     }
     tbody.querySelectorAll('.baris-item-reimburse').forEach(pasangEvent);
 
+
     tombolTambah.addEventListener('click', function () {
         var tr = document.createElement('tr');
         tr.className = 'baris-item-reimburse';
@@ -788,6 +914,7 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
 })();
 </script>
 
+
 <script>
 (function () {
     var tbodyEdit = document.getElementById('tabel-item-edit-reimburse-body');
@@ -795,8 +922,10 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
     var elTotalEdit = document.getElementById('preview-total-edit-reimburse');
     if (!tbodyEdit || !tombolTambahEdit) return;
 
+
     var kolomListEdit = <?= json_encode(array_column($fields_reimburse['table_fields'], 'field')) ?>;
     var idxEdit = 0;
+
 
     function parseAngkaJs(teks) {
         teks = String(teks || '').trim();
@@ -861,6 +990,7 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
         });
     }
 
+
     function tambahBarisEdit(nilaiAwal) {
         nilaiAwal = nilaiAwal || {};
         var tr = document.createElement('tr');
@@ -886,18 +1016,22 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
         idxEdit++;
     }
 
+
     tombolTambahEdit.addEventListener('click', function () {
         tambahBarisEdit({});
         hitungTotalEdit();
     });
 
+
     window.bukaModalEditReimburse = function (data) {
         document.getElementById('edit-reimburse-id').value = data.reimburse_id;
+
 
         document.querySelectorAll('.edit-dinamis-input').forEach(function (inp) {
             var field = inp.getAttribute('data-field');
             inp.value = (data.dinamis && data.dinamis[field] !== undefined) ? data.dinamis[field] : '';
         });
+
 
         tbodyEdit.innerHTML = '';
         idxEdit = 0;
@@ -905,8 +1039,10 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
         items.forEach(function (item) { tambahBarisEdit(item); });
         hitungTotalEdit();
 
+
         openModal('modalEditReimburse');
     };
+
 
     document.querySelectorAll('.tombol-edit-reimburse').forEach(function (btn) {
         btn.addEventListener('click', function () {
@@ -918,11 +1054,24 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
             }
         });
     });
+
+    // Minta alasan singkat sebelum menolak reimburse, supaya karyawan yang
+    // bersangkutan tahu alasannya (ditampilkan di info status miliknya).
+    window.isiCatatanTolakReimburse = function (form) {
+        var catatan = window.prompt('Alasan penolakan (opsional, akan terlihat oleh karyawan):', '');
+        if (catatan === null) {
+            return false; // admin klik Cancel -> batal kirim
+        }
+        form.querySelector('.input-catatan-tolak').value = catatan.trim();
+        return true;
+    };
 })();
 </script>
+
 
 <?php if ($error_msg): ?>
     <script>document.addEventListener('DOMContentLoaded', () => openModal('modalRemburse'));</script>
 <?php endif; ?>
+
 
 <?php include "../includes/footer.php"; ?>

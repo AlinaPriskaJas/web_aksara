@@ -3529,3 +3529,52 @@ function arp_proses_edit_reimburse(PDO $pdo, array $kodeRow, int $reimburseId, i
     }
 }
 
+/**
+ * HAPUS REIMBURSE (STATUS 'Draft' SAJA): dipakai tombol Hapus di tabel
+ * riwayat reimburse milik sendiri. Sengaja DIBATASI hanya untuk status
+ * 'Draft' -- begitu sudah diajukan ('Menunggu'/'Disetujui'/'Ditolak'/
+ * 'Dibayarkan') data ini sudah jadi jejak approval/keuangan yang tidak
+ * boleh dihapus sembarangan, cukup diedit lewat proses approval biasa.
+ * Hanya pemilik data yang boleh menghapus miliknya sendiri.
+ */
+function arp_hapus_reimburse(PDO $pdo, int $reimburseId, int $userId): array
+{
+    try {
+        $pdo->beginTransaction();
+
+        $stmt = $pdo->prepare("SELECT * FROM Reimburse WHERE id = :id AND user_id = :user_id FOR UPDATE");
+        $stmt->execute(['id' => $reimburseId, 'user_id' => $userId]);
+        $reim = $stmt->fetch();
+
+        if (!$reim) {
+            $pdo->rollBack();
+            return ['ok' => false, 'msg' => 'Data pengajuan reimburse tidak ditemukan.'];
+        }
+        if ($reim['status'] !== 'Draft') {
+            $pdo->rollBack();
+            return ['ok' => false, 'msg' => 'Reimburse yang sudah diajukan tidak bisa dihapus (sudah tercatat di approval).'];
+        }
+
+        $pdo->prepare("DELETE FROM Reimburse WHERE id = :id")->execute(['id' => $reimburseId]);
+
+        $pdo->commit();
+
+        catatAudit(
+            $pdo,
+            'Reimburse',
+            'Hapus',
+            "Menghapus draft reimburse #{$reimburseId} (\"" . ($reim['keterangan'] ?? '') . "\")",
+            $reim,
+            null,
+            $userId
+        );
+
+        return ['ok' => true, 'msg' => 'Pengajuan reimburse berhasil dihapus.'];
+    } catch (\Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log('Gagal menghapus reimburse #' . $reimburseId . ': ' . $e->getMessage());
+        return ['ok' => false, 'msg' => 'Gagal menghapus reimburse: ' . $e->getMessage()];
+    }
+}
