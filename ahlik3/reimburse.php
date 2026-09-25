@@ -4,22 +4,27 @@ require_once "../config/koneksi.php";
 require_once "../includes/drive_helper.php";
 require_once "../includes/functions.php";
 
+
 if (session_status() === PHP_SESSION_NONE)
     session_start();
+
 
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'ahli_k3') {
     header("Location: ../login.php");
     exit;
 }
 
+
 $page_title = "Pengajuan Reimbursement";
 include "../includes/header.php";
 include "../includes/sidebar.php";
 include "../includes/topbar.php";
 
+
 $current_user_id = $_SESSION['user_id'];
 $success_msg = "";
 $error_msg = "";
+
 
 if (isset($_SESSION['flash'])) {
     $flashSurat = $_SESSION['flash'];
@@ -31,7 +36,9 @@ if (isset($_SESSION['flash'])) {
     }
 }
 
+
 $kodeReimburse = arp_muat_template_reimburse($conn);
+
 
 // ===== Preview nomor urut surat reimburse =====
 $preview_nomor_reimburse = '(otomatis saat disimpan)';
@@ -41,6 +48,7 @@ $tahunReimburse = (int) date('Y');
 if ($kodeReimburse) {
     $bulanRomawiReimburse = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'][date('n') - 1];
     $counterDariKodeSurat = ((int) $kodeReimburse['tahun_counter'] === $tahunReimburse) ? (int) $kodeReimburse['counter'] : 0;
+
 
     $stmtMaxNomorReim = $conn->prepare("SELECT nomor FROM Surat WHERE kode_id = ? AND nomor LIKE ?");
     $stmtMaxNomorReim->execute([$kodeReimburse['id'], '%/' . $kodeReimburse['kode'] . '/ARP/%/' . $tahunReimburse]);
@@ -55,9 +63,11 @@ if ($kodeReimburse) {
     $preview_nomor_reimburse = sprintf('%03d/%s/ARP/%s/%d', $counterPreviewReimburse, $kodeReimburse['kode'], $bulanRomawiReimburse, $tahunReimburse);
 }
 
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['action']) && $_POST['action'] === 'ajukan') {
         $reimburse_id = (int) ($_POST['reimburse_id'] ?? 0);
+
 
         $hasilAjukan = arp_ajukan_reimburse($conn, $reimburse_id, $current_user_id);
         if ($hasilAjukan['ok']) {
@@ -86,6 +96,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $error_msg = $hasilEdit['msg'];
             }
         }
+    } elseif (isset($_POST['action']) && $_POST['action'] === 'hapus') {
+        $reimburse_id = (int) ($_POST['reimburse_id'] ?? 0);
+
+        $hasilHapus = arp_hapus_reimburse($conn, $reimburse_id, $current_user_id);
+        if ($hasilHapus['ok']) {
+            $success_msg = $hasilHapus['msg'];
+        } else {
+            $error_msg = $hasilHapus['msg'];
+        }
     } elseif (!$kodeReimburse) {
         $error_msg = "Template Reimbursement belum terhubung ke Jenis Surat. Hubungi Admin untuk menghubungkannya di menu Kelola Jenis Surat.";
     } else {
@@ -104,6 +123,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 }
+
 
 $fields_reimburse = ['fields' => [], 'table_fields' => [], 'blocks' => []];
 $reimburse_template_belum_terhubung = !$kodeReimburse;
@@ -126,6 +146,7 @@ if (empty($fields_reimburse['table_fields'])) {
     ];
 }
 
+
 $reimbursements = [];
 try {
     $stmtReimb = $conn->prepare("
@@ -141,6 +162,7 @@ try {
     $reimbursements = [];
 }
 
+
 // ===== Rekap Dana: total seluruh pengajuan & total yang sudah dibayarkan (khusus milik user ini) =====
 // Catatan: 'Ditolak' TIDAK dihitung supaya kalau pengajuan ditolak, nominalnya
 // otomatis hilang dari "Total Dana Pengajuan" (kembali berkurang/ke 0 kalau
@@ -153,10 +175,12 @@ $stmtTotalPengajuan = $conn->prepare("
 $stmtTotalPengajuan->execute(['user_id' => $current_user_id]);
 $totalPengajuanSaya = $stmtTotalPengajuan->fetchColumn() ?: 0;
 
+
 $stmtTotalDibayarkan = $conn->prepare("SELECT SUM(nominal) FROM Reimburse WHERE user_id = :user_id AND status = 'Dibayarkan'");
 $stmtTotalDibayarkan->execute(['user_id' => $current_user_id]);
 $totalDibayarkanSaya = $stmtTotalDibayarkan->fetchColumn() ?: 0;
 ?>
+
 
 <main class="main-content">
     <?php if ($success_msg): ?>
@@ -171,6 +195,7 @@ $totalDibayarkanSaya = $stmtTotalDibayarkan->fetchColumn() ?: 0;
             <div><?= htmlspecialchars($error_msg) ?></div>
         </div>
     <?php endif; ?>
+
 
      <!-- Recap Cards -->
     <div class="row g-4 mb-4">
@@ -198,6 +223,7 @@ $totalDibayarkanSaya = $stmtTotalDibayarkan->fetchColumn() ?: 0;
         </div>
     </div>
 
+
     <!-- Content Card -->
     <div class="card-box">
         <div class="table-toolbar">
@@ -213,6 +239,7 @@ $totalDibayarkanSaya = $stmtTotalDibayarkan->fetchColumn() ?: 0;
                 </button>
             </div>
         </div>
+
 
         <!-- Tabel Riwayat Reimbursement -->
         <div class="table-responsive-custom">
@@ -299,12 +326,24 @@ $totalDibayarkanSaya = $stmtTotalDibayarkan->fetchColumn() ?: 0;
                                 ?>
                                 <td style="text-align:center;">
                                     <?php if ($r['status'] === 'Draft'): ?>
-                                        <button type="button" class="btn btn-outline-secondary btn-sm tombol-edit-reimburse"
-                                            style="height:28px; width:28px; padding:0; border-radius:8px;"
-                                            title="Edit Reimbursement"
-                                            data-edit="<?= htmlspecialchars(json_encode($dataEditJs, JSON_UNESCAPED_UNICODE), ENT_QUOTES) ?>">
-                                            <i class="bi bi-pencil"></i>
-                                        </button>
+                                        <div class="d-flex gap-1 justify-content-center">
+                                            <button type="button" class="btn btn-outline-secondary btn-sm tombol-edit-reimburse"
+                                                style="height:28px; width:28px; padding:0; border-radius:8px;"
+                                                title="Edit Reimbursement"
+                                                data-edit="<?= htmlspecialchars(json_encode($dataEditJs, JSON_UNESCAPED_UNICODE), ENT_QUOTES) ?>">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                            <form method="POST" action="reimburse.php" class="d-inline"
+                                                onsubmit="return confirm('Hapus draft reimbursement ini? Tindakan ini tidak bisa dibatalkan.');">
+                                                <input type="hidden" name="action" value="hapus">
+                                                <input type="hidden" name="reimburse_id" value="<?= (int) $r['id'] ?>">
+                                                <button type="submit" class="btn btn-outline-danger btn-sm"
+                                                    style="height:28px; width:28px; padding:0; border-radius:8px;"
+                                                    title="Hapus Reimbursement">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </form>
+                                        </div>
                                     <?php else: ?>
                                         <span class="text-muted">-</span>
                                     <?php endif; ?>
@@ -318,6 +357,7 @@ $totalDibayarkanSaya = $stmtTotalDibayarkan->fetchColumn() ?: 0;
         <div class="pagination-custom" id="pagination-tabelReimburseAhli"></div>
     </div>
 </main>
+
 
 <!-- ===== MODAL: Ajukan Reimbursement ===== -->
 <div id="modalRemburse" class="arp-modal-overlay" onclick="closeModalOutside(event, 'modalRemburse')">
@@ -373,6 +413,7 @@ $totalDibayarkanSaya = $stmtTotalDibayarkan->fetchColumn() ?: 0;
                     <?php endforeach; ?>
                 </div>
 
+
                 <label class="form-label fw-semibold fs-7 mb-2">Rincian Pengeluaran *</label>
                 <div class="table-responsive-custom mb-2">
                     <table class="table-custom" id="tabel-item-reimburse">
@@ -412,10 +453,12 @@ $totalDibayarkanSaya = $stmtTotalDibayarkan->fetchColumn() ?: 0;
                     <i class="bi bi-plus-lg"></i> Tambah Baris
                 </button>
 
+
                 <div class="ringkasan-total-row total-bayar mb-4">
                     <span>Total Reimburse</span>
                     <span id="preview-total-reimburse" style="font-family:monospace;">Rp. 0</span>
                 </div>
+
 
                 <div class="d-flex gap-2">
                     <button type="button" class="btn-secondary-custom flex-grow-1"
@@ -429,6 +472,7 @@ $totalDibayarkanSaya = $stmtTotalDibayarkan->fetchColumn() ?: 0;
         </div>
     </div>
 </div>
+
 
 <!-- Modal: Edit Reimburse (hanya untuk status Draft) -->
 <div id="modalEditReimburse" class="arp-modal-overlay" onclick="closeModalOutside(event, 'modalEditReimburse')">
@@ -445,6 +489,7 @@ $totalDibayarkanSaya = $stmtTotalDibayarkan->fetchColumn() ?: 0;
             <form method="POST" action="reimburse.php" id="form-edit-reimburse">
                 <input type="hidden" name="action" value="edit">
                 <input type="hidden" name="reimburse_id" id="edit-reimburse-id" value="">
+
 
                 <div class="row g-3 mb-2">
                     <?php foreach ($fields_reimburse['fields'] as $f): ?>
@@ -463,6 +508,7 @@ $totalDibayarkanSaya = $stmtTotalDibayarkan->fetchColumn() ?: 0;
                         </div>
                     <?php endforeach; ?>
                 </div>
+
 
                 <label class="form-label fw-semibold fs-7 mb-2">Rincian Pengeluaran *</label>
                 <div class="table-responsive-custom mb-2">
@@ -484,10 +530,12 @@ $totalDibayarkanSaya = $stmtTotalDibayarkan->fetchColumn() ?: 0;
                     <i class="bi bi-plus-lg"></i> Tambah Baris
                 </button>
 
+
                 <div class="ringkasan-total-row total-bayar mb-4">
                     <span>Total Reimburse</span>
                     <span id="preview-total-edit-reimburse" style="font-family:monospace;">Rp. 0</span>
                 </div>
+
 
                 <div class="d-flex gap-2">
                     <button type="button" class="btn-secondary-custom flex-grow-1"
@@ -502,11 +550,13 @@ $totalDibayarkanSaya = $stmtTotalDibayarkan->fetchColumn() ?: 0;
     </div>
 </div>
 
+
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         initTablePagination('tabelReimburseAhli', 10);
     });
 </script>
+
 
 <script>
 (function () {
@@ -515,8 +565,10 @@ $totalDibayarkanSaya = $stmtTotalDibayarkan->fetchColumn() ?: 0;
     var elTotal = document.getElementById('preview-total-reimburse');
     if (!tbody || !tombolTambah) return;
 
+
     var kolomList = <?= json_encode(array_column($fields_reimburse['table_fields'], 'field')) ?>;
     var idx = 1;
+
 
     function parseAngkaJs(teks) {
         teks = String(teks || '').trim();
@@ -582,6 +634,7 @@ $totalDibayarkanSaya = $stmtTotalDibayarkan->fetchColumn() ?: 0;
     }
     tbody.querySelectorAll('.baris-item-reimburse').forEach(pasangEvent);
 
+
     tombolTambah.addEventListener('click', function () {
         var tr = document.createElement('tr');
         tr.className = 'baris-item-reimburse';
@@ -602,6 +655,7 @@ $totalDibayarkanSaya = $stmtTotalDibayarkan->fetchColumn() ?: 0;
 })();
 </script>
 
+
 <script>
 (function () {
     var tbodyEdit = document.getElementById('tabel-item-edit-reimburse-body');
@@ -609,8 +663,10 @@ $totalDibayarkanSaya = $stmtTotalDibayarkan->fetchColumn() ?: 0;
     var elTotalEdit = document.getElementById('preview-total-edit-reimburse');
     if (!tbodyEdit || !tombolTambahEdit) return;
 
+
     var kolomListEdit = <?= json_encode(array_column($fields_reimburse['table_fields'], 'field')) ?>;
     var idxEdit = 0;
+
 
     function parseAngkaJs(teks) {
         teks = String(teks || '').trim();
@@ -675,6 +731,7 @@ $totalDibayarkanSaya = $stmtTotalDibayarkan->fetchColumn() ?: 0;
         });
     }
 
+
     function tambahBarisEdit(nilaiAwal) {
         nilaiAwal = nilaiAwal || {};
         var tr = document.createElement('tr');
@@ -700,18 +757,22 @@ $totalDibayarkanSaya = $stmtTotalDibayarkan->fetchColumn() ?: 0;
         idxEdit++;
     }
 
+
     tombolTambahEdit.addEventListener('click', function () {
         tambahBarisEdit({});
         hitungTotalEdit();
     });
 
+
     window.bukaModalEditReimburse = function (data) {
         document.getElementById('edit-reimburse-id').value = data.reimburse_id;
+
 
         document.querySelectorAll('.edit-dinamis-input').forEach(function (inp) {
             var field = inp.getAttribute('data-field');
             inp.value = (data.dinamis && data.dinamis[field] !== undefined) ? data.dinamis[field] : '';
         });
+
 
         tbodyEdit.innerHTML = '';
         idxEdit = 0;
@@ -719,8 +780,10 @@ $totalDibayarkanSaya = $stmtTotalDibayarkan->fetchColumn() ?: 0;
         items.forEach(function (item) { tambahBarisEdit(item); });
         hitungTotalEdit();
 
+
         openModal('modalEditReimburse');
     };
+
 
     document.querySelectorAll('.tombol-edit-reimburse').forEach(function (btn) {
         btn.addEventListener('click', function () {
@@ -736,8 +799,11 @@ $totalDibayarkanSaya = $stmtTotalDibayarkan->fetchColumn() ?: 0;
 </script>
 
 
+
+
 <?php if ($error_msg): ?>
     <script>document.addEventListener('DOMContentLoaded', () => openModal('modalRemburse'));</script>
 <?php endif; ?>
+
 
 <?php include "../includes/footer.php"; ?>
