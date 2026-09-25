@@ -318,10 +318,23 @@ function formatTanggalIndonesia(string $tanggalYmd): string
 
 // ==========================================
 // FORMAT ANGKA -> "Rp. 1.234.567"
+// Dipakai HANYA untuk preview di halaman web (surat.php / edit_surat.php),
+// karena di situ "Rp." memang belum ada di tempat lain.
 // ==========================================
 function formatRupiah($angka): string
 {
     return 'Rp. ' . number_format((float) $angka, 0, ',', '.');
+}
+
+// ==========================================
+// FORMAT ANGKA -> "1.234.567" (TANPA "Rp.")
+// Dipakai untuk mengisi placeholder ke TEMPLATE WORD (.docx), karena teks
+// "Rp" pada template sudah ditulis manual di template itu sendiri -- kalau
+// dobel-tambah "Rp." dari sini hasilnya jadi "Rp Rp. 1.234.567".
+// ==========================================
+function formatAngkaTemplate($angka): string
+{
+    return number_format((float) $angka, 0, ',', '.');
 }
 
 // ==========================================
@@ -512,8 +525,8 @@ function mapFieldInvoiceKeTemplate(array $dataInvoice): array
         'invoice_nama_perusahaan' => $dataInvoice['nama_perusahaan'] ?? '-',
         'invoice_item_deskripsi' => $dataInvoice['item_deskripsi'] ?? '-',
         'invoice_nomor_pesanan' => $dataInvoice['nomor_pesanan'] ?? '-',
-        'invoice_grand_total' => $dataInvoice['grand_total_format'] ?? formatRupiah(0),
-        'invoice_total_bayar' => $dataInvoice['total_bayar_format'] ?? formatRupiah(0),
+        'invoice_grand_total' => $dataInvoice['grand_total_format'] ?? formatAngkaTemplate(0),
+        'invoice_total_bayar' => $dataInvoice['total_bayar_format'] ?? formatAngkaTemplate(0),
         'invoice_terbilang' => $dataInvoice['terbilang'] ?? (terbilang(0) . ' Rupiah'),
     ];
 }
@@ -599,7 +612,7 @@ function arp_kelompokkan_akumulasi(array $rowsMentah): array
 
                 $satuBaris['akum_' . $kolom] = $nilaiKolom;
             }
-            $satuBaris['akum_jumlah'] = formatRupiah($jumlah);
+            $satuBaris['akum_jumlah'] = formatAngkaTemplate($jumlah);
             $barisSiapTempel[] = $satuBaris;
         }
 
@@ -607,7 +620,7 @@ function arp_kelompokkan_akumulasi(array $rowsMentah): array
             'nama_pemohon' => $namaPemohon,
             'items' => $barisSiapTempel,
             'subtotal' => $subtotal,
-            'subtotal_format' => formatRupiah($subtotal),
+            'subtotal_format' => formatAngkaTemplate($subtotal),
             'terbilang' => terbilang($subtotal) . ' Rupiah',
         ];
     }
@@ -741,7 +754,7 @@ function arp_tempel_tabel_akumulasi(string $docxPath, array $rowsMentah): void
                 'akumulasi_lokasi' => trim((string) ($baris['lokasi'] ?? '')) ?: '-',
                 'akumulasi_tujuan' => trim((string) ($baris['tujuan'] ?? '')) ?: '-',
                 'akumulasi_item' => trim((string) ($baris['item'] ?? '')) ?: '-',
-                'akumulasi_jumlah' => formatRupiah(parseAngka($baris['jumlah'] ?? '0') ?? 0.0),
+                'akumulasi_jumlah' => formatAngkaTemplate(parseAngka($baris['jumlah'] ?? '0') ?? 0.0),
             ];
         }
 
@@ -834,7 +847,7 @@ function arp_tempel_tabel_akumulasi(string $docxPath, array $rowsMentah): void
     foreach ($rowsMentah as $baris) {
         $grandTotal += parseAngka($baris['jumlah'] ?? '0') ?? 0.0;
     }
-    $xml = str_replace('${' . AKUM_FIELD_GRAND_TOTAL . '}', htmlspecialchars(formatRupiah($grandTotal), ENT_QUOTES), $xml);
+    $xml = str_replace('${' . AKUM_FIELD_GRAND_TOTAL . '}', htmlspecialchars(formatAngkaTemplate($grandTotal), ENT_QUOTES), $xml);
     $xml = str_replace('${' . AKUM_FIELD_GRAND_TERBILANG . '}', htmlspecialchars(terbilang($grandTotal) . ' Rupiah', ENT_QUOTES), $xml);
 
     $zip->addFromString('word/document.xml', $xml);
@@ -1047,8 +1060,8 @@ function muatDataInvoiceUntukKuitansi(PDO $pdo, int $invoiceSuratId): ?array
         'item_deskripsi' => $itemDeskripsiGabungan,
         'nomor_pesanan' => $nomorPesanan,
         'grand_total' => $nilaiFinal,
-        'grand_total_format' => formatRupiah($nilaiFinal),
-        'total_bayar_format' => formatRupiah($nilaiFinal),               // ⬅ BARU
+        'grand_total_format' => formatAngkaTemplate($nilaiFinal),
+        'total_bayar_format' => formatAngkaTemplate($nilaiFinal),               // ⬅ BARU
         'sumber_nilai' => $sertakanTotalBayarInvoice ? 'total_bayar' : 'grand_total', // ⬅ BARU (opsional, buat info di UI)
         'terbilang' => terbilang($nilaiFinal) . ' Rupiah',
         'ada_subtotal' => $hitung['ada_subtotal'],
@@ -1261,7 +1274,7 @@ function generateSuratDocx(string $templatePath, array $dataForm, array $items, 
                     if (preg_match('/harga/i', $namaKolom)) {
                         $angkaHarga = parseAngka($nilai);
                         if ($angkaHarga !== null) {
-                            $nilaiTampil = formatRupiah($angkaHarga);
+                            $nilaiTampil = formatAngkaTemplate($angkaHarga);
                         }
                     }
 
@@ -1274,7 +1287,7 @@ function generateSuratDocx(string $templatePath, array $dataForm, array $items, 
 
                 if ($subTotalBaris !== null) {
                     try {
-                        $processor->setValue(KOLOM_SUBTOTAL . '#' . $baris, formatRupiah($subTotalBaris));
+                        $processor->setValue(KOLOM_SUBTOTAL . '#' . $baris, formatAngkaTemplate($subTotalBaris));
                     } catch (\Throwable $e) {
                         // template tidak punya placeholder sub_total, lewati
                     }
@@ -1283,7 +1296,7 @@ function generateSuratDocx(string $templatePath, array $dataForm, array $items, 
 
             if ($adaSubtotalOtomatis) {
                 try {
-                    $processor->setValue(KOLOM_SUBTOTAL, formatRupiah($totalSemuaBaris));
+                    $processor->setValue(KOLOM_SUBTOTAL, formatAngkaTemplate($totalSemuaBaris));
                 } catch (\Throwable $e) {
                     // template tidak punya placeholder statis item_sub_total, lewati
                 }
@@ -1377,7 +1390,7 @@ function generateSuratDocx(string $templatePath, array $dataForm, array $items, 
     // 2) HITUNG OTOMATIS: total, ppn, pph_23, diskon, total_bayar, terbilang
     // -----------------------------------------------------
     if ($adaSubtotalOtomatis) {
-        $dataForm['total'] = formatRupiah($totalSemuaBaris);
+        $dataForm['total'] = formatAngkaTemplate($totalSemuaBaris);
 
         // ----- DISKON: sekarang diinput sebagai PERSEN (cth "2" = 2%), bukan
         // nominal Rp langsung. Nominalnya = persen x Total.
@@ -1385,7 +1398,7 @@ function generateSuratDocx(string $templatePath, array $dataForm, array $items, 
         unset($dataForm['diskon_input']);
         $diskonNominal = $sertakanDiskon ? round($totalSemuaBaris * ($diskonPersen / 100)) : 0.0;
         if ($sertakanDiskon) {
-            $dataForm['diskon'] = formatRupiah($diskonNominal);
+            $dataForm['diskon'] = formatAngkaTemplate($diskonNominal);
             // Placeholder tambahan untuk menampilkan angka persennya, cth
             // template bisa menulis "DISKON ${diskon_persen}" -> "DISKON 2%"
             $diskonPersenTampil = (floor($diskonPersen) == $diskonPersen)
@@ -1403,18 +1416,18 @@ function generateSuratDocx(string $templatePath, array $dataForm, array $items, 
 
         $ppn = $sertakanPpn ? round($dasarPajak * 0.11) : 0;
         if ($sertakanPpn) {
-            $dataForm['ppn'] = formatRupiah($ppn);
+            $dataForm['ppn'] = formatAngkaTemplate($ppn);
         }
 
         $pph = $sertakanPph23 ? round($dasarPajak * 0.02) : 0;
         if ($sertakanPph23) {
-            $dataForm['pph_23'] = formatRupiah($pph);
+            $dataForm['pph_23'] = formatAngkaTemplate($pph);
         }
 
         // ----- BARU -----
         $grandTotal = $totalSemuaBaris + $ppn - $pph - $diskonNominal;
         if ($sertakanGrandTotal) {
-            $dataForm['grand_total'] = formatRupiah($grandTotal);
+            $dataForm['grand_total'] = formatAngkaTemplate($grandTotal);
         }
 
         // DP dihitung dari Grand Total
@@ -1422,7 +1435,7 @@ function generateSuratDocx(string $templatePath, array $dataForm, array $items, 
         unset($dataForm['dp_input']);
         $dpNominal = $sertakanDp ? round($grandTotal * ($dpPersen / 100)) : 0.0;
         if ($sertakanDp) {
-            $dataForm['down_payment'] = formatRupiah($dpNominal);
+            $dataForm['down_payment'] = formatAngkaTemplate($dpNominal);
             $dpPersenTampil = (floor($dpPersen) == $dpPersen)
                 ? (string) (int) $dpPersen
                 : rtrim(rtrim(number_format($dpPersen, 2, ',', '.'), '0'), ',');
@@ -1432,13 +1445,13 @@ function generateSuratDocx(string $templatePath, array $dataForm, array $items, 
         // Total Bayar = Grand Total dikurangi DP (kalau DP disertakan & > 0)
         $totalBayar = ($sertakanDp && $dpNominal > 0) ? ($grandTotal - $dpNominal) : $grandTotal;
         if ($sertakanTotalBayar) {
-            $dataForm['total_bayar'] = formatRupiah($totalBayar);
+            $dataForm['total_bayar'] = formatAngkaTemplate($totalBayar);
         }
 
         // ----- BARU: Sisa Pelunasan = Grand Total - DP (checkbox terpisah dari Total Bayar) -----
         $sisaPelunasan = $grandTotal - $dpNominal;
         if ($sertakanSisaPelunasan) {
-            $dataForm['sisa_pelunasan'] = formatRupiah($sisaPelunasan);
+            $dataForm['sisa_pelunasan'] = formatAngkaTemplate($sisaPelunasan);
         }
 
         // ----- TERBILANG: prioritas sumber nilai -----
