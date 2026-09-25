@@ -589,28 +589,52 @@ function arp_kelompokkan_akumulasi(array $rowsMentah): array
 
     $hasil = [];
     foreach ($grup as $namaPemohon => $barisGrup) {
+        $barisGrup = array_values($barisGrup);
+
+        // Urutkan (stabil) berdasarkan tanggal -- SAMA seperti Bagian A
+        // (tabel akumulasi_...), supaya baris dengan tanggal sama jadi
+        // berdekatan dan bisa digabung (vMerge) di Word.
+        if (AKUM_FLAT_URUTKAN_TANGGAL) {
+            $dekorasi = [];
+            foreach ($barisGrup as $idx => $b) {
+                $ts = strtotime(trim((string) ($b['tanggal'] ?? '')));
+                $dekorasi[] = [$ts ?: PHP_INT_MAX, $idx, $b];
+            }
+            usort($dekorasi, fn($x, $y) => [$x[0], $x[1]] <=> [$y[0], $y[1]]);
+            $barisGrup = array_column($dekorasi, 2);
+        }
+
         $subtotal = 0.0;
         $barisSiapTempel = [];
+        $tanggalSebelumnya = null;
+        $nomorUrutTampil = 0;
 
-        foreach (array_values($barisGrup) as $i => $b) {
+        foreach ($barisGrup as $b) {
             $jumlah = parseAngka($b['jumlah'] ?? '0') ?? 0.0;
             $subtotal += $jumlah;
 
-            $satuBaris = ['akum_no' => (string) ($i + 1)];
+            $nilaiTanggalMentah = trim((string) ($b['tanggal'] ?? ''));
+            $tanggalTampil = '-';
+            if ($nilaiTanggalMentah !== '') {
+                $tsTanggal = strtotime($nilaiTanggalMentah);
+                $tanggalTampil = $tsTanggal ? date('d/m/Y', $tsTanggal) : $nilaiTanggalMentah;
+            }
+
+            // Nomor urut naik hanya saat masuk ke tanggal baru (beda dari
+            // baris sebelumnya) -- persis seperti nomor pada tabel
+            // akumulasi_... (Bagian A), supaya cocok dengan hasil merge.
+            if ($tanggalTampil === '-' || $tanggalTampil !== $tanggalSebelumnya) {
+                $nomorUrutTampil++;
+            }
+            $tanggalSebelumnya = $tanggalTampil;
+
+            $satuBaris = ['akum_no' => (string) $nomorUrutTampil];
             foreach (AKUM_KOLOM_MANUAL as $kolom) {
-                $nilaiKolom = trim((string) ($b[$kolom] ?? '-'));
-
-                // ${akum_tanggal} disimpan mentah dari <input type="date">
-                // (format Y-m-d, cth "2026-06-30"). Format ulang jadi
-                // d/m/Y (cth "30/06/2026") supaya tampil rapi di Word.
-                if ($kolom === 'tanggal' && $nilaiKolom !== '' && $nilaiKolom !== '-') {
-                    $tsTanggal = strtotime($nilaiKolom);
-                    if ($tsTanggal) {
-                        $nilaiKolom = date('d/m/Y', $tsTanggal);
-                    }
+                if ($kolom === 'tanggal') {
+                    $satuBaris['akum_tanggal'] = $tanggalTampil;
+                    continue;
                 }
-
-                $satuBaris['akum_' . $kolom] = $nilaiKolom;
+                $satuBaris['akum_' . $kolom] = trim((string) ($b[$kolom] ?? '-'));
             }
             $satuBaris['akum_jumlah'] = formatAngkaTemplate($jumlah);
             $barisSiapTempel[] = $satuBaris;
@@ -819,8 +843,34 @@ function arp_tempel_tabel_akumulasi(string $docxPath, array $rowsMentah): void
             $hasilSemuaGrup = '';
             foreach ($kelompok as $grup) {
                 $hasilSemuaGrup .= $isi($xmlHeader, [AKUM_FIELD_PEMOHON => $grup['nama_pemohon']]);
-                foreach ($grup['items'] as $baris) {
-                    $hasilSemuaGrup .= $isi($xmlDataTpl, $baris);
+
+                // ==========================================
+                // Gabungkan (vMerge) sel No & Tanggal secara vertikal untuk
+                // baris-baris BERURUTAN dengan tanggal yang sama -- persis
+                // seperti perlakuan ${akumulasi_tanggal} di Bagian A.
+                // ==========================================
+                $itemsGrup = $grup['items'];
+                $jumlahItemGrup = count($itemsGrup);
+                for ($i = 0; $i < $jumlahItemGrup; $i++) {
+                    $tglBaris = $itemsGrup[$i]['akum_tanggal'] ?? '-';
+                    $samaDenganSebelumnya = $i > 0 && $tglBaris !== '-'
+                        && $tglBaris === ($itemsGrup[$i - 1]['akum_tanggal'] ?? null);
+                    $samaDenganBerikutnya = $i < $jumlahItemGrup - 1 && $tglBaris !== '-'
+                        && $tglBaris === ($itemsGrup[$i + 1]['akum_tanggal'] ?? null);
+
+                    $xmlBarisItem = $xmlDataTpl;
+
+                    if ($samaDenganSebelumnya) {
+                        // Baris lanjutan grup tanggal: sel No & Tanggal digabung ke atas, isi dikosongkan
+                        $xmlBarisItem = arp_atur_vmerge_sel_placeholder($xmlBarisItem, ANCHOR_AKUMULASI, 'continue');
+                        $xmlBarisItem = arp_atur_vmerge_sel_placeholder($xmlBarisItem, 'akum_tanggal', 'continue');
+                    } elseif ($samaDenganBerikutnya) {
+                        // Baris pertama dari grup tanggal yang anggotanya lebih dari satu
+                        $xmlBarisItem = arp_atur_vmerge_sel_placeholder($xmlBarisItem, ANCHOR_AKUMULASI, 'restart');
+                        $xmlBarisItem = arp_atur_vmerge_sel_placeholder($xmlBarisItem, 'akum_tanggal', 'restart');
+                    }
+
+                    $hasilSemuaGrup .= $isi($xmlBarisItem, $itemsGrup[$i]);
                 }
 
                 if ($satuBarisTotalTerbilang) {
