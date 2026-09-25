@@ -510,6 +510,9 @@ $fields_dinamis = [];
 $fields_tabel = [];
 $fields_blok = [];
 $fields_invoice = [];
+$fields_akumulasi = false;
+$hasilFields = [];               // ⬅ BARU: supaya tidak undefined kalau gagal
+$gagalBacaTemplate = false;      // ⬅ BARU
 if ($kodeIdTerpilih && $templateIdTerpilih) {
     $stmtF = $pdo->prepare("SELECT k.*, t.id AS template_id, t.nama AS nama_template, t.drive_file_id, t.drive_link, t.format, t.fields_json
                             FROM Kode_Surat k
@@ -520,27 +523,46 @@ if ($kodeIdTerpilih && $templateIdTerpilih) {
     $kodeTerpilih = $stmtF->fetch();
 
     if ($kodeTerpilih) {
-        $hasilFields = muatFieldsTemplateLive($pdo, $kodeTerpilih);
-        $fields_dinamis = $hasilFields['fields'];
-        $fields_tabel = $hasilFields['table_fields'];
-        $fields_blok = $hasilFields['blocks'];
-        $fields_invoice = $hasilFields['invoice_fields'] ?? [];
-        $fields_akumulasi = $hasilFields['akumulasi'] ?? false;
+        try {   // ⬅ BARU
+            $hasilFields = muatFieldsTemplateLive($pdo, $kodeTerpilih);
+            $fields_dinamis = $hasilFields['fields'];
+            $fields_tabel = $hasilFields['table_fields'];
+            $fields_blok = $hasilFields['blocks'];
+            $fields_invoice = $hasilFields['invoice_fields'] ?? [];
+            $fields_akumulasi = $hasilFields['akumulasi'] ?? false;
 
-        if (defined('FIELD_OTOMATIS_SISTEM')) {
-            $fields_dinamis = array_values(array_filter(
-                $fields_dinamis,
-                fn($f) => !in_array(strtolower($f['field'] ?? ''), FIELD_OTOMATIS_SISTEM, true)
-            ));
+            if (defined('FIELD_OTOMATIS_SISTEM')) {
+                $fields_dinamis = array_values(array_filter(
+                    $fields_dinamis,
+                    fn($f) => !in_array(strtolower($f['field'] ?? ''), FIELD_OTOMATIS_SISTEM, true)
+                ));
+            }
+        } catch (Throwable $e) {   // ⬅ BARU
+            $error_msg = 'Gagal membaca template dari Google Drive: ' . $e->getMessage();
+            $kodeTerpilih = null;
+            $gagalBacaTemplate = true;
         }
     }
 }
 
 $file_template_hilang = $kodeTerpilih && empty($kodeTerpilih['drive_file_id']);
 
-$auto_fields_template = ($kodeTerpilih && !$file_template_hilang && $kodeTerpilih['format'] === 'word_pdf')
-    ? arp_dengan_template_sementara($kodeTerpilih['drive_file_id'], fn($p) => scanAutoFieldsFromDocx($p))
-    : [];
+$auto_fields_template = [];
+if ($kodeTerpilih && !$file_template_hilang && $kodeTerpilih['format'] === 'word_pdf') {
+    // Pakai cache dari muatFieldsTemplateLive() dulu, sama seperti surat.php
+    $auto_fields_template = $hasilFields['auto_fields'] ?? null;
+    if ($auto_fields_template === null) {
+        try {
+            $auto_fields_template = arp_dengan_template_sementara($kodeTerpilih['drive_file_id'], fn($p) => scanAutoFieldsFromDocx($p));
+        } catch (Throwable $e) {
+            $error_msg = 'Gagal membaca template dari Google Drive: ' . $e->getMessage();
+            $kodeTerpilih = null;
+            $gagalBacaTemplate = true;
+            $auto_fields_template = [];
+        }
+    }
+}
+
 $ada_total = in_array('total', $auto_fields_template, true);
 $ada_ppn = in_array('ppn', $auto_fields_template, true);
 $ada_pph23 = in_array('pph_23', $auto_fields_template, true);
@@ -722,13 +744,19 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
 ?>
                     </script>
 
-            <?php if (!$kodeTerpilih && $kodeIdTerpilih && $templateIdTerpilih): ?>
+            <?php if (!$kodeTerpilih && $kodeIdTerpilih && $templateIdTerpilih && !$gagalBacaTemplate): ?>
                 <div class="alert alert-danger-custom py-2 px-3 text-xs">
                     <i class="bi bi-exclamation-triangle-fill"></i>
                     <div>Kombinasi jenis surat &amp; template ini tidak ditemukan / tidak terhubung.
                         <a href="edit_surat.php?id=<?= (int) $surat_id ?>">Pilih ulang</a>.
                     </div>
                 </div>
+            <?php endif; ?>
+
+            <?php if ($gagalBacaTemplate): ?>
+                <p class="text-secondary text-xs mb-0">
+                    <a href="edit_surat.php?id=<?= (int) $surat_id ?>">Coba muat ulang</a>
+                </p>
             <?php endif; ?>
 
             <?php if ($kodeTerpilih && $file_template_hilang): ?>
