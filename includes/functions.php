@@ -4242,3 +4242,89 @@ function arp_hapus_reimburse(PDO $pdo, int $reimburseId, int $userId): array
         return ['ok' => false, 'msg' => 'Gagal menghapus reimburse: ' . $e->getMessage()];
     }
 }
+
+/**
+ * Hapus file cache field template yang SUDAH SANGAT KEDALUWARSA (lebih tua
+ * dari TEMPLATE_FIELDS_CACHE_RETENTION). File cache aktif tiap template tidak
+ * kena karena selalu ditimpa ulang tiap kali refresh, jadi filemtime-nya baru.
+ */
+function arp_bersihkan_cache_fields_kedaluwarsa(): void
+{
+    if (!is_dir(TEMPLATE_FIELDS_CACHE_DIR)) {
+        return;
+    }
+    $batasWaktu = time() - TEMPLATE_FIELDS_CACHE_RETENTION;
+    foreach ((glob(TEMPLATE_FIELDS_CACHE_DIR . 'template_*.json') ?: []) as $f) {
+        if (is_file($f) && filemtime($f) < $batasWaktu) {
+            @unlink($f);
+        }
+    }
+}
+
+/**
+ * PAKSA scan ulang field template LANGSUNG dari Drive (skip cache lama),
+ * dengan retry otomatis + verifikasi hasil berubah atau tidak.
+ * Dipakai tombol "Refresh" supaya SATU KALI klik cukup.
+ */
+function arp_refresh_cache_template_paksa(PDO $pdo, array $kodeRow, int $percobaanMaks = 3, int $jedaDetik = 3): array
+{
+    if (empty($kodeRow['drive_file_id']) || ($kodeRow['format'] ?? '') !== 'word_pdf') {
+        return ['ok' => false, 'error' => 'Template ini bukan file Word yang tersambung ke Drive.', 'percobaan' => 0];
+    }
+
+    $decodedLama = !empty($kodeRow['fields_json']) ? (json_decode($kodeRow['fields_json'], true) ?: []) : [];
+    $cacheFile = arp_path_cache_fields_template((string) $kodeRow['drive_file_id']);
+    $shaLama = is_file($cacheFile) ? sha1((string) @file_get_contents($cacheFile)) : null;
+
+    $errorTerakhir = 'Penyebab tidak diketahui.';
+
+    for ($percobaan = 1; $percobaan <= $percobaanMaks; $percobaan++) {
+        arp_hapus_cache_fields_template((string) $kodeRow['drive_file_id']);
+
+        try {
+            $digabung = arp_dengan_template_sementara($kodeRow['drive_file_id'], function ($fullPath) use ($pdo, $kodeRow, $decodedLama) {
+                $hasilScanBaru = scanPlaceholdersFromDocx($fullPath);
+                $digabung = mergeFieldsPreservingLabels($hasilScanBaru, $decodedLama);
+                $digabung['blocks'] = buildFieldsWithDefaultLabels($hasilScanBaru)['blocks'];
+                $digabung['akumulasi'] = $hasilScanBaru['akumulasi'] ?? false;
+                $digabung['auto_fields'] = scanAutoFieldsFromDocx($fullPath);
+
+                $jsonBaru = json_encode($digabung, JSON_UNESCAPED_UNICODE);
+                if (!empty($kodeRow['template_id']) && $jsonBaru !== ($kodeRow['fields_json'] ?? null)) {
+                    try {
+                        $pdo->prepare("UPDATE Template_Master SET fields_json = ? WHERE id = ?")
+                            ->execute([$jsonBaru, (int) $kodeRow['template_id']]);
+                    } catch (\Throwable $e) {
+                    }
+                }
+                return $digabung;
+            });
+
+            if (!is_dir(TEMPLATE_FIELDS_CACHE_DIR)) {
+                @mkdir(TEMPLATE_FIELDS_CACHE_DIR, 0775, true);
+            }
+            $jsonUntukCache = json_encode($digabung, JSON_UNESCAPED_UNICODE);
+            @file_put_contents($cacheFile, $jsonUntukCache);
+            arp_bersihkan_cache_fields_kedaluwarsa();
+
+            $shaBaru = sha1($jsonUntukCache);
+
+            // Hasil sama persis dengan cache lama? Kemungkinan Drive belum
+            // sempat menyimpan editan terbaru -- coba lagi kalau masih ada jatah.
+            if ($shaLama !== null && $shaBaru === $shaLama && $percobaan < $percobaanMaks) {
+                sleep($jedaDetik);
+                continue;
+            }
+
+            return ['ok' => true, 'data' => $digabung, 'percobaan' => $percobaan, 'berubah' => ($shaLama !== $shaBaru)];
+        } catch (\Throwable $e) {
+            $errorTerakhir = $e->getMessage();
+            if ($percobaan < $percobaanMaks) {
+                sleep($jedaDetik);
+                continue;
+            }
+        }
+    }
+
+    return ['ok' => false, 'error' => $errorTerakhir, 'percobaan' => $percobaanMaks];
+}
