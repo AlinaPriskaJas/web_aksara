@@ -926,12 +926,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'refresh
             throw new RuntimeException("Template ini tidak memakai cache Drive (bukan file Word yang tersambung).");
         }
 
-        arp_hapus_cache_fields_template($tpl['drive_file_id']);
-        $tpl['template_id'] = $tpl['id']; // supaya kolom fields_json di DB ikut disinkronkan
-        muatFieldsTemplateLive($pdo, $tpl);
+        $tpl['template_id'] = $tpl['id'];
+        $hasilRefresh = arp_refresh_cache_template_paksa($pdo, $tpl, 3, 3);
 
-        catatAudit($pdo, 'Surat', 'Refresh Template', "Menyegarkan cache field template \"{$tpl['nama']}\" (#{$templateId}) dari Google Drive");
-        $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Cache template "' . $tpl['nama'] . '" berhasil disegarkan dari Google Drive.'];
+        if (!$hasilRefresh['ok']) {
+            throw new RuntimeException($hasilRefresh['error'] . ' (sudah dicoba ' . $hasilRefresh['percobaan'] . 'x)');
+        }
+
+        catatAudit($pdo, 'Surat', 'Refresh Template', "Menyegarkan cache field template \"{$tpl['nama']}\" (#{$templateId}) dari Google Drive (percobaan ke-{$hasilRefresh['percobaan']})");
+
+        $pesanTambahan = $hasilRefresh['berubah']
+            ? ''
+            : ' Catatan: hasil scan sama seperti sebelumnya — jika Anda baru saja mengedit template di Drive, tunggu beberapa detik lalu klik Refresh sekali lagi.';
+        $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Cache template "' . $tpl['nama'] . '" berhasil disegarkan dari Google Drive.' . $pesanTambahan];
     } catch (Throwable $e) {
         $_SESSION['flash'] = ['type' => 'error', 'msg' => 'Gagal menyegarkan cache template: ' . $e->getMessage()];
     }
