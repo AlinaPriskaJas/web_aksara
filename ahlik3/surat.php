@@ -672,6 +672,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
                 $rowsAkumulasi[] = $baris;
             }
 
+            $rowsRincianOrang = [];
+            foreach ($_POST['rincian_orang'] ?? [] as $baris) {
+                $baris = array_map('trim', (array) $baris);
+                if (($baris['nama_orang'] ?? '') === '' && ($baris['jumlah'] ?? '') === '')
+                    continue;
+                $rowsRincianOrang[] = $baris;
+            }
+
             $blocksData = [];
             foreach ($_POST['blok'] ?? [] as $namaBlok => $barisList) {
                 foreach ((array) $barisList as $baris) {
@@ -716,9 +724,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
             ];
 
 
-            $fileHasilRelatif = arp_dengan_template_sementara($kode['drive_file_id'], function ($pathTemplateLokal) use ($dataForm, $items, $nomorSurat, $blocksData, $kode, $ringkasanDisertakan, $rowsAkumulasi) {
-                return generateSuratDocx($pathTemplateLokal, $dataForm, $items, $nomorSurat, $blocksData, $kode['nama'], null, $ringkasanDisertakan, 0, $rowsAkumulasi);
+            $fileHasilRelatif = arp_dengan_template_sementara($kode['drive_file_id'], function ($pathTemplateLokal) use ($dataForm, $items, $nomorSurat, $blocksData, $kode, $ringkasanDisertakan, $rowsAkumulasi, $rowsRincianOrang) {
+                return generateSuratDocx($pathTemplateLokal, $dataForm, $items, $nomorSurat, $blocksData, $kode['nama'], null, $ringkasanDisertakan, 0, $rowsAkumulasi, $rowsRincianOrang);
             });
+
             // Baca perihal SEBELUM upload, karena file lokal akan dihapus setelahnya.
             $perihalDariWord = extractPerihalFromDocxText(BASE_PATH . '/' . $fileHasilRelatif);
 
@@ -773,6 +782,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
 
             if (!empty($rowsAkumulasi)) {
                 $isiDataDisimpan['__akumulasi'] = $rowsAkumulasi;
+            }
+
+            if (!empty($rowsRincianOrang)) {
+                $isiDataDisimpan['__rincian_orang'] = $rowsRincianOrang;
             }
 
             $insert = $pdo->prepare("INSERT INTO Surat
@@ -1205,6 +1218,7 @@ if ($active_tab === 'tabPanelBuatSurat' && $kodeIdTerpilih && $templateIdTerpili
             $fields_blok = $hasilFields['blocks'];
             $fields_invoice = $hasilFields['invoice_fields'] ?? [];
             $fields_akumulasi = $hasilFields['akumulasi'] ?? false;
+            $fields_rincian_orang = $hasilFields['rincian_orang'] ?? false;
 
             if (defined('FIELD_OTOMATIS_SISTEM')) {
                 $fields_dinamis = array_values(array_filter(
@@ -1304,6 +1318,23 @@ if (empty($nilaiAkumulasi) && $adaTabelAkumulasi) {
             'tujuan' => '',
             'item' => '',
             'jumlah' => '',
+        ]
+    ];
+}
+
+$adaRincianOrangTemplate = $hasilFields['rincian_orang'] ?? false;
+$nilaiRincianOrang = $_POST['rincian_orang'] ?? [];
+if (empty($nilaiRincianOrang) && $adaRincianOrangTemplate) {
+    $nilaiRincianOrang = [
+        [
+            'nama_orang' => '',
+            'tanggal' => date('Y-m-d'),
+            'ket' => '',
+            'lokasi' => '',
+            'kategori' => '',
+            'jumlah' => '',
+            'jenis' => '',
+            'harga_satuan' => '',
         ]
     ];
 }
@@ -2145,7 +2176,7 @@ include "../includes/topbar.php";
                                 </script>
                             <?php endif; ?>
 
-                            <?php if (empty($fields_dinamis) && empty($fields_tabel) && empty($fields_blok) && empty($fields_invoice) && empty($fields_akumulasi)): ?>
+                            <?php if (empty($fields_dinamis) && empty($fields_tabel) && empty($fields_blok) && empty($fields_invoice) && empty($fields_akumulasi) && empty($fields_rincian_orang)): ?>
                                 <div class="alert alert-danger-custom text-xs">
                                     <i class="bi bi-exclamation-triangle-fill"></i>
                                     <div>Template ini belum punya placeholder <code>${...}</code> yang terbaca. Hubungi
@@ -2711,6 +2742,147 @@ include "../includes/topbar.php";
                                 </script>
                             <?php endif; ?>
 
+                            <?php if ($adaRincianOrangTemplate): ?>
+                                <div class="mt-3">
+                                    <label class="form-label fw-semibold mb-2">Rincian Per Orang</label>
+                                    <div class="table-responsive-custom">
+                                        <table class="table-custom" id="tabel-rincian-orang">
+                                            <thead>
+                                                <tr>
+                                                    <th style="width:36px;">No</th>
+                                                    <th>Nama Orang</th>
+                                                    <th>Tanggal</th>
+                                                    <th>Ket</th>
+                                                    <th>Lokasi</th>
+                                                    <th>Kategori</th>
+                                                    <th>Jumlah</th>
+                                                    <th>Jenis</th>
+                                                    <th>Harga Satuan</th>
+                                                    <th style="text-align:right;">Harga Total</th>
+                                                    <th style="width:36px;"></th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="tabel-rincian-orang-body">
+                                                <?php foreach ($nilaiRincianOrang as $i => $b): ?>
+                                                    <tr class="baris-rincian-orang" data-baris-index="<?= (int) $i ?>">
+                                                        <td class="nomor-baris"><?= $i + 1 ?></td>
+                                                        <td><input type="text" name="rincian_orang[<?= $i ?>][nama_orang]"
+                                                                class="form-control-custom"
+                                                                value="<?= e($b['nama_orang'] ?? '') ?>"></td>
+                                                        <td><input type="date" name="rincian_orang[<?= $i ?>][tanggal]"
+                                                                class="form-control-custom"
+                                                                value="<?= e($b['tanggal'] ?? date('Y-m-d')) ?>"></td>
+                                                        <td><input type="text" name="rincian_orang[<?= $i ?>][ket]"
+                                                                class="form-control-custom" value="<?= e($b['ket'] ?? '') ?>"></td>
+                                                        <td><input type="text" name="rincian_orang[<?= $i ?>][lokasi]"
+                                                                class="form-control-custom" value="<?= e($b['lokasi'] ?? '') ?>">
+                                                        </td>
+                                                        <td><input type="text" name="rincian_orang[<?= $i ?>][kategori]"
+                                                                class="form-control-custom" value="<?= e($b['kategori'] ?? '') ?>">
+                                                        </td>
+                                                        <td><input type="text" name="rincian_orang[<?= $i ?>][jumlah]"
+                                                                class="form-control-custom" data-rpo="jumlah"
+                                                                value="<?= e($b['jumlah'] ?? '') ?>"></td>
+                                                        <td><input type="text" name="rincian_orang[<?= $i ?>][jenis]"
+                                                                class="form-control-custom" value="<?= e($b['jenis'] ?? '') ?>">
+                                                        </td>
+                                                        <td><input type="text" name="rincian_orang[<?= $i ?>][harga_satuan]"
+                                                                class="form-control-custom" data-rpo="harga"
+                                                                value="<?= e($b['harga_satuan'] ?? '') ?>"></td>
+                                                        <td class="rpo-harga-total"
+                                                            style="text-align:right; font-family:monospace;">-</td>
+                                                        <td><button type="button"
+                                                                class="btn btn-outline-danger btn-sm tombol-hapus-baris-rpo"><i
+                                                                    class="bi bi-x-lg"></i></button></td>
+                                                    </tr>
+                                                <?php endforeach; ?>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <button type="button" id="tombol-tambah-rincian-orang"
+                                        class="btn btn-outline-primary btn-sm mt-2">
+                                        <i class="bi bi-plus-lg"></i> Tambah Baris
+                                    </button>
+                                    <p class="text-secondary text-xs mt-2 mb-0">Harga Total dihitung otomatis (Jumlah × Harga
+                                        Satuan). Baris dengan <b>Nama Orang</b> yang sama otomatis dikelompokkan jadi satu
+                                        blok, lengkap dengan Subtotal per orang.</p>
+                                </div>
+
+                                <div class="mt-3" id="preview-rincian-orang-grup"></div>
+
+                                <script>
+                                    (function () {
+                                        const tbody = document.getElementById('tabel-rincian-orang-body');
+                                        const previewBox = document.getElementById('preview-rincian-orang-grup');
+                                        const tombolTambah = document.getElementById('tombol-tambah-rincian-orang');
+                                        if (!tbody) return;
+                                        let idx = tbody.querySelectorAll('tr').length;
+
+                                        function parseAngkaJs(t) { t = String(t || '').replace(/[^\d]/g, ''); return t === '' ? 0 : parseInt(t, 10); }
+                                        function formatRupiahJs(n) { return 'Rp. ' + Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.'); }
+
+                                        function hitungBaris(tr) {
+                                            const jumlah = parseAngkaJs(tr.querySelector('[data-rpo="jumlah"]').value);
+                                            const harga = parseAngkaJs(tr.querySelector('[data-rpo="harga"]').value);
+                                            const total = jumlah * harga;
+                                            tr.querySelector('.rpo-harga-total').textContent = total > 0 ? formatRupiahJs(total) : '-';
+                                            return total;
+                                        }
+
+                                        function renderPreview() {
+                                            const grup = {}; const urutan = [];
+                                            tbody.querySelectorAll('tr.baris-rincian-orang').forEach(function (tr) {
+                                                const nama = tr.querySelector('[name*="[nama_orang]"]').value.trim() || '-';
+                                                const total = hitungBaris(tr);
+                                                if (!grup[nama]) { grup[nama] = 0; urutan.push(nama); }
+                                                grup[nama] += total;
+                                            });
+                                            let html = '';
+                                            urutan.forEach(function (nama) {
+                                                html += '<div class="ringkasan-total-row"><b>' + nama + '</b><span style="font-family:monospace;">' + formatRupiahJs(grup[nama]) + '</span></div>';
+                                            });
+                                            const grandTotal = Object.values(grup).reduce((a, b) => a + b, 0);
+                                            if (html !== '') {
+                                                html += '<div class="ringkasan-total-row total-bayar"><b>Grand Total</b><span style="font-family:monospace;">' + formatRupiahJs(grandTotal) + '</span></div>';
+                                            }
+                                            previewBox.innerHTML = html || '<p class="text-secondary text-xs fst-italic mb-0">Belum ada data.</p>';
+                                        }
+
+                                        function renumber() {
+                                            tbody.querySelectorAll('tr.baris-rincian-orang').forEach(function (tr, i) {
+                                                tr.querySelector('.nomor-baris').textContent = i + 1;
+                                            });
+                                        }
+
+                                        tbody.querySelectorAll('tr.baris-rincian-orang').forEach(hitungBaris);
+                                        tbody.addEventListener('input', renderPreview);
+
+                                        tombolTambah.addEventListener('click', function () {
+                                            const tr = tbody.querySelector('tr.baris-rincian-orang').cloneNode(true);
+                                            tr.querySelectorAll('input').forEach(function (inp) {
+                                                inp.value = '';
+                                                inp.name = inp.name.replace(/\[\d+\]/, '[' + idx + ']');
+                                            });
+                                            tr.querySelector('.rpo-harga-total').textContent = '-';
+                                            tbody.appendChild(tr);
+                                            idx++;
+                                            renumber();
+                                            renderPreview();
+                                        });
+
+                                        tbody.addEventListener('click', function (e) {
+                                            if (e.target.closest('.tombol-hapus-baris-rpo')) {
+                                                if (tbody.querySelectorAll('tr').length > 1) e.target.closest('tr').remove();
+                                                renumber();
+                                                renderPreview();
+                                            }
+                                        });
+
+                                        renderPreview();
+                                    })();
+                                </script>
+                            <?php endif; ?>
+
                             <div class="d-flex gap-2 mt-4">
                                 <button type="submit" name="preview_only" value="1" class="btn-secondary-custom">
                                     <i class="bi bi-arrow-repeat"></i> Update Preview
@@ -3207,6 +3379,90 @@ include "../includes/topbar.php";
                                             </tr>
                                             <?php $grandTotalAkumulasiPreview += $subtotalPreview; ?>
                                         <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        <?php endif; ?>
+
+                        <?php if (!empty($adaRincianOrangTemplate) && !empty($nilaiRincianOrang)): ?>
+                            <?php
+                            $grupRincianOrangPreview = [];
+                            foreach ($nilaiRincianOrang as $b) {
+                                $namaOrangKey = trim((string) ($b['nama_orang'] ?? '')) ?: '-';
+                                $grupRincianOrangPreview[$namaOrangKey][] = $b;
+                            }
+                            $grandTotalRincianOrangPreview = 0.0;
+                            ?>
+                            <span class="text-xs fw-bold text-secondary text-uppercase d-block mb-2 mt-3">Rincian Per
+                                Orang</span>
+                            <div class="table-responsive-custom mb-3">
+                                <table class="table-custom">
+                                    <thead>
+                                        <tr>
+                                            <th style="width:36px;">No</th>
+                                            <th>Tanggal</th>
+                                            <th>Ket</th>
+                                            <th>Lokasi</th>
+                                            <th>Kategori</th>
+                                            <th>Jumlah</th>
+                                            <th>Jenis</th>
+                                            <th style="text-align:right;">Harga Satuan</th>
+                                            <th style="text-align:right;">Harga Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($grupRincianOrangPreview as $namaOrangTampil => $barisGrupRpo): ?>
+                                            <?php $subtotalRpoPreview = 0.0; ?>
+                                            <tr style="background:#eef2f7;">
+                                                <td colspan="9"><strong><?= e($namaOrangTampil) ?></strong></td>
+                                            </tr>
+                                            <?php foreach (array_values($barisGrupRpo) as $i => $b): ?>
+                                                <?php
+                                                $jumlahRpoPreview = parseAngka($b['jumlah'] ?? '0') ?? 0.0;
+                                                $hargaSatuanRpoPreview = parseAngka($b['harga_satuan'] ?? '0') ?? 0.0;
+                                                $hargaTotalRpoPreview = $jumlahRpoPreview * $hargaSatuanRpoPreview;
+                                                $subtotalRpoPreview += $hargaTotalRpoPreview;
+                                                $tglTampilRpo = '-';
+                                                if (!empty($b['tanggal'])) {
+                                                    $tsRpo = strtotime($b['tanggal']);
+                                                    $tglTampilRpo = $tsRpo ? date('d/m/Y', $tsRpo) : $b['tanggal'];
+                                                }
+                                                ?>
+                                                <tr>
+                                                    <td><?= $i + 1 ?></td>
+                                                    <td><?= e($tglTampilRpo) ?></td>
+                                                    <td><?= e($b['ket'] ?? '-') ?></td>
+                                                    <td><?= e($b['lokasi'] ?? '-') ?></td>
+                                                    <td><?= e($b['kategori'] ?? '-') ?></td>
+                                                    <td><?= e($b['jumlah'] ?? '-') ?></td>
+                                                    <td><?= e($b['jenis'] ?? '-') ?></td>
+                                                    <td style="text-align:right; font-family:monospace;">
+                                                        <?= e(formatRupiah($hargaSatuanRpoPreview)) ?>
+                                                    </td>
+                                                    <td style="text-align:right; font-family:monospace;">
+                                                        <?= e(formatRupiah($hargaTotalRpoPreview)) ?>
+                                                    </td>
+                                                </tr>
+                                            <?php endforeach; ?>
+                                            <tr style="background:#f8fafc;">
+                                                <td colspan="8" style="text-align:right;"><strong>SUBTOTAL</strong></td>
+                                                <td style="text-align:right; font-family:monospace;">
+                                                    <strong><?= e(formatRupiah($subtotalRpoPreview)) ?></strong>
+                                                </td>
+                                            </tr>
+                                            <?php $grandTotalRincianOrangPreview += $subtotalRpoPreview; ?>
+                                        <?php endforeach; ?>
+                                        <tr style="background:#eef2f7;">
+                                            <td colspan="8" style="text-align:right;"><strong>GRAND TOTAL</strong></td>
+                                            <td style="text-align:right; font-family:monospace;">
+                                                <strong><?= e(formatRupiah($grandTotalRincianOrangPreview)) ?></strong>
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td colspan="9" class="text-secondary fst-italic" style="font-size:0.8rem;">
+                                                "<?= e(terbilang($grandTotalRincianOrangPreview)) ?> Rupiah"
+                                            </td>
+                                        </tr>
                                     </tbody>
                                 </table>
                             </div>

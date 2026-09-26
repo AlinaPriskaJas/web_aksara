@@ -316,6 +316,31 @@ function formatTanggalIndonesia(string $tanggalYmd): string
     return date('d', $ts) . ' ' . $bulan[(int) date('n', $ts)] . ' ' . date('Y', $ts);
 }
 
+
+// ==========================================
+// FORMAT TANGGAL PENDEK "02 Juni" (tanpa tahun) -- dipakai untuk rentang
+// tanggal di tabel Akumulasi Perorangan, cth "02 Juni s/d 30 Juni".
+// ==========================================
+function arp_format_tanggal_pendek(int $timestamp): string
+{
+    $bulan = [
+        1 => 'Januari',
+        2 => 'Februari',
+        3 => 'Maret',
+        4 => 'April',
+        5 => 'Mei',
+        6 => 'Juni',
+        7 => 'Juli',
+        8 => 'Agustus',
+        9 => 'September',
+        10 => 'Oktober',
+        11 => 'November',
+        12 => 'Desember',
+    ];
+    return date('d', $timestamp) . ' ' . $bulan[(int) date('n', $timestamp)];
+}
+
+
 // ==========================================
 // FORMAT ANGKA -> "Rp. 1.234.567"
 // Dipakai HANYA untuk preview di halaman web (surat.php / edit_surat.php),
@@ -566,6 +591,506 @@ const AKUM_FIELD_GRAND_TERBILANG = 'akumulasi_grand_terbilang';
 const PREFIX_AKUMULASI_FLAT = 'akumulasi_';
 const ANCHOR_AKUMULASI_FLAT = 'akumulasi_no';
 
+// ==========================================
+// TABEL "B. RINCIAN PER ORANG" — beda struktur dari item_..., akumulasi_...,
+// akum_...: di sini Harga Total dihitung (jumlah x harga_satuan) per baris,
+// dan hanya ada SATU terbilang gabungan di akhir (bukan terbilang per orang).
+// JANGAN disamakan/prefix-nya ditumpuk dengan tabel lain.
+// ==========================================
+const PREFIX_RINCIAN_ORANG = 'rpo_';
+const ANCHOR_RINCIAN_ORANG = 'rpo_no';
+const RPO_FIELD_NAMA = 'rpo_nama';
+const RPO_FIELD_SUBTOTAL = 'rpo_subtotal';
+const RPO_FIELD_GRAND_TOTAL = 'rincian_orang_grand_total';
+const RPO_FIELD_GRAND_TERBILANG = 'rincian_orang_grand_terbilang';
+const RPO_KOLOM_MANUAL = ['tanggal', 'ket', 'lokasi', 'kategori', 'jumlah', 'jenis', 'harga_satuan'];
+
+/**
+ * $rowsMentah: [ ['nama_orang'=>'Imam Taufiq Rakhman Hidayat','tanggal'=>'2026-06-02',
+ *                 'ket'=>'Survey','lokasi'=>'Survey PT Combiphar Padalarang',
+ *                 'kategori'=>'Konsumsi','jumlah'=>'1','jenis'=>'Orang',
+ *                 'harga_satuan'=>'20000'], ... ]
+ *
+ * Baris berurutan dalam SATU orang yang punya kombinasi tanggal+ket+lokasi
+ * yang SAMA dianggap satu "kegiatan" & berbagi SATU nomor urut yang sama
+ * (persis seperti pada gambar: No.4 dipakai bareng oleh baris Konsumsi & Bensin).
+ */
+function arp_kelompokkan_rincian_orang(array $rowsMentah): array
+{
+    $grup = [];
+    foreach ($rowsMentah as $baris) {
+        $nama = trim((string) ($baris['nama_orang'] ?? '')) ?: '-';
+        $grup[$nama][] = $baris;
+    }
+
+    $hasil = [];
+    foreach ($grup as $namaOrang => $barisGrup) {
+        $barisGrup = array_values($barisGrup);
+
+        $subtotal = 0.0;
+        $barisSiapTempel = [];
+        $tanggalSebelumnya = null; // No sekarang mengikuti TANGGAL, bukan kegiatan
+        $nomorUrutTampil = 0;
+
+        foreach ($barisGrup as $b) {
+            $jumlah = parseAngka($b['jumlah'] ?? '0') ?? 0.0;
+            $hargaSatuan = parseAngka($b['harga_satuan'] ?? '0') ?? 0.0;
+            $hargaTotal = $jumlah * $hargaSatuan;
+            $subtotal += $hargaTotal;
+
+            $tanggalMentah = trim((string) ($b['tanggal'] ?? ''));
+            $tanggalTampil = '-';
+            if ($tanggalMentah !== '') {
+                $ts = strtotime($tanggalMentah);
+                $tanggalTampil = $ts ? date('d/m/Y', $ts) : $tanggalMentah;
+            }
+
+            $ket = trim((string) ($b['ket'] ?? '-'));
+            $lokasi = trim((string) ($b['lokasi'] ?? '-'));
+
+            // No naik hanya saat masuk tanggal baru -- SATU nomor bisa dipakai
+            // bersama oleh beberapa kegiatan berbeda selama tanggalnya sama
+            // (cth: Riksa Uji & Pendampingan sama-sama tanggal 29/09/2026 -> No 3 saja).
+            if ($tanggalTampil === '-' || $tanggalTampil !== $tanggalSebelumnya) {
+                $nomorUrutTampil++;
+            }
+            $tanggalSebelumnya = $tanggalTampil;
+
+            $barisSiapTempel[] = [
+                'rpo_no' => (string) $nomorUrutTampil,
+                'rpo_tanggal' => $tanggalTampil,
+                'rpo_ket' => $ket,
+                'rpo_lokasi' => $lokasi,
+                'rpo_kategori' => trim((string) ($b['kategori'] ?? '-')),
+                'rpo_jumlah' => trim((string) ($b['jumlah'] ?? '-')),
+                'rpo_jenis' => trim((string) ($b['jenis'] ?? '-')),
+                'rpo_harga_satuan' => formatAngkaTemplate($hargaSatuan),
+                'rpo_harga_total' => formatAngkaTemplate($hargaTotal),
+            ];
+        }
+
+        $hasil[] = [
+            'nama_orang' => $namaOrang,
+            'items' => $barisSiapTempel,
+            'subtotal' => $subtotal,
+            'subtotal_format' => formatAngkaTemplate($subtotal),
+        ];
+    }
+    return $hasil;
+}
+
+// ==========================================
+// RINGKAS DATA RINCIAN PER ORANG MENJADI SATU BARIS PER ORANG:
+//  - apo_nama    : nama orang (grup key)
+//  - apo_tanggal : rentang tanggal aktivitas ("02 Juni s/d 30 Juni"), atau
+//                  satu tanggal saja kalau cuma ada 1 tanggal unik
+//  - apo_nominal : subtotal (jumlah x harga_satuan) SEMUA baris orang itu
+//
+// $rowsMentah = ARRAY MENTAH YANG SAMA dengan yang dikirim ke
+// arp_kelompokkan_rincian_orang() -- TIDAK ada sumber data baru.
+// ==========================================
+function arp_ringkas_akumulasi_perorangan(array $rowsMentah): array
+{
+    $grup = [];
+    foreach ($rowsMentah as $baris) {
+        $nama = trim((string) ($baris['nama_orang'] ?? '')) ?: '-';
+        $grup[$nama][] = $baris;
+    }
+
+    $hasil = [];
+    foreach ($grup as $namaOrang => $barisGrup) {
+        $subtotal = 0.0;
+        $timestamps = [];
+
+        foreach ($barisGrup as $b) {
+            $jumlah = parseAngka($b['jumlah'] ?? '0') ?? 0.0;
+            $hargaSatuan = parseAngka($b['harga_satuan'] ?? '0') ?? 0.0;
+            $subtotal += $jumlah * $hargaSatuan;
+
+            $ts = strtotime(trim((string) ($b['tanggal'] ?? '')));
+            if ($ts) {
+                $timestamps[] = $ts;
+            }
+        }
+
+        $tanggalTampil = '-';
+        if (!empty($timestamps)) {
+            $tsAwal = min($timestamps);
+            $tsAkhir = max($timestamps);
+            $tanggalTampil = ($tsAwal === $tsAkhir)
+                ? arp_format_tanggal_pendek($tsAwal)
+                : (arp_format_tanggal_pendek($tsAwal) . ' s/d ' . arp_format_tanggal_pendek($tsAkhir));
+        }
+
+        $hasil[] = [
+            AKUM_PERORANGAN_FIELD_NAMA => $namaOrang,
+            AKUM_PERORANGAN_FIELD_TANGGAL => $tanggalTampil,
+            AKUM_PERORANGAN_FIELD_NOMINAL => formatAngkaTemplate($subtotal),
+        ];
+    }
+    return $hasil;
+}
+
+function arp_tempel_tabel_rincian_orang(string $docxPath, array $rowsMentah): void
+{
+    if (empty($rowsMentah)) {
+        return;
+    }
+
+    $zip = new ZipArchive();
+    if ($zip->open($docxPath) !== true) {
+        return;
+    }
+    $xml = $zip->getFromName('word/document.xml');
+    if ($xml === false) {
+        $zip->close();
+        return;
+    }
+
+    $isi = function (string $xmlBaris, array $nilai): string {
+        foreach ($nilai as $k => $v) {
+            $xmlBaris = str_replace('${' . $k . '}', htmlspecialchars((string) $v, ENT_QUOTES), $xmlBaris);
+        }
+        return $xmlBaris;
+    };
+
+    $posNama = arp_cari_baris_placeholder($xml, RPO_FIELD_NAMA);
+    $posData = arp_cari_baris_placeholder($xml, ANCHOR_RINCIAN_ORANG);
+    $posSubtotal = arp_cari_baris_placeholder($xml, RPO_FIELD_SUBTOTAL);
+
+    if (!$posNama || !$posData || !$posSubtotal) {
+        // Template ini tidak memakai tabel Rincian Per Orang -- diamkan saja.
+        $zip->close();
+        return;
+    }
+
+    $mulaiBlok = $posNama[0];
+    $akhirBlok = $posSubtotal[1];
+
+    $xmlHeader = substr($xml, $posNama[0], $posNama[1] - $posNama[0]);
+    $xmlDataTpl = substr($xml, $posData[0], $posData[1] - $posData[0]);
+    $xmlSubtotal = substr($xml, $posSubtotal[0], $posSubtotal[1] - $posSubtotal[0]);
+
+    $kelompok = arp_kelompokkan_rincian_orang($rowsMentah);
+
+    $hasilSemuaGrup = '';
+    $grandTotal = 0.0;
+
+    foreach ($kelompok as $grup) {
+        $hasilSemuaGrup .= $isi($xmlHeader, [RPO_FIELD_NAMA => $grup['nama_orang']]);
+
+        $items = $grup['items'];
+        $jumlahItem = count($items);
+
+        for ($i = 0; $i < $jumlahItem; $i++) {
+            $samaNoDenganSebelumnya = $i > 0 && $items[$i]['rpo_no'] === $items[$i - 1]['rpo_no'];
+            $samaNoDenganBerikutnya = $i < $jumlahItem - 1 && $items[$i]['rpo_no'] === $items[$i + 1]['rpo_no'];
+
+            $comboKegiatanIni = $items[$i]['rpo_ket'] . '|' . $items[$i]['rpo_lokasi'];
+            $comboSebelumnya = $i > 0 ? ($items[$i - 1]['rpo_ket'] . '|' . $items[$i - 1]['rpo_lokasi']) : null;
+            $comboBerikutnya = $i < $jumlahItem - 1 ? ($items[$i + 1]['rpo_ket'] . '|' . $items[$i + 1]['rpo_lokasi']) : null;
+
+            $samaKegiatanDenganSebelumnya = $i > 0 && $comboKegiatanIni === $comboSebelumnya;
+            $samaKegiatanDenganBerikutnya = $i < $jumlahItem - 1 && $comboKegiatanIni === $comboBerikutnya;
+
+            $xmlBaris = $xmlDataTpl;
+
+            // No + Tanggal: satu grup merge, berdasarkan kesamaan No (= kesamaan tanggal)
+            foreach (['rpo_no', 'rpo_tanggal'] as $kolomGabung) {
+                if ($samaNoDenganSebelumnya) {
+                    $xmlBaris = arp_atur_vmerge_sel_placeholder($xmlBaris, $kolomGabung, 'continue');
+                } elseif ($samaNoDenganBerikutnya) {
+                    $xmlBaris = arp_atur_vmerge_sel_placeholder($xmlBaris, $kolomGabung, 'restart');
+                }
+            }
+
+            // Kegiatan (ket) + Tujuan (lokasi): grup merge TERPISAH, berdasarkan kombo ket+lokasi sendiri
+            foreach (['rpo_ket', 'rpo_lokasi'] as $kolomGabung) {
+                if ($samaKegiatanDenganSebelumnya) {
+                    $xmlBaris = arp_atur_vmerge_sel_placeholder($xmlBaris, $kolomGabung, 'continue');
+                } elseif ($samaKegiatanDenganBerikutnya) {
+                    $xmlBaris = arp_atur_vmerge_sel_placeholder($xmlBaris, $kolomGabung, 'restart');
+                }
+            }
+
+            $hasilSemuaGrup .= $isi($xmlBaris, $items[$i]);
+        }
+
+        $hasilSemuaGrup .= $isi($xmlSubtotal, [RPO_FIELD_SUBTOTAL => $grup['subtotal_format']]);
+
+        $grandTotal += $grup['subtotal'];
+    }
+
+    $xml = substr($xml, 0, $mulaiBlok) . $hasilSemuaGrup . substr($xml, $akhirBlok);
+
+    // Total & terbilang GABUNGAN SEMUA ORANG -- scalar, ditulis SEKALI di luar
+    // tabel (contoh pada gambar: "Dua Juta Dua Ratus Tiga Puluh Dua Ribu
+    // Rupiah" 2.232.000).
+    $xml = str_replace('${' . RPO_FIELD_GRAND_TOTAL . '}', htmlspecialchars(formatAngkaTemplate($grandTotal), ENT_QUOTES), $xml);
+    $xml = str_replace('${' . RPO_FIELD_GRAND_TERBILANG . '}', htmlspecialchars(terbilang($grandTotal) . ' Rupiah', ENT_QUOTES), $xml);
+
+    $zip->addFromString('word/document.xml', $xml);
+    $zip->close();
+}
+
+// ==========================================
+// TEMPEL TABEL "A.2 AKUMULASI PERORANGAN" ke file .docx HASIL GENERATE.
+// Kalau template tidak punya placeholder ${apo_no}, fungsi ini diam saja
+// (bukan error) -- supaya tidak mengganggu template lain yang tidak
+// memakai fitur ini.
+// ==========================================
+function arp_tempel_tabel_akumulasi_perorangan(string $docxPath, array $rowsRincianOrangMentah): void
+{
+    if (empty($rowsRincianOrangMentah)) {
+        return;
+    }
+
+    $zip = new ZipArchive();
+    if ($zip->open($docxPath) !== true) {
+        return;
+    }
+    $xml = $zip->getFromName('word/document.xml');
+    if ($xml === false) {
+        $zip->close();
+        return;
+    }
+
+    $posData = arp_cari_baris_placeholder($xml, ANCHOR_AKUM_PERORANGAN);
+    if (!$posData) {
+        // Template ini tidak memakai tabel Akumulasi Perorangan -- diamkan saja.
+        $zip->close();
+        return;
+    }
+
+    $xmlDataTpl = substr($xml, $posData[0], $posData[1] - $posData[0]);
+
+    $isi = function (string $xmlBaris, array $nilai): string {
+        foreach ($nilai as $k => $v) {
+            $xmlBaris = str_replace('${' . $k . '}', htmlspecialchars((string) $v, ENT_QUOTES), $xmlBaris);
+        }
+        return $xmlBaris;
+    };
+
+    $ringkasan = arp_ringkas_akumulasi_perorangan($rowsRincianOrangMentah);
+
+    $hasilSemuaBaris = '';
+    foreach ($ringkasan as $i => $baris) {
+        $baris[ANCHOR_AKUM_PERORANGAN] = (string) ($i + 1);
+        $hasilSemuaBaris .= $isi($xmlDataTpl, $baris);
+    }
+
+    $xml = substr($xml, 0, $posData[0]) . $hasilSemuaBaris . substr($xml, $posData[1]);
+
+    $zip->addFromString('word/document.xml', $xml);
+    $zip->close();
+}
+
+/** Deteksi apakah template ini memakai struktur tabel Akumulasi Perorangan. */
+function templateMemakaiTabelAkumulasiPerorangan(string $teksPolosDokumen): bool
+{
+    return strpos($teksPolosDokumen, '${' . ANCHOR_AKUM_PERORANGAN . '}') !== false
+        && strpos($teksPolosDokumen, '${' . AKUM_PERORANGAN_FIELD_NAMA . '}') !== false;
+}
+
+
+/** Deteksi apakah template ini memakai struktur tabel Rincian Per Orang. */
+function templateMemakaiTabelRincianOrang(string $teksPolosDokumen): bool
+{
+    return strpos($teksPolosDokumen, '${' . RPO_FIELD_NAMA . '}') !== false
+        && strpos($teksPolosDokumen, '${' . ANCHOR_RINCIAN_ORANG . '}') !== false
+        && strpos($teksPolosDokumen, '${' . RPO_FIELD_SUBTOTAL . '}') !== false;
+}
+
+// ==========================================
+// TABEL "A.2 AKUMULASI PERORANGAN" — versi RINGKAS dari tabel Rincian Per
+// Orang (rpo_...): SATU baris per ORANG (bukan per baris kegiatan), dengan
+// kolom Tanggal berupa RENTANG (tanggal paling awal s/d paling akhir
+// aktivitas orang itu) dan Nominal = subtotal orang itu.
+//
+// Sengaja beda prefix dari item_/akumulasi_/akum_/rpo_ supaya pencarian
+// posisi baris di XML tidak tertukar dengan tabel lain.
+//
+// PENTING: sumber datanya SAMA PERSIS dengan tabel Rincian Per Orang
+// ($rowsRincianOrang) -- TIDAK ada input form baru sama sekali. Baris TOTAL
+// memakai ULANG ${rincian_orang_grand_total} yang sudah dihitung oleh tabel
+// Rincian Per Orang, supaya angkanya selalu konsisten (satu sumber
+// kebenaran), bukan dihitung ulang di sini.
+// ==========================================
+const PREFIX_AKUM_PERORANGAN = 'apo_';
+const ANCHOR_AKUM_PERORANGAN = 'apo_no';        // nomor urut, diisi otomatis
+const AKUM_PERORANGAN_FIELD_TANGGAL = 'apo_tanggal';
+const AKUM_PERORANGAN_FIELD_NAMA = 'apo_nama';
+const AKUM_PERORANGAN_FIELD_NOMINAL = 'apo_nominal';
+
+
+// ==========================================
+// TABEL "A.1 RINCIAN KESELURUHAN" — versi FLAT dari Rincian Per Orang
+// (rpo_...): dikelompokkan per (Tanggal, Ket, Lokasi), BUKAN per orang.
+// Semua orang yang mengerjakan kegiatan yang SAMA (tanggal+ket+lokasi sama)
+// digabung jadi satu baris, dengan nama-namanya digabung koma di kolom
+// "Incharge". TIDAK ADA input form baru -- sumber datanya PERSIS sama
+// dengan $rowsRincianOrang yang sudah dikirim ke tabel Rincian Per Orang.
+// ==========================================
+const PREFIX_RINCIAN_KESELURUHAN = 'rk_';
+const ANCHOR_RINCIAN_KESELURUHAN = 'rk_no';       // nomor urut, diisi otomatis
+const RK_FIELD_TANGGAL = 'rk_tanggal';
+const RK_FIELD_INCHARGE = 'rk_incharge';
+const RK_FIELD_KET = 'rk_ket';
+const RK_FIELD_LOKASI = 'rk_lokasi';
+const RK_FIELD_HARGA_SATUAN = 'rk_harga_satuan';
+
+/**
+ * $rowsMentah: ARRAY MENTAH YANG SAMA dengan yang dikirim ke
+ * arp_kelompokkan_rincian_orang() -- TIDAK ada sumber data baru.
+ *
+ * Dikelompokkan berdasarkan kombinasi (tanggal, ket, lokasi, harga_satuan)
+ * yang PERSIS sama: semua nama orang dengan kombinasi itu digabung jadi
+ * satu baris "Incharge" dipisah koma. Urutan baris hasil mengikuti urutan
+ * TANGGAL (dari yang paling awal), sesuai contoh pada gambar.
+ */
+function arp_kelompokkan_rincian_keseluruhan(array $rowsMentah): array
+{
+    $grup = [];   // kunci gabungan => data grup
+    $urutan = []; // urutan kemunculan kunci
+
+    foreach ($rowsMentah as $b) {
+        $tanggalMentah = trim((string) ($b['tanggal'] ?? ''));
+        $tsTanggal = $tanggalMentah !== '' ? strtotime($tanggalMentah) : false;
+        $tanggalTampil = $tsTanggal ? date('d/m/Y', $tsTanggal) : ($tanggalMentah !== '' ? $tanggalMentah : '-');
+
+        $ket = trim((string) ($b['ket'] ?? '-')) ?: '-';
+        $lokasi = trim((string) ($b['lokasi'] ?? '-')) ?: '-';
+        $hargaSatuan = parseAngka($b['harga_satuan'] ?? '0') ?? 0.0;
+        $namaOrang = trim((string) ($b['nama_orang'] ?? '')) ?: '-';
+
+        // Kunci gabungan sekarang HANYA (tanggal, ket, lokasi) -- harga_satuan
+        // TIDAK lagi jadi syarat penggabungan, karena field ini sekarang
+        // adalah TOTAL (dijumlahkan) dari semua orang yang mengerjakan
+        // kegiatan (ket+lokasi) yang sama pada tanggal itu, bukan harus sama.
+        $kunci = $tanggalTampil . '|' . $ket . '|' . $lokasi;
+
+        if (!isset($grup[$kunci])) {
+            $grup[$kunci] = [
+                'tanggal' => $tanggalTampil,
+                'ket' => $ket,
+                'lokasi' => $lokasi,
+                'harga_satuan_total' => 0.0,
+                'nama' => [],
+                'ts_urut' => $tsTanggal ?: PHP_INT_MAX,
+            ];
+            $urutan[] = $kunci;
+        }
+
+        // Jumlahkan harga_satuan tiap orang yang masuk kombinasi ket+lokasi
+        // yang sama ini (bukan diambil satu nilai saja seperti sebelumnya).
+        $grup[$kunci]['harga_satuan_total'] += $hargaSatuan;
+
+        if (!in_array($namaOrang, $grup[$kunci]['nama'], true)) {
+            $grup[$kunci]['nama'][] = $namaOrang;
+        }
+    }
+
+    // Urutkan baris hasil berdasarkan tanggal (stabil)
+    usort($urutan, function ($a, $b) use ($grup) {
+        return $grup[$a]['ts_urut'] <=> $grup[$b]['ts_urut'];
+    });
+
+    $hasil = [];
+    foreach ($urutan as $kunci) {
+        $g = $grup[$kunci];
+        $hasil[] = [
+            RK_FIELD_TANGGAL => $g['tanggal'],
+            RK_FIELD_INCHARGE => implode(', ', $g['nama']),
+            RK_FIELD_KET => $g['ket'],
+            RK_FIELD_LOKASI => $g['lokasi'],
+            RK_FIELD_HARGA_SATUAN => formatAngkaTemplate($g['harga_satuan_total']),
+        ];
+    }
+    return $hasil;
+}
+
+function arp_tempel_tabel_rincian_keseluruhan(string $docxPath, array $rowsRincianOrangMentah): void
+{
+    if (empty($rowsRincianOrangMentah)) {
+        return;
+    }
+
+    $zip = new ZipArchive();
+    if ($zip->open($docxPath) !== true) {
+        return;
+    }
+    $xml = $zip->getFromName('word/document.xml');
+    if ($xml === false) {
+        $zip->close();
+        return;
+    }
+
+    $posData = arp_cari_baris_placeholder($xml, ANCHOR_RINCIAN_KESELURUHAN);
+    if (!$posData) {
+        // Template ini tidak memakai tabel Rincian Keseluruhan -- diamkan saja.
+        $zip->close();
+        return;
+    }
+
+    $xmlDataTpl = substr($xml, $posData[0], $posData[1] - $posData[0]);
+
+    $isi = function (string $xmlBaris, array $nilai): string {
+        foreach ($nilai as $k => $v) {
+            $xmlBaris = str_replace('${' . $k . '}', htmlspecialchars((string) $v, ENT_QUOTES), $xmlBaris);
+        }
+        return $xmlBaris;
+    };
+
+    $baris = arp_kelompokkan_rincian_keseluruhan($rowsRincianOrangMentah);
+
+    $hasilBaris = '';
+    $noGrup = 0;
+    $jumlahBaris = count($baris);
+
+    for ($i = 0; $i < $jumlahBaris; $i++) {
+        $tgl = $baris[$i][RK_FIELD_TANGGAL];
+        $samaDenganSebelumnya = $i > 0 && $tgl !== '-' && $tgl === $baris[$i - 1][RK_FIELD_TANGGAL];
+        $samaDenganBerikutnya = $i < $jumlahBaris - 1 && $tgl !== '-' && $tgl === $baris[$i + 1][RK_FIELD_TANGGAL];
+
+        if (!$samaDenganSebelumnya) {
+            $noGrup++; // nomor naik hanya saat masuk tanggal baru
+        }
+
+        $xmlBaris = $xmlDataTpl;
+
+        if ($samaDenganSebelumnya) {
+            // Baris lanjutan tanggal yang sama: sel No & Tanggal digabung ke
+            // atas, isinya dikosongkan -- persis seperti baris ke-2/ke-3
+            // pada "11 Juni" & "12 Juni" di contoh gambar.
+            $xmlBaris = arp_atur_vmerge_sel_placeholder($xmlBaris, ANCHOR_RINCIAN_KESELURUHAN, 'continue');
+            $xmlBaris = arp_atur_vmerge_sel_placeholder($xmlBaris, RK_FIELD_TANGGAL, 'continue');
+            $nilai = $baris[$i];
+        } else {
+            if ($samaDenganBerikutnya) {
+                $xmlBaris = arp_atur_vmerge_sel_placeholder($xmlBaris, ANCHOR_RINCIAN_KESELURUHAN, 'restart');
+                $xmlBaris = arp_atur_vmerge_sel_placeholder($xmlBaris, RK_FIELD_TANGGAL, 'restart');
+            }
+            $nilai = array_merge([ANCHOR_RINCIAN_KESELURUHAN => (string) $noGrup], $baris[$i]);
+        }
+
+        $hasilBaris .= $isi($xmlBaris, $nilai);
+    }
+
+    $xml = substr($xml, 0, $posData[0]) . $hasilBaris . substr($xml, $posData[1]);
+
+    $zip->addFromString('word/document.xml', $xml);
+    $zip->close();
+}
+
+/** Deteksi apakah template ini memakai struktur tabel Rincian Keseluruhan. */
+function templateMemakaiTabelRincianKeseluruhan(string $teksPolosDokumen): bool
+{
+    return strpos($teksPolosDokumen, '${' . ANCHOR_RINCIAN_KESELURUHAN . '}') !== false
+        && strpos($teksPolosDokumen, '${' . RK_FIELD_TANGGAL . '}') !== false
+        && strpos($teksPolosDokumen, '${' . RK_FIELD_INCHARGE . '}') !== false
+        && strpos($teksPolosDokumen, '${' . RK_FIELD_LOKASI . '}') !== false;
+}
+
 // Kolom yang boleh diisi manual lewat form (selain nama_pemohon & jumlah,
 // yang punya perlakuan khusus).
 const AKUM_KOLOM_MANUAL = ['tanggal', 'nama_perusahaan', 'lokasi', 'tujuan', 'item'];
@@ -678,37 +1203,98 @@ const AKUM_FLAT_URUTKAN_TANGGAL = true;
 /**
  * Jadikan sel (<w:tc>) yang memuat ${$marker} bagian dari merge vertikal.
  * $mode: 'restart' = sel pertama grup (isi tetap), 'continue' = sel lanjutan (isi dikosongkan).
+ *
+ * PENTING soal urutan: skema OOXML mewajibkan child <w:tcPr> berurutan
+ * persis: cnfStyle, tcW, gridSpan, hMerge, vMerge, tcBorders, shd, noWrap,
+ * tcMar, textDirection, tcFitText, vAlign, hideMark. Kalau <w:vMerge>
+ * disisipkan di posisi SALAH (misal di depan <w:tcW>), Word/Google Docs
+ * TIDAK error tapi diam-diam MENGABAIKAN efek visual merge-nya -- isi sel
+ * tetap benar dikosongkan tapi border antar baris tidak pernah hilang.
+ * Makanya di sini vMerge disisipkan tepat SETELAH cnfStyle/tcW/gridSpan/
+ * hMerge (kalau ada) dan SEBELUM tcBorders/shd/dst.
  */
 function arp_atur_vmerge_sel_placeholder(string $xmlBaris, string $marker, string $mode): string
 {
     $target = '${' . $marker . '}';
+    $nsWord = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 
-    return preg_replace_callback('/<w:tc\b[^>]*>.*?<\/w:tc>/s', function ($m) use ($target, $mode) {
-        $tc = $m[0];
-        if (strpos($tc, $target) === false) {
-            return $tc;
+    // Urutan child <w:tcPr> SEBELUM posisi vMerge (sesuai skema OOXML CT_TcPrBase)
+    $urutanSebelumVMerge = ['cnfStyle', 'tcW', 'gridSpan', 'hMerge'];
+
+    $dom = new DOMDocument();
+    $dom->preserveWhiteSpace = true;
+    $dom->formatOutput = false;
+    if (!@$dom->loadXML('<root xmlns:w="' . $nsWord . '">' . $xmlBaris . '</root>')) {
+        return $xmlBaris; // gagal parse, kembalikan apa adanya (harusnya tidak terjadi)
+    }
+
+    $xpath = new DOMXPath($dom);
+    $xpath->registerNamespace('w', $nsWord);
+
+    foreach ($xpath->query('//w:tc') as $tc) {
+        /** @var DOMElement $tc */
+        $teksSel = '';
+        foreach ($xpath->query('.//w:t', $tc) as $t) {
+            $teksSel .= $t->textContent;
+        }
+        if (strpos($teksSel, $target) === false) {
+            continue;
         }
 
-        $vm = $mode === 'restart' ? '<w:vMerge w:val="restart"/>' : '<w:vMerge/>';
-
-        if (preg_match('/<w:tcPr>(.*?)<\/w:tcPr>/s', $tc, $mp)) {
-            $inner = preg_replace('/<w:vMerge\b[^>]*\/>/', '', $mp[1]);
-            // vMerge harus setelah tcW / gridSpan / hMerge agar urutan skema Word benar
-            if (preg_match('/^((?:\s*<w:cnfStyle\b[^>]*\/>)?(?:\s*<w:tcW\b[^>]*\/>)?(?:\s*<w:gridSpan\b[^>]*\/>)?(?:\s*<w:hMerge\b[^>]*\/>)?)/', $inner, $pre)) {
-                $innerBaru = $pre[1] . $vm . substr($inner, strlen($pre[1]));
-            } else {
-                $innerBaru = $vm . $inner;
-            }
-            $tc = str_replace($mp[0], '<w:tcPr>' . $innerBaru . '</w:tcPr>', $tc);
+        // Pastikan <w:tcPr> ada & jadi child PERTAMA (wajib tepat satu per skema OOXML)
+        $tcPrList = $tc->getElementsByTagNameNS($nsWord, 'tcPr');
+        if ($tcPrList->length > 0) {
+            $tcPr = $tcPrList->item(0);
         } else {
-            $tc = preg_replace('/^(<w:tc\b[^>]*>)/', '$1<w:tcPr>' . $vm . '</w:tcPr>', $tc, 1);
+            $tcPr = $dom->createElementNS($nsWord, 'w:tcPr');
+            $tc->firstChild ? $tc->insertBefore($tcPr, $tc->firstChild) : $tc->appendChild($tcPr);
+        }
+
+        // Buang <w:vMerge> lama (kalau ada)
+        foreach (iterator_to_array($tcPr->getElementsByTagNameNS($nsWord, 'vMerge')) as $old) {
+            $tcPr->removeChild($old);
+        }
+
+        // Cari node acuan: child TERAKHIR di antara cnfStyle/tcW/gridSpan/hMerge
+        // yang benar-benar ada, dalam urutan itu. vMerge disisipkan SETELAH
+        // node acuan ini (atau sebagai child pertama kalau tidak ada satupun).
+        $nodeAcuan = null;
+        foreach ($urutanSebelumVMerge as $namaTag) {
+            $found = $tcPr->getElementsByTagNameNS($nsWord, $namaTag);
+            if ($found->length > 0) {
+                $nodeAcuan = $found->item($found->length - 1);
+            }
+        }
+
+        $vMerge = $dom->createElementNS($nsWord, 'w:vMerge');
+        if ($mode === 'restart') {
+            $vMerge->setAttribute('w:val', 'restart');
+        }
+
+        if ($nodeAcuan !== null && $nodeAcuan->nextSibling !== null) {
+            $tcPr->insertBefore($vMerge, $nodeAcuan->nextSibling);
+        } elseif ($nodeAcuan !== null) {
+            $tcPr->appendChild($vMerge);
+        } else {
+            // Tidak ada cnfStyle/tcW/gridSpan/hMerge sama sekali -> vMerge jadi child pertama
+            $tcPr->firstChild ? $tcPr->insertBefore($vMerge, $tcPr->firstChild) : $tcPr->appendChild($vMerge);
         }
 
         if ($mode === 'continue') {
-            $tc = str_replace($target, '', $tc); // kosongkan isi sel lanjutan
+            // Kosongkan isi sel lanjutan, tapi tetap sisakan satu <w:p>
+            // kosong (w:tc WAJIB punya minimal satu paragraf).
+            foreach (iterator_to_array($xpath->query('./w:p', $tc)) as $p) {
+                $tc->removeChild($p);
+            }
+            $tc->appendChild($dom->createElementNS($nsWord, 'w:p'));
         }
-        return $tc;
-    }, $xmlBaris);
+    }
+
+    $hasil = '';
+    foreach (iterator_to_array($dom->documentElement->childNodes) as $child) {
+        $hasil .= $dom->saveXML($child);
+    }
+    return $hasil;
 }
 
 /**
@@ -1156,8 +1742,19 @@ function daftarSuratInvoice(PDO $pdo): array
 //             harga), tapi tetap menghitung ${total_alat} = jumlah semua
 //             kolom kuantitas (qty-like) digabung, cth "13 Unit".
 // ==========================================
-function generateSuratDocx(string $templatePath, array $dataForm, array $items, string $nomorSurat, array $blocks = [], string $jenisSurat = '', ?string $tujuanManual = null, array $ringkasanDisertakan = [], int $revisiKe = 0, array $rowsAkumulasi = []): string
-{
+function generateSuratDocx(
+    string $templatePath,
+    array $dataForm,
+    array $items,
+    string $nomorSurat,
+    array $blocks = [],
+    string $jenisSurat = '',
+    ?string $tujuanManual = null,
+    array $ringkasanDisertakan = [],
+    int $revisiKe = 0,
+    array $rowsAkumulasi = [],
+    array $rowsRincianOrang = []   // ⬅ BARU
+): string {
 
     if (!file_exists($templatePath)) {
         throw new RuntimeException("File template master tidak ditemukan: {$templatePath}");
@@ -1631,6 +2228,9 @@ function generateSuratDocx(string $templatePath, array $dataForm, array $items, 
     replaceBraceOnlyPlaceholders($outputPath, $fields);
 
     arp_tempel_tabel_akumulasi($outputPath, $rowsAkumulasi);
+    arp_tempel_tabel_rincian_orang($outputPath, $rowsRincianOrang);
+    arp_tempel_tabel_akumulasi_perorangan($outputPath, $rowsRincianOrang);
+    arp_tempel_tabel_rincian_keseluruhan($outputPath, $rowsRincianOrang); // ⬅ TAMBAHKAN INI
 
     // Hapus baris/paragraf ringkasan (PPN/PPH23/Diskon) yang tidak dicentang.
     $fieldRingkasanDihapus = [];
@@ -2200,11 +2800,19 @@ function scanPlaceholdersFromDocx(string $fullPath): array
     // Field yang selalu diisi otomatis oleh sistem (nomor surat & hasil hitungan
     // total/ppn/pph/total_bayar/terbilang/total_alat) tidak boleh jadi input form manual.
     $adaTabelAkumulasi = templateMemakaiTabelAkumulasi($plain);
+    $adaRincianOrang = templateMemakaiTabelRincianOrang($plain);
+    $adaAkumPerorangan = templateMemakaiTabelAkumulasiPerorangan($plain); // ⬅ BARU
+    $adaRincianKeseluruhan = templateMemakaiTabelRincianKeseluruhan($plain); // ⬅ BARU
 
     $semuaField = array_values(array_filter(
         $semuaField,
         fn($f) => stripos($f, PREFIX_AKUMULASI) !== 0
-            && stripos($f, PREFIX_AKUMULASI_FLAT) !== 0   // ⬅ BARU: exclude field akumulasi_... juga
+            && stripos($f, PREFIX_AKUMULASI_FLAT) !== 0
+            && stripos($f, PREFIX_RINCIAN_ORANG) !== 0
+            && stripos($f, PREFIX_AKUM_PERORANGAN) !== 0
+            && stripos($f, PREFIX_RINCIAN_KESELURUHAN) !== 0   // ⬅ BARU
+            && $f !== RPO_FIELD_GRAND_TOTAL
+            && $f !== RPO_FIELD_GRAND_TERBILANG
     ));
 
     $fields = [];
@@ -2250,7 +2858,10 @@ function scanPlaceholdersFromDocx(string $fullPath): array
         'table_fields' => array_values(array_unique($tableFields)),
         'blocks' => $blocks,
         'invoice_fields' => array_values(array_unique($invoiceFields)),
-        'akumulasi' => $adaTabelAkumulasi,   // ⬅ TAMBAHAN
+        'akumulasi' => $adaTabelAkumulasi,
+        'rincian_orang' => $adaRincianOrang,
+        'akumulasi_perorangan' => $adaAkumPerorangan,
+        'rincian_keseluruhan' => $adaRincianKeseluruhan, // ⬅ BARU
     ];
 }
 
@@ -2497,6 +3108,8 @@ function buildFieldsWithDefaultLabels(array $hasilScan): array
         'blocks' => $blocksLabel,
         'invoice_fields' => $hasilScan['invoice_fields'] ?? [],
         'akumulasi' => $hasilScanBaru['akumulasi'] ?? false,
+        'rincian_orang' => $hasilScanBaru['rincian_orang'] ?? false,
+
     ];
 }
 
@@ -2531,6 +3144,7 @@ function mergeFieldsPreservingLabels(array $hasilScanBaru, array $fieldsLamaJson
         'table_fields' => $gabung($hasilScanBaru['table_fields'] ?? [], $labelLamaTabel),
         'invoice_fields' => $hasilScanBaru['invoice_fields'] ?? [],
         'akumulasi' => $hasilScan['akumulasi'] ?? false,
+        'rincian_orang' => $hasilScanBaru['rincian_orang'] ?? false,
     ];
 }
 
