@@ -269,7 +269,7 @@ foreach ($users as $u) {
                                         <i class="bi bi-key-fill"></i>
                                     </button>
                                     <form method="POST" action="user.php" style="display:inline-block;"
-                                        onsubmit="return confirm('Yakin ingin menghapus akun ini?');">
+                                        data-confirm="Yakin ingin menghapus akun ini?">
                                         <input type="hidden" name="action" value="hapus">
                                         <input type="hidden" name="user_id" value="<?= $u['id'] ?>">
                                         <button type="submit" class="btn-danger-custom"

@@ -235,7 +235,7 @@ include "../includes/topbar.php";
                 </form>
                 <?php if (!empty($user['foto_profil'])): ?>
                     <form method="POST" action="profile.php" class="mb-2"
-                        onsubmit="return confirm('Hapus foto profil dan kembali ke avatar inisial perusahaan?');">
+                        data-confirm="Hapus foto profil dan kembali ke avatar inisial perusahaan?">
                         <input type="hidden" name="action" value="hapus_foto">
                         <button type="submit" class="avatar-remove-link">Hapus Foto</button>
                     </form>

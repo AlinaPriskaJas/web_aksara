@@ -1548,7 +1548,7 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
                                                         <i class="bi bi-pencil-square"></i>
                                                     </button>
                                                     <form method="POST" action="stock.php" style="display:inline;"
-                                                        onsubmit="return confirm('Hapus transaksi barang masuk ini? Stok gudang akan dikembalikan otomatis seperti sebelum barang ini masuk.');">
+                                                        data-confirm="Hapus transaksi barang masuk ini? Stok gudang akan dikembalikan otomatis seperti sebelum barang ini masuk.">
                                                         <input type="hidden" name="action" value="hapus_barang_masuk">
                                                         <input type="hidden" name="mutasi_id" value="<?= $bm['id'] ?>">
                                                         <button type="submit" class="btn-secondary-custom py-1 px-2"
@@ -1636,7 +1636,7 @@ if (strpos($active_tab, 'tabKatByName:') === 0) {
                                                         <i class="bi bi-pencil-square"></i>
                                                     </button>
                                                     <form method="POST" action="stock.php" style="display:inline;"
-                                                        onsubmit="return confirm('Hapus transaksi pemakaian ini? Sisa stok akan dikembalikan otomatis.');">
+                                                        data-confirm="Hapus transaksi pemakaian ini? Sisa stok akan dikembalikan otomatis.">
                                                         <input type="hidden" name="action" value="hapus_transaksi">
                                                         <input type="hidden" name="mutasi_id" value="<?= $tr['id'] ?>">
                                                         <button type="submit" class="btn-secondary-custom py-1 px-2"

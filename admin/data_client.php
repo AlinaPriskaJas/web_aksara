@@ -883,7 +883,7 @@ include "../includes/topbar.php";
                                                         <i class="bi bi-pencil-square"></i> Edit
                                                     </button>
                                                     <form method="POST" action="data_client.php" class="d-inline"
-                                                        onsubmit="return confirm('Hapus data perusahaan \'<?= htmlspecialchars(addslashes($k['nama_perusahaan'])) ?>\'? Tindakan ini tidak bisa dibatalkan.');">
+                                                        data-confirm="Hapus data perusahaan '<?= htmlspecialchars($k['nama_perusahaan'], ENT_QUOTES) ?>'? Tindakan ini tidak bisa dibatalkan.">
                                                         <input type="hidden" name="aksi" value="hapus_klien">
                                                         <input type="hidden" name="klien_id" value="<?= (int) $k['id'] ?>">
                                                         <button type="submit" class="btn-danger-custom" style="height:32px; padding:0 12px; font-size:0.8rem;">

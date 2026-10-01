@@ -1791,11 +1791,17 @@ function gantiFilePengajuan(dokumenId, pengajuanId, inputEl) {
     if (!inputEl.files || !inputEl.files[0]) return;
 
     const namaFileBaru = inputEl.files[0].name;
-    if (!confirm('Ganti file ini dengan "' + namaFileBaru + '"? File lama akan digantikan.')) {
-        inputEl.value = '';
-        return;
-    }
+    arpConfirm('Ganti file ini dengan "' + namaFileBaru + '"? File lama akan digantikan.')
+        .then(function (ya) {
+            if (!ya) {
+                inputEl.value = '';
+                return;
+            }
+            kirimGantiFilePengajuan(dokumenId, pengajuanId, inputEl);
+        });
+}
 
+function kirimGantiFilePengajuan(dokumenId, pengajuanId, inputEl) {
     const form = document.createElement('form');
     form.method = 'POST';
     form.action = 'approval.php' + window.location.search;

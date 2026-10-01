@@ -482,7 +482,7 @@ $totalPending = $conn->query("SELECT SUM(nominal) FROM Reimburse WHERE status = 
                                                             <i class="bi bi-pencil"></i>
                                                         </button>
                                                         <form method="POST" action="reimburse.php" style="display:inline-block;"
-                                                            onsubmit="return confirm('Hapus pengajuan reimburse ini? Tindakan ini tidak bisa dibatalkan.');">
+                                                            data-confirm="Hapus pengajuan reimburse ini? Tindakan ini tidak bisa dibatalkan.">
                                                             <input type="hidden" name="action" value="hapus">
                                                             <input type="hidden" name="reimburse_id" value="<?= $r['id'] ?>">
                                                             <button type="submit" class="btn btn-outline-danger btn-sm"

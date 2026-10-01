@@ -258,7 +258,7 @@ include "../includes/topbar.php";
                 </form>
                 <?php if (!empty($user['foto_profil'])): ?>
                     <form method="POST" action="profile.php" class="mb-2"
-                        onsubmit="return confirm('Hapus foto profil dan kembali ke avatar inisial?');">
+                        data-confirm="Hapus foto profil dan kembali ke avatar inisial?">
                         <input type="hidden" name="action" value="hapus_foto">
                         <button type="submit" class="avatar-remove-link">Hapus Foto</button>
                     </form>
@@ -315,7 +315,7 @@ include "../includes/topbar.php";
 
                 <?php if (!empty($user['ttd_digital'])): ?>
                     <form method="POST" action="profile.php" class="mb-3"
-                        onsubmit="return confirm('Hapus tanda tangan digital?');">
+                        data-confirm="Hapus tanda tangan digital?">
                         <input type="hidden" name="action" value="hapus_ttd">
                         <button type="submit" class="avatar-remove-link">Hapus Tanda Tangan</button>
                     </form>

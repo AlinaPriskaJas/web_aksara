@@ -304,7 +304,7 @@ $klienList = $conn->query("SELECT id, nama_perusahaan FROM Data_Klien ORDER BY n
                                         </a>
                                     <?php endif; ?>
                                     <form method="POST" action="digital.php" style="display:inline-block;"
-                                        onsubmit="return confirm('Yakin ingin menghapus dokumen ini?');">
+                                        data-confirm="Yakin ingin menghapus dokumen ini?">
                                         <input type="hidden" name="action" value="hapus">
                                         <input type="hidden" name="doc_id" value="<?= $d['id'] ?>">
                                         <button type="submit" class="btn-danger-custom"

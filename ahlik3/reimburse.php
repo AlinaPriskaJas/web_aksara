@@ -334,7 +334,7 @@ $totalDibayarkanSaya = $stmtTotalDibayarkan->fetchColumn() ?: 0;
                                                 <i class="bi bi-pencil"></i>
                                             </button>
                                             <form method="POST" action="reimburse.php" class="d-inline"
-                                                onsubmit="return confirm('Hapus draft reimbursement ini? Tindakan ini tidak bisa dibatalkan.');">
+                                                data-confirm="Hapus draft reimbursement ini? Tindakan ini tidak bisa dibatalkan.">
                                                 <input type="hidden" name="action" value="hapus">
                                                 <input type="hidden" name="reimburse_id" value="<?= (int) $r['id'] ?>">
                                                 <button type="submit" class="btn btn-outline-danger btn-sm"

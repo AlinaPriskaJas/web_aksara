@@ -961,3 +961,238 @@ setupDropzone('dzSertifikatGanti', 'inputSertifikatGanti', 'fileListSertifikatGa
         document.fonts.ready.then(initAll);
     }
 })();
+
+// ============================================================
+// ARP Dialog — pengganti kotak bawaan browser ("localhost says").
+//
+//   arpAlert(pesan, {title, type, okText})            -> Promise
+//   arpConfirm(pesan, {title, type, okText, cancelText}) -> Promise<boolean>
+//   type: 'info' | 'question' | 'warning' | 'danger' | 'success'
+//
+// Otomatis juga:
+//   * window.alert(...)                 -> tampil sebagai arpAlert
+//   * <form data-confirm="Pesan?">      -> konfirmasi dulu sebelum submit
+//   * <a/button data-confirm-click="..">-> konfirmasi dulu sebelum klik jalan
+//   * onsubmit/onclick="return confirm('...')" yang masih tersisa di HTML
+//     dikonversi otomatis ke dialog yang sama.
+// confirm() bawaan browser bersifat sinkron sehingga tidak bisa ditimpa;
+// untuk kode JS gunakan: arpConfirm('..').then(function (ya) { if (ya) {...} });
+// ============================================================
+(function () {
+    if (window.arpConfirm) return;
+
+    var IKON = {
+        info: 'bi-info-circle-fill',
+        question: 'bi-question-circle-fill',
+        warning: 'bi-exclamation-triangle-fill',
+        danger: 'bi-exclamation-octagon-fill',
+        success: 'bi-check-circle-fill'
+    };
+    var tumpukan = []; // dialog yang sedang terbuka (yang terakhir = paling atas)
+
+    function tampil(opt) {
+        return new Promise(function (resolve) {
+            var tipe = IKON[opt.type] ? opt.type : 'info';
+            var fokusSebelumnya = document.activeElement;
+
+            var ov = document.createElement('div');
+            ov.className = 'arp-dlg-overlay';
+
+            var box = document.createElement('div');
+            box.className = 'arp-dlg-box arp-dlg-' + tipe;
+            box.setAttribute('role', opt.confirm ? 'alertdialog' : 'dialog');
+            box.setAttribute('aria-modal', 'true');
+
+            var ikon = document.createElement('div');
+            ikon.className = 'arp-dlg-icon';
+            ikon.innerHTML = '<i class="bi ' + IKON[tipe] + '"></i>';
+
+            var judul = document.createElement('div');
+            judul.className = 'arp-dlg-title';
+            judul.textContent = opt.title || (opt.confirm ? 'Konfirmasi' : 'Pemberitahuan');
+
+            var isi = document.createElement('div');
+            isi.className = 'arp-dlg-msg';
+            isi.textContent = opt.message == null ? '' : String(opt.message);
+
+            var aksi = document.createElement('div');
+            aksi.className = 'arp-dlg-actions';
+
+            var dialog = { ov: ov, tutup: null };
+
+            function tutup(hasil) {
+                var i = tumpukan.indexOf(dialog);
+                if (i > -1) tumpukan.splice(i, 1);
+                ov.classList.remove('show');
+                setTimeout(function () { ov.remove(); }, 150);
+                var aktif = document.activeElement;
+                if (fokusSebelumnya && document.contains(fokusSebelumnya) && fokusSebelumnya.focus &&
+                    (!aktif || aktif === document.body || ov.contains(aktif))) {
+                    try { fokusSebelumnya.focus(); } catch (e) { }
+                }
+                resolve(hasil);
+            }
+            dialog.tutup = tutup;
+
+            function tombol(teks, kelas, hasil) {
+                var b = document.createElement('button');
+                b.type = 'button';
+                b.className = kelas;
+                b.textContent = teks;
+                b.addEventListener('click', function () { tutup(hasil); });
+                aksi.appendChild(b);
+                return b;
+            }
+
+            var btnBatal = null;
+            if (opt.confirm) btnBatal = tombol(opt.cancelText || 'Batal', 'btn-secondary-custom', false);
+            var btnOk = tombol(opt.okText || (opt.confirm ? 'Ya, Lanjutkan' : 'OK'),
+                tipe === 'danger' ? 'btn-danger-custom' : 'btn-primary-custom', true);
+
+            box.appendChild(ikon);
+            box.appendChild(judul);
+            box.appendChild(isi);
+            box.appendChild(aksi);
+            ov.appendChild(box);
+
+            // klik di luar kotak = batal (untuk alert = tutup)
+            ov.addEventListener('mousedown', function (e) { if (e.target === ov) tutup(false); });
+
+            tumpukan.push(dialog);
+            document.body.appendChild(ov);
+            requestAnimationFrame(function () {
+                ov.classList.add('show');
+                // Aksi berbahaya (hapus) -> fokus awal di "Batal" supaya Enter tidak menghapus tanpa sengaja
+                (tipe === 'danger' && btnBatal ? btnBatal : btnOk).focus();
+            });
+        });
+    }
+
+    // Esc = batal, Tab dikunci di dalam dialog teratas. Enter memakai perilaku bawaan tombol yang sedang fokus.
+    document.addEventListener('keydown', function (e) {
+        if (!tumpukan.length) return;
+        var atas = tumpukan[tumpukan.length - 1];
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+            atas.tutup(false);
+        } else if (e.key === 'Tab') {
+            var btn = atas.ov.querySelectorAll('button');
+            if (!btn.length) return;
+            var awal = btn[0], akhir = btn[btn.length - 1];
+            if (e.shiftKey && document.activeElement === awal) { e.preventDefault(); akhir.focus(); }
+            else if (!e.shiftKey && document.activeElement === akhir) { e.preventDefault(); awal.focus(); }
+            else if (!atas.ov.contains(document.activeElement)) { e.preventDefault(); awal.focus(); }
+        }
+    }, true);
+
+    // Judul, warna, dan teks tombol dipilih otomatis dari isi pesan.
+    function gayaKonfirmasi(pesan) {
+        var s = String(pesan || '').toLowerCase().trim();
+        if (/restore/.test(s)) return { title: 'Konfirmasi Restore', type: 'danger', okText: 'Ya, Restore' };
+        if (/^batalkan/.test(s)) return { title: 'Konfirmasi Pembatalan', type: 'warning', okText: 'Ya, Batalkan' };
+        if (/hapus|delete/.test(s)) return { title: 'Konfirmasi Hapus', type: 'danger', okText: 'Ya, Hapus' };
+        if (/^ganti/.test(s)) return { title: 'Ganti File', type: 'warning', okText: 'Ya, Ganti' };
+        if (/^kirim/.test(s)) return { title: 'Kirim Surat', type: 'question', okText: 'Ya, Kirim' };
+        if (/^ajukan/.test(s)) return { title: 'Ajukan Persetujuan', type: 'question', okText: 'Ya, Ajukan' };
+        if (/^arsipkan/.test(s)) return { title: 'Arsipkan', type: 'warning', okText: 'Ya, Arsipkan' };
+        if (/^tandai/.test(s)) return { title: 'Tandai Selesai', type: 'question', okText: 'Ya, Tandai' };
+        if (/^mulai/.test(s)) return { title: 'Mulai Proses', type: 'question', okText: 'Ya, Mulai' };
+        if (/^buat backup/.test(s)) return { title: 'Buat Backup', type: 'question', okText: 'Ya, Buat Backup' };
+        return { title: 'Konfirmasi', type: 'question', okText: 'Ya, Lanjutkan' };
+    }
+
+    window.arpConfirm = function (pesan, opt) {
+        var g = gayaKonfirmasi(pesan);
+        return tampil(Object.assign({}, g, opt || {}, { message: pesan, confirm: true }));
+    };
+    window.arpAlert = function (pesan, opt) {
+        var gagal = /gagal|kesalahan|error/i.test(String(pesan));
+        var dasar = gagal ? { title: 'Terjadi Kesalahan', type: 'danger' } : { title: 'Perhatian', type: 'warning' };
+        return tampil(Object.assign({}, dasar, opt || {}, { message: pesan, confirm: false }));
+    };
+
+    // Semua alert('...') lama otomatis memakai tampilan baru
+    window.alert = function (pesan) { window.arpAlert(pesan); };
+
+    // ---------- <form data-confirm="..."> ----------
+    document.addEventListener('submit', function (e) {
+        var f = e.target;
+        if (!(f instanceof HTMLFormElement) || !f.hasAttribute('data-confirm')) return;
+        if (f.__arpOk) return; // sudah dikonfirmasi, biarkan submit berjalan normal
+
+        e.preventDefault();
+        e.stopImmediatePropagation(); // loader & validator lain baru jalan setelah user setuju
+        if (window.arpHideLoader) window.arpHideLoader(); // loader mungkin sudah tampil karena klik tombol
+
+        var pesan = f.getAttribute('data-confirm');
+        var pengirim = e.submitter || null;
+        var opt = {};
+        if (f.hasAttribute('data-confirm-title')) opt.title = f.getAttribute('data-confirm-title');
+        if (f.hasAttribute('data-confirm-type')) opt.type = f.getAttribute('data-confirm-type');
+        if (f.hasAttribute('data-confirm-ok')) opt.okText = f.getAttribute('data-confirm-ok');
+
+        window.arpConfirm(pesan, opt).then(function (ya) {
+            if (!ya) return;
+            f.__arpOk = true;
+            try {
+                if (f.requestSubmit) f.requestSubmit(pengirim || undefined); else f.submit();
+            } finally {
+                f.__arpOk = false;
+            }
+        });
+    }, true);
+
+    // ---------- <a|button data-confirm-click="..."> ----------
+    document.addEventListener('click', function (e) {
+        var el = e.target.closest ? e.target.closest('[data-confirm-click]') : null;
+        if (!el || el.__arpOk) return;
+
+        e.preventDefault();
+        e.stopImmediatePropagation();
+
+        var pesan = el.getAttribute('data-confirm-click');
+        window.arpConfirm(pesan).then(function (ya) {
+            if (!ya) return;
+            el.__arpOk = true;
+            try { el.click(); } finally { el.__arpOk = false; }
+        });
+    }, true);
+
+    // ---------- Konversi otomatis onsubmit/onclick="return confirm('...')" ----------
+    var POLA_CONFIRM = /^\s*return\s+confirm\(\s*(['"])((?:\\[\s\S]|(?!\1)[^\\])*)\1\s*\)\s*;?\s*$/;
+
+    function ambilPesan(js) {
+        var m = POLA_CONFIRM.exec(js || '');
+        if (!m) return null;
+        return m[2].replace(/\\n/g, '\n').replace(/\\([\s\S])/g, '$1');
+    }
+
+    function konversiConfirmInline(root) {
+        if (!root.querySelectorAll) return;
+        root.querySelectorAll('form[onsubmit*="confirm("]').forEach(function (f) {
+            var pesan = ambilPesan(f.getAttribute('onsubmit'));
+            if (pesan === null) return;
+            f.setAttribute('data-confirm', pesan);
+            f.removeAttribute('onsubmit');
+        });
+        root.querySelectorAll('a[onclick*="confirm("], button[onclick*="confirm("]').forEach(function (el) {
+            var pesan = ambilPesan(el.getAttribute('onclick'));
+            if (pesan === null) return;
+            el.setAttribute('data-confirm-click', pesan);
+            el.removeAttribute('onclick');
+        });
+    }
+
+    function mulai() {
+        konversiConfirmInline(document);
+        // elemen yang ditambahkan belakangan (modal, hasil AJAX, dsb.)
+        new MutationObserver(function (daftar) {
+            daftar.forEach(function (m) {
+                m.addedNodes.forEach(function (n) { if (n.nodeType === 1) konversiConfirmInline(n); });
+            });
+        }).observe(document.body, { childList: true, subtree: true });
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mulai);
+    else mulai();
+})();

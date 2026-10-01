@@ -1706,3 +1706,80 @@
     inset -1px 0 0 var(--border-color),
     6px 0 8px -4px rgba(15, 23, 42, 0.15);
 }
+
+/* ============================================================
+   ARP Dialog — pengganti kotak "localhost says" (alert/confirm)
+   Dipakai oleh window.arpAlert() / window.arpConfirm() di script.js
+   ============================================================ */
+.arp-dlg-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(2px);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.arp-dlg-overlay.show { opacity: 1; }
+
+.arp-dlg-box {
+  width: 100%;
+  max-width: 410px;
+  background: var(--card-bg, #fff);
+  border-radius: 14px;
+  padding: 26px 24px 20px;
+  text-align: center;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.28);
+  transform: translateY(10px) scale(0.97);
+  transition: transform 0.15s ease;
+}
+.arp-dlg-overlay.show .arp-dlg-box { transform: none; }
+
+.arp-dlg-icon {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 14px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.6rem;
+  background: rgba(27, 99, 196, 0.12);
+  color: var(--primary, #1b63c4);
+}
+.arp-dlg-danger  .arp-dlg-icon { background: rgba(231, 76, 60, 0.12);  color: var(--danger, #e74c3c); }
+.arp-dlg-warning .arp-dlg-icon { background: rgba(241, 196, 15, 0.18); color: var(--warning-hover, #d68910); }
+.arp-dlg-success .arp-dlg-icon { background: rgba(46, 204, 113, 0.15); color: var(--success-hover, #27ae60); }
+
+.arp-dlg-title {
+  font-size: 1.08rem;
+  font-weight: 800;
+  color: var(--text-primary, #1e293b);
+  margin-bottom: 6px;
+}
+.arp-dlg-msg {
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--text-secondary, #64748b);
+  white-space: pre-line;
+  word-break: break-word;
+}
+.arp-dlg-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 22px;
+}
+.arp-dlg-actions button { flex: 1 1 0; }
+.arp-dlg-actions button:focus-visible {
+  outline: 3px solid rgba(27, 99, 196, 0.35);
+  outline-offset: 2px;
+}
+
+@media (max-width: 480px) {
+  .arp-dlg-box { padding: 22px 18px 16px; }
+  .arp-dlg-actions { flex-direction: column-reverse; }
+}

@@ -1557,7 +1557,7 @@ include "../includes/topbar.php";
                                             <div class="table-actions">
                                                 <?php if ($s['status'] === 'Draft'): ?>
                                                     <form method="POST" action="surat.php" class="d-inline"
-                                                        onsubmit="return confirm('Ajukan surat ini untuk persetujuan?');">
+                                                        data-confirm="Ajukan surat ini untuk persetujuan?">
                                                         <input type="hidden" name="aksi" value="ajukan_approval_surat">
                                                         <input type="hidden" name="surat_id" value="<?= (int) $s['id'] ?>">
                                                         <button type="submit" class="btn-primary-custom"
@@ -1576,7 +1576,7 @@ include "../includes/topbar.php";
                                                     </a>
                                                 <?php elseif ($s['status'] === 'Disetujui'): ?>
                                                     <form method="POST" action="surat.php" class="d-inline"
-                                                        onsubmit="return confirm('Kirim surat ini ke client sekarang?');">
+                                                        data-confirm="Kirim surat ini ke client sekarang?">
                                                         <input type="hidden" name="aksi" value="kirim_surat">
                                                         <input type="hidden" name="surat_id" value="<?= (int) $s['id'] ?>">
                                                         <button type="submit" class="btn-primary-custom"
@@ -1586,7 +1586,7 @@ include "../includes/topbar.php";
                                                     </form>
                                                 <?php elseif ($s['status'] === 'Terkirim'): ?>
                                                     <form method="POST" action="surat.php" class="d-inline"
-                                                        onsubmit="return confirm('Arsipkan surat ini?');">
+                                                        data-confirm="Arsipkan surat ini?">
                                                         <input type="hidden" name="aksi" value="arsipkan_surat">
                                                         <input type="hidden" name="surat_id" value="<?= (int) $s['id'] ?>">
                                                         <button type="submit" class="btn-secondary-custom"
@@ -1626,7 +1626,7 @@ include "../includes/topbar.php";
 
                                             <?php if ($suratMilikSaya): ?>
                                                 <form method="POST" action="surat.php" class="d-inline"
-                                                    onsubmit="return confirm('Hapus surat ini? Tindakan tidak bisa dibatalkan.');">
+                                                    data-confirm="Hapus surat ini? Tindakan tidak bisa dibatalkan.">
                                                     <input type="hidden" name="aksi" value="hapus_surat">
                                                     <input type="hidden" name="surat_id" value="<?= (int) $s['id'] ?>">
                                                     <button type="submit" class="btn-danger-custom"

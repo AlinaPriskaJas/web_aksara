@@ -382,7 +382,7 @@ try {
 
                                             <!-- Hapus -->
                                             <form method="POST" action="sertifikat_ahli.php" class="d-inline"
-                                                onsubmit="return confirm('Yakin ingin menghapus sertifikat <?= htmlspecialchars(addslashes($c['nomor_sertifikat'])) ?>? Tindakan ini tidak dapat dibatalkan.');">
+                                                data-confirm="Yakin ingin menghapus sertifikat <?= htmlspecialchars($c['nomor_sertifikat'], ENT_QUOTES) ?>? Tindakan ini tidak dapat dibatalkan.">
 
                                                 <input type="hidden" name="delete_id" value="<?= (int) $c['id'] ?>">
 

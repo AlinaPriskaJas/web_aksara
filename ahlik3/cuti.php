@@ -800,7 +800,7 @@ $dipakaiSakit = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year)
                                                             <i class="bi bi-pencil-square"></i> Ubah
                                                         </button>
                                                         <form method="POST" action="cuti.php?tab=tahunan" class="d-inline"
-                                                            onsubmit="return confirm('Batalkan pengajuan cuti ini?');">
+                                                            data-confirm="Batalkan pengajuan cuti ini?">
                                                             <input type="hidden" name="action" value="batal_cuti">
                                                             <input type="hidden" name="cuti_id" value="<?= (int) $l['id'] ?>">
                                                             <button type="submit" class="btn btn-outline-danger btn-sm py-1"
@@ -911,7 +911,7 @@ $dipakaiSakit = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year)
                                                             <i class="bi bi-pencil-square"></i> Ubah
                                                         </button>
                                                         <form method="POST" action="cuti.php?tab=khusus" class="d-inline"
-                                                            onsubmit="return confirm('Batalkan pengajuan cuti ini?');">
+                                                            data-confirm="Batalkan pengajuan cuti ini?">
                                                             <input type="hidden" name="action" value="batal_cuti">
                                                             <input type="hidden" name="cuti_id" value="<?= (int) $l['id'] ?>">
                                                             <button type="submit" class="btn btn-outline-danger btn-sm py-1"
@@ -1012,7 +1012,7 @@ $dipakaiSakit = sum_durasi($conn, $current_user_id, 'Izin Sakit', $current_year)
                                                             <i class="bi bi-pencil-square"></i> Ubah
                                                         </button>
                                                         <form method="POST" action="cuti.php?tab=sakit" class="d-inline"
-                                                            onsubmit="return confirm('Batalkan pengajuan izin sakit ini?');">
+                                                            data-confirm="Batalkan pengajuan izin sakit ini?">
                                                             <input type="hidden" name="action" value="batal_cuti">
                                                             <input type="hidden" name="cuti_id" value="<?= (int) $l['id'] ?>">
                                                             <button type="submit" class="btn btn-outline-danger btn-sm py-1"

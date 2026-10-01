@@ -2825,7 +2825,7 @@ include "../includes/topbar.php";
                                                 </a>
                                             <?php elseif ($s['status'] === 'Draft'): ?>
                                                 <form method="POST" action="surat.php" class="d-inline"
-                                                    onsubmit="return confirm('Ajukan surat ini untuk persetujuan?');">
+                                                    data-confirm="Ajukan surat ini untuk persetujuan?">
                                                     <input type="hidden" name="aksi" value="ajukan_approval_surat">
                                                     <input type="hidden" name="surat_id" value="<?= (int) $s['id'] ?>">
                                                     <button type="submit" class="btn-primary-custom"
@@ -2844,7 +2844,7 @@ include "../includes/topbar.php";
                                                 </a>
                                             <?php elseif ($s['status'] === 'Disetujui'): ?>
                                                 <form method="POST" action="surat.php" class="d-inline"
-                                                    onsubmit="return confirm('Kirim surat ini ke client sekarang?');">
+                                                    data-confirm="Kirim surat ini ke client sekarang?">
                                                     <input type="hidden" name="aksi" value="kirim_surat">
                                                     <input type="hidden" name="surat_id" value="<?= (int) $s['id'] ?>">
                                                     <button type="submit" class="btn-primary-custom"
@@ -2854,7 +2854,7 @@ include "../includes/topbar.php";
                                                 </form>
                                             <?php elseif ($s['status'] === 'Terkirim'): ?>
                                                 <form method="POST" action="surat.php" class="d-inline"
-                                                    onsubmit="return confirm('Arsipkan surat ini?');">
+                                                    data-confirm="Arsipkan surat ini?">
                                                     <input type="hidden" name="aksi" value="arsipkan_surat">
                                                     <input type="hidden" name="surat_id" value="<?= (int) $s['id'] ?>">
                                                     <button type="submit" class="btn-secondary-custom"
@@ -2905,7 +2905,7 @@ include "../includes/topbar.php";
                                             <?php endif; ?>
 
                                             <form method="POST" action="surat.php" class="d-inline"
-                                                onsubmit="return confirm('Hapus surat ini? Tindakan tidak bisa dibatalkan.');">
+                                                data-confirm="Hapus surat ini? Tindakan tidak bisa dibatalkan.">
                                                 <input type="hidden" name="aksi" value="hapus_surat">
                                                 <input type="hidden" name="surat_id" value="<?= (int) $s['id'] ?>">
                                                 <button type="submit" class="btn-danger-custom"
@@ -2989,7 +2989,7 @@ include "../includes/topbar.php";
                                         <div class="table-actions">
                                             <?php if (($s['status'] ?? '') === 'Baru'): ?>
                                                 <form method="POST" action="surat.php" class="d-inline"
-                                                    onsubmit="return confirm('Mulai proses surat ini?');">
+                                                    data-confirm="Mulai proses surat ini?">
                                                     <input type="hidden" name="aksi" value="proses_surat_masuk">
                                                     <input type="hidden" name="surat_id" value="<?= (int) $s['id'] ?>">
                                                     <button type="submit" class="btn-primary-custom"
@@ -3004,7 +3004,7 @@ include "../includes/topbar.php";
                                                     <i class="bi bi-diagram-3"></i> Disposisi
                                                 </button>
                                                 <form method="POST" action="surat.php" class="d-inline"
-                                                    onsubmit="return confirm('Tandai surat ini Selesai?');">
+                                                    data-confirm="Tandai surat ini Selesai?">
                                                     <input type="hidden" name="aksi" value="selesaikan_surat_masuk">
                                                     <input type="hidden" name="surat_id" value="<?= (int) $s['id'] ?>">
                                                     <button type="submit" class="btn-secondary-custom"
@@ -3023,7 +3023,7 @@ include "../includes/topbar.php";
                                                     </span>
                                                 <?php endif; ?>
                                                 <form method="POST" action="surat.php" class="d-inline"
-                                                    onsubmit="return confirm('Tandai surat ini Selesai?');">
+                                                    data-confirm="Tandai surat ini Selesai?">
                                                     <input type="hidden" name="aksi" value="selesaikan_surat_masuk">
                                                     <input type="hidden" name="surat_id" value="<?= (int) $s['id'] ?>">
                                                     <button type="submit" class="btn-primary-custom"
@@ -3032,7 +3032,7 @@ include "../includes/topbar.php";
                                                     </button>
                                                 </form>
                                                 <form method="POST" action="surat.php" class="d-inline"
-                                                    onsubmit="return confirm('Batalkan disposisi & kembalikan ke Diproses?');">
+                                                    data-confirm="Batalkan disposisi & kembalikan ke Diproses?">
                                                     <input type="hidden" name="aksi" value="batalkan_tindakan_surat_masuk">
                                                     <input type="hidden" name="surat_id" value="<?= (int) $s['id'] ?>">
                                                     <button type="submit" class="btn-secondary-custom"
@@ -3042,7 +3042,7 @@ include "../includes/topbar.php";
                                                 </form>
                                             <?php elseif (($s['status'] ?? '') === 'Selesai'): ?>
                                                 <form method="POST" action="surat.php" class="d-inline"
-                                                    onsubmit="return confirm('Arsipkan surat ini?');">
+                                                    data-confirm="Arsipkan surat ini?">
                                                     <input type="hidden" name="aksi" value="arsipkan_surat_masuk">
                                                     <input type="hidden" name="surat_id" value="<?= (int) $s['id'] ?>">
                                                     <button type="submit" class="btn-secondary-custom"
@@ -3074,7 +3074,7 @@ include "../includes/topbar.php";
                                             <?php endif; ?>
 
                                             <form method="POST" action="surat.php" class="d-inline"
-                                                onsubmit="return confirm('Hapus surat ini? Tindakan tidak bisa dibatalkan.');">
+                                                data-confirm="Hapus surat ini? Tindakan tidak bisa dibatalkan.">
                                                 <input type="hidden" name="aksi" value="hapus_surat">
                                                 <input type="hidden" name="surat_id" value="<?= (int) $s['id'] ?>">
                                                 <button type="submit" class="btn-danger-custom"
@@ -4935,7 +4935,7 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
                                                 <?php endif; ?>
                                             <?php endif; ?>
                                             <form method="POST" action="surat.php" class="d-inline"
-                                                onsubmit="return confirm('Hapus template &quot;<?= e(addslashes($t['nama'])) ?>&quot;? Tindakan ini tidak bisa dibatalkan.');">
+                                                data-confirm="Hapus template &quot;<?= e($t['nama']) ?>&quot;? Tindakan ini tidak bisa dibatalkan.">
                                                 <input type="hidden" name="aksi" value="hapus_template">
                                                 <input type="hidden" name="template_id" value="<?= (int) $t['id'] ?>">
                                                 <button type="submit" class="btn-danger-custom"
@@ -5145,7 +5145,7 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
                         "Simpan Semua". Hanya baris yang dicentang "Sertakan" yang akan disimpan.</small>
                 </div>
                 <button type="button" class="arp-modal-close"
-                    onclick="if(confirm('Batalkan import ini? File yang sudah diupload akan dihapus dari server.')){document.getElementById('formImportSuratBatal').submit();}">&times;</button>
+                    onclick="arpConfirm('Batalkan import ini? File yang sudah diupload akan dihapus dari server.').then(function (ya) { if (ya) { document.getElementById('formImportSuratBatal').submit(); } });">&times;</button>
             </div>
             <div class="arp-modal-body">
 
@@ -5259,7 +5259,7 @@ echo json_encode($dataUntukJs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
 
                     <div class="d-flex justify-content-end gap-2 mt-4">
                         <button type="button" class="btn-secondary-custom"
-                            onclick="if(confirm('Batalkan import ini? File yang sudah diupload akan dihapus dari server.')){document.getElementById('formImportSuratBatal').submit();}">
+                            onclick="arpConfirm('Batalkan import ini? File yang sudah diupload akan dihapus dari server.').then(function (ya) { if (ya) { document.getElementById('formImportSuratBatal').submit(); } });">
                             Batal
                         </button>
                         <button type="submit" class="btn-primary-custom" data-arp-loading="Menyimpan semua surat...">

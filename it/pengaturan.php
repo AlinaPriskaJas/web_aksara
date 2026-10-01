@@ -362,7 +362,7 @@ $lastBackup = count($backupList) > 0 ? $backupList[0] : null;
                                                     <i class="bi bi-pencil-square"></i>
                                                 </button>
                                                 <form method="POST" action="pengaturan.php" style="display:inline-block;"
-                                                    onsubmit="return confirm('Yakin ingin menghapus konfigurasi ini?');">
+                                                    data-confirm="Yakin ingin menghapus konfigurasi ini?">
                                                     <input type="hidden" name="action" value="hapus">
                                                     <input type="hidden" name="id" value="<?= $p['id'] ?>">
                                                     <button type="submit" class="btn-danger-custom"
@@ -557,7 +557,7 @@ $lastBackup = count($backupList) > 0 ? $backupList[0] : null;
                             <div class="table-toolbar">
                                 <h5 class="table-toolbar-title fw-bold">Riwayat File Backup</h5>
                                 <div class="table-toolbar-actions">
-                                    <form method="POST" action="pengaturan.php" onsubmit="return confirm('Buat backup database sekarang?');">
+                                    <form method="POST" action="pengaturan.php" data-confirm="Buat backup database sekarang?">
                                         <input type="hidden" name="action" value="backup">
                                         <button type="submit" class="btn-primary-custom">
                                             <i class="bi bi-cloud-arrow-down-fill"></i> Backup Sekarang
@@ -597,7 +597,7 @@ $lastBackup = count($backupList) > 0 ? $backupList[0] : null;
                                                             <i class="bi bi-download"></i>
                                                         </a>
                                                         <form method="POST" action="pengaturan.php" style="display:inline-block;"
-                                                            onsubmit="return confirm('Hapus berkas backup ini?');">
+                                                            data-confirm="Hapus berkas backup ini?">
                                                             <input type="hidden" name="action" value="hapus_backup">
                                                             <input type="hidden" name="filename" value="<?= htmlspecialchars($b['filename']) ?>">
                                                             <button type="submit" class="btn-danger-custom"
@@ -625,7 +625,7 @@ $lastBackup = count($backupList) > 0 ? $backupList[0] : null;
                                     terpercaya.</div>
                             </div>
                             <form method="POST" action="pengaturan.php" enctype="multipart/form-data"
-                                onsubmit="return confirm('Yakin ingin menjalankan restore? Tindakan ini tidak dapat dibatalkan.');">
+                                data-confirm="Yakin ingin menjalankan restore? Tindakan ini tidak dapat dibatalkan.">
                                 <input type="hidden" name="action" value="restore">
                                 <div class="mb-3">
                                     <label class="form-label fw-semibold mb-2">Unggah Berkas .sql *</label>

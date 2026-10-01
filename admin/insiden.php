@@ -609,7 +609,7 @@ include "../includes/topbar.php";
                                             <i class="bi bi-eye"></i> Detail
                                         </button>
                                         <form method="POST" action="insiden.php" class="d-inline"
-                                            onsubmit="return confirm('Hapus laporan insiden \'<?= htmlspecialchars(addslashes($ins['kode_insiden'])) ?>\'? Tindakan ini tidak bisa dibatalkan.');">
+                                            data-confirm="Hapus laporan insiden '<?= htmlspecialchars($ins['kode_insiden'], ENT_QUOTES) ?>'? Tindakan ini tidak bisa dibatalkan.">
                                             <input type="hidden" name="aksi" value="hapus">
                                             <input type="hidden" name="id" value="<?= (int) $ins['id'] ?>">
                                             <button type="submit" class="btn-danger-custom"

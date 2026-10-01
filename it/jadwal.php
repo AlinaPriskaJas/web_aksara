@@ -994,10 +994,12 @@ $today_str = date('Y-m-d');
     }
 
     function hapusJadwal(id, namaPerusahaan) {
-        if (confirm('Yakin ingin menghapus jadwal riksa untuk "' + namaPerusahaan + '"? Tindakan ini tidak dapat dibatalkan.')) {
-            document.getElementById('hapus-jadwal-id').value = id;
-            document.getElementById('formHapusJadwal').submit();
-        }
+        arpConfirm('Yakin ingin menghapus jadwal riksa untuk "' + namaPerusahaan + '"? Tindakan ini tidak dapat dibatalkan.', { title: 'Hapus Jadwal' })
+            .then(function (ya) {
+                if (!ya) return;
+                document.getElementById('hapus-jadwal-id').value = id;
+                document.getElementById('formHapusJadwal').submit();
+            });
     }
 
     function limitTimSupport(checkbox) {
