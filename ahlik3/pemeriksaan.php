@@ -691,10 +691,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
             $inputPuj = $_POST['puj'] ?? [];
             $pujRows = lp_siapkan_baris_puj($inputPuj);
 
+            $inputPjn = $_POST['pjn'] ?? [];
+            $pjnRows = lp_siapkan_baris_pjn($inputPjn);
+
             $fileHasilRelatif = lp_dengan_template_sementara(
                 $tpl['drive_file_id'],
-                function ($pathTemplateLokal) use ($dataFormDocx, $items, $nomorLaporan, $tpl, $namaPerusahaan, $ndtRows, $pujRows) {
-                    return lp_generate_docx($pathTemplateLokal, $dataFormDocx, $items, $nomorLaporan, $tpl['nama'], $namaPerusahaan, $ndtRows, $pujRows);
+                function ($pathTemplateLokal) use ($dataFormDocx, $items, $nomorLaporan, $tpl, $namaPerusahaan, $ndtRows, $pujRows, $pjnRows) {
+                    return lp_generate_docx($pathTemplateLokal, $dataFormDocx, $items, $nomorLaporan, $tpl['nama'], $namaPerusahaan, $ndtRows, $pujRows, $pjnRows);
                 }
             );
 
@@ -741,6 +744,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'generat
                 '__pvf_ket' => $inputPvfKet,
                 '__ndt' => $inputNdt,
                 '__puj' => $inputPuj,
+                '__pjn' => $inputPjn,
             ]), JSON_UNESCAPED_UNICODE);
 
             $pemeriksaanIdPost = (int) ($_POST['pemeriksaan_id'] ?? 0);   // BARU
@@ -939,6 +943,7 @@ if ($editId > 0) {
             '__pvf_ket' => 'pvf_ket',
             '__ndt' => 'ndt',
             '__puj' => 'puj',
+            '__pjn' => 'pjn',
         ];
         foreach ($petaInput as $src => $dst) {
             if (isset($isi[$src]) && is_array($isi[$src])) {
@@ -1044,6 +1049,7 @@ $LP_HASIL_UKUR_FIELDS = lp_hasil_ukur_semua_field();
 $adaHasilUkur = false;
 $adaNdt = false;
 $adaPuj = false;
+$adaPjn = false;
 $fields_ck_lp = [];
 $fields_ukur_lp = [];   // <<< BARU
 $fields_sfd_lp = [];   // <<< BARU
@@ -1169,6 +1175,8 @@ if ($active_tab === 'tabPanelBuatLaporan' && $templateIdTerpilih) {
         $adaNdt = (bool) array_intersect(['ndt_no'], array_column($fields_dinamis_lp, 'field'));
 
         $adaPuj = (bool) array_intersect(['puj_tinggi_angkat'], array_column($fields_dinamis_lp, 'field'));
+
+        $adaPjn = (bool) array_intersect(['pjn_no'], array_column($fields_dinamis_lp, 'field'));
 
     }
 }
@@ -2273,7 +2281,6 @@ include "../includes/topbar.php";
                                     continue; ?>
                                 <?php if (in_array($f['field'], LP_KMP_INPUT_FIELDS, true))
                                     continue; ?>
-
                                 <?php if (in_array($f['field'], LP_AKM_INPUT_FIELDS, true))
                                     continue; ?>
                                 <?php if (in_array($f['field'], $LP_DTK_FIELDS, true))
@@ -2285,6 +2292,8 @@ include "../includes/topbar.php";
                                 <?php if (in_array($f['field'], LP_NDT_FIELD_SEMUA, true))
                                     continue; ?>
                                 <?php if (in_array($f['field'], LP_PUJ_FIELD_SEMUA, true))
+                                    continue; ?>
+                                <?php if (in_array($f['field'], LP_PJN_FIELD_SEMUA, true))
                                     continue; ?>
                                 <!-- <<< TAMBAHAN -->
 
@@ -2400,7 +2409,7 @@ include "../includes/topbar.php";
 
                         <?php if (!empty($fields_dcp_lp)): ?>
                             <div class="mt-3">
-                                <div class="lp-section-title">DATA CHECKLIST PEMERIKSAAN</div>
+                                <div class="lp-section-title">III. DATA CHECKLIST PEMERIKSAAN</div>
                                 <div class="table-responsive-custom">
                                     <table class="table-custom">
                                         <thead>
@@ -2610,7 +2619,7 @@ include "../includes/topbar.php";
 
                         <?php if ($adaDataTeknis): ?>
                             <div class="mt-3">
-                                <div class="lp-section-title">Data Teknis</div>
+                                <div class="lp-section-title">II. Data Teknis</div>
 
                                 <?php foreach (LP_DATA_TEKNIS_GRUP as $judulGrup => $daftarField): ?>
                                     <?php
@@ -2758,46 +2767,57 @@ include "../includes/topbar.php";
                                     <table class="table-custom">
                                         <thead>
                                             <tr>
-                                                <th style="width:36px; text-align:center;">No</th>
-                                                <th>Pemeriksaan Komponen</th>
+                                                <th colspan="2" style="text-align:center;">Komponen &amp; Lokasi</th>
+                                                <th rowspan="2" style="vertical-align:middle; text-align:center;">Pemeriksaan
+                                                    Komponen</th>
+                                                <th colspan="2" style="text-align:center;">Kondisi</th>
+                                                <th rowspan="2" style="width:260px; vertical-align:middle; text-align:center;">
+                                                    Keterangan</th>
+                                            </tr>
+                                            <tr>
+                                                <th style="width:120px; text-align:center;">Lokasi</th>
+                                                <th style="width:140px; text-align:center;">Komponen</th>
                                                 <th style="width:110px; text-align:center;">Memenuhi Syarat</th>
                                                 <th style="width:130px; text-align:center;">Tidak Memenuhi Syarat</th>
-                                                <th style="width:260px;">Keterangan</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             <?php foreach ($fields_vf_lp as $grup): ?>
                                                 <tr>
-                                                    <td colspan="5" style="background:#eef2ff; font-weight:700; color:#4338ca;">
+                                                    <td colspan="6" style="background:#eef2ff; font-weight:700; color:#4338ca;">
                                                         <?= (int) $grup['no'] ?>. <?= e($grup['judul']) ?>
                                                     </td>
                                                 </tr>
-                                                <?php $lokSebelum = null;
-                                                $komSebelum = null; ?>
-                                                <?php foreach ($grup['items'] as $it): ?>
+                                                <?php $rowspanMap = lp_pvf_hitung_rowspan($grup['items']); ?>
+                                                <?php foreach ($grup['items'] as $idx => $it): ?>
                                                     <?php
-                                                    $lok = $it['lokasi'] ?? '';
-                                                    $kom = $it['komponen'] ?? '';
                                                     $stVf = $nilai_vf_status_lp[$it['key']] ?? '';
+                                                    $rsLok = $rowspanMap[$idx]['lokasi_rowspan'];
+                                                    $rsKom = $rowspanMap[$idx]['komponen_rowspan'];
+                                                    $komKosong = trim((string) ($it['komponen'] ?? '')) === '';
                                                     ?>
-                                                    <?php if ($lok !== '' && $lok !== $lokSebelum): ?>
-                                                        <?php $komSebelum = null; ?>
-                                                        <tr>
-                                                            <td colspan="5" style="font-weight:700; background:#f8fafc;"><?= e($lok) ?></td>
-                                                        </tr>
-                                                    <?php endif; ?>
-                                                    <?php if ($kom !== '' && $kom !== $komSebelum): ?>
-                                                        <tr>
-                                                            <td colspan="5" style="font-weight:600; padding-left:18px;"><?= e($kom) ?></td>
-                                                        </tr>
-                                                    <?php endif; ?>
-                                                    <?php $lokSebelum = $lok !== '' ? $lok : $lokSebelum;
-                                                    $komSebelum = $kom; ?>
                                                     <tr>
-                                                        <td style="text-align:center;"><?= (int) $it['urut'] ?></td>
-                                                        <td style="padding-left:<?= $kom !== '' ? '32' : '18' ?>px;">
-                                                            <?= e($it['label']) ?>
-                                                        </td>
+                                                        <?php if ($rsLok !== null): ?>
+                                                            <td rowspan="<?= $rsLok ?>"
+                                                                style="vertical-align:middle; text-align:center; font-weight:600;">
+                                                                <?= e($it['lokasi']) ?>
+                                                            </td>
+                                                        <?php endif; ?>
+
+                                                        <?php if ($komKosong): ?>
+                                                            <!-- Komponen & Pemeriksaan digabung (mis. "Pemberat (C/W)") -->
+                                                            <td colspan="2" style="vertical-align:middle; text-align:center;">
+                                                                <?= e($it['label']) ?>
+                                                            </td>
+                                                        <?php else: ?>
+                                                            <?php if ($rsKom !== null): ?>
+                                                                <td rowspan="<?= $rsKom ?>" style="vertical-align:middle; text-align:center;">
+                                                                    <?= e($it['komponen']) ?>
+                                                                </td>
+                                                            <?php endif; ?>
+                                                            <td><?= e($it['label']) ?></td>
+                                                        <?php endif; ?>
+
                                                         <td style="text-align:center;">
                                                             <input type="checkbox" class="lp-vf-chk"
                                                                 name="vf_status[<?= e($it['key']) ?>]" value="ok" <?= $stVf === 'ok' ? 'checked' : '' ?>>
@@ -2988,6 +3008,172 @@ include "../includes/topbar.php";
                                             });
                                         }
                                     });
+                                })();
+                            </script>
+                        <?php endif; ?>
+
+                        <?php if ($adaPjn): ?>
+                            <div class="mt-3">
+                                <div class="lp-section-title">V. PENGUJIAN</div>
+
+                                <div class="d-flex justify-content-end mb-2">
+                                    <button type="button" class="btn-secondary-custom" style="font-size:0.75rem;"
+                                        onclick="pjnTambahBaris()">
+                                        <i class="bi bi-plus-lg"></i> Tambah Baris
+                                    </button>
+                                </div>
+
+                                <?php
+                                $nilaiPjn = $_POST['pjn'] ?? [];
+                                if (empty($nilaiPjn)) {
+                                    // Contoh awal mengikuti tabel di gambar; hapus/ubah sesuai kebutuhan
+                                    $nilaiPjn = [
+                                        ['fungsi' => 'Travelling', 'tinggi_angkat' => '', 'kecepatan' => '', 'gerakan' => "Maju\nMundur", 'beban' => 'Tanpa Beban', 'hasil' => 'Baik', 'ket_mode' => 'manual', 'ket_manual' => 'Brake ok', 'ukur_akhir' => ''],
+                                        ['fungsi' => 'Manuver', 'tinggi_angkat' => '', 'kecepatan' => '', 'gerakan' => "Kanan\nKiri", 'beban' => 'Tanpa Beban', 'hasil' => 'Baik', 'ket_mode' => 'manual', 'ket_manual' => 'Tidak ada kelainan', 'ukur_akhir' => ''],
+                                        ['fungsi' => 'Lengan (Boom)', 'tinggi_angkat' => '', 'kecepatan' => '', 'gerakan' => "Naik\nTurun", 'beban' => 'Tanpa Beban', 'hasil' => 'Baik', 'ket_mode' => 'manual', 'ket_manual' => 'Tidak ada kelainan', 'ukur_akhir' => ''],
+                                        ['fungsi' => 'Bak (Bucket)', 'tinggi_angkat' => '', 'kecepatan' => '', 'gerakan' => "Naik\nTurun", 'beban' => 'Tanpa Beban', 'hasil' => 'Baik', 'ket_mode' => 'manual', 'ket_manual' => 'Tidak ada kelainan', 'ukur_akhir' => ''],
+                                        ['fungsi' => "Gerakan\n(Loading dan Unloading)", 'tinggi_angkat' => '', 'kecepatan' => '', 'gerakan' => "Travelling\nNaik Turun", 'beban' => 'Tanpa Beban', 'hasil' => 'Baik', 'ket_mode' => 'manual', 'ket_manual' => 'Tidak ada kelainan', 'ukur_akhir' => ''],
+                                        ['fungsi' => "Gerakan\n(Loading dan Unloading)", 'tinggi_angkat' => '711 mm', 'kecepatan' => 'Statis', 'gerakan' => 'Statis', 'beban' => "Pasir\n3 m³", 'hasil' => 'Baik', 'ket_mode' => 'hitung', 'ket_manual' => '', 'ukur_akhir' => '708'],
+                                    ];
+                                }
+                                ?>
+                                <div class="table-responsive-custom">
+                                    <table class="table-custom" id="pjn-tabel">
+                                        <thead>
+                                            <tr>
+                                                <th style="width:36px; text-align:center;">No</th>
+                                                <th style="width:160px;">Fungsi</th>
+                                                <th style="width:110px;">Tinggi Angkat</th>
+                                                <th style="width:110px;">Kecepatan</th>
+                                                <th style="width:140px;">Gerakan</th>
+                                                <th style="width:140px;">Beban</th>
+                                                <th style="width:80px;">Hasil</th>
+                                                <th style="width:240px;">Ket</th>
+                                                <th style="width:40px;"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="pjn-tabel-body">
+                                            <?php foreach (array_values($nilaiPjn) as $idx => $baris): ?>
+                                                <?php $ketMode = ($baris['ket_mode'] ?? 'manual') === 'hitung' ? 'hitung' : 'manual'; ?>
+                                                <tr class="pjn-baris">
+                                                    <td class="pjn-nomor" style="text-align:center;"><?= $idx + 1 ?></td>
+                                                    <td><textarea name="pjn[<?= $idx ?>][fungsi]" rows="1"
+                                                            class="form-control-custom lp-textarea-ket"
+                                                            oninput="lpAutoGrowTextarea(this)"><?= e($baris['fungsi'] ?? '') ?></textarea>
+                                                    </td>
+                                                    <td><input type="text" name="pjn[<?= $idx ?>][tinggi_angkat]"
+                                                            class="form-control-custom text-xs"
+                                                            value="<?= e($baris['tinggi_angkat'] ?? '') ?>"
+                                                            placeholder="Contoh: 711 mm"></td>
+                                                    <td><input type="text" name="pjn[<?= $idx ?>][kecepatan]"
+                                                            class="form-control-custom text-xs"
+                                                            value="<?= e($baris['kecepatan'] ?? '') ?>"
+                                                            placeholder="Statis/Dinamis"></td>
+                                                    <td><textarea name="pjn[<?= $idx ?>][gerakan]" rows="1"
+                                                            class="form-control-custom lp-textarea-ket"
+                                                            oninput="lpAutoGrowTextarea(this)"
+                                                            placeholder="Enter = baris baru"><?= e($baris['gerakan'] ?? '') ?></textarea>
+                                                    </td>
+                                                    <td><textarea name="pjn[<?= $idx ?>][beban]" rows="1"
+                                                            class="form-control-custom lp-textarea-ket"
+                                                            oninput="lpAutoGrowTextarea(this)"><?= e($baris['beban'] ?? '') ?></textarea>
+                                                    </td>
+                                                    <td><input type="text" name="pjn[<?= $idx ?>][hasil]"
+                                                            class="form-control-custom text-xs"
+                                                            value="<?= e($baris['hasil'] ?? 'Baik') ?>"></td>
+                                                    <td>
+                                                        <div class="d-flex flex-column gap-1">
+                                                            <select name="pjn[<?= $idx ?>][ket_mode]" class="select-custom text-xs"
+                                                                onchange="pjnToggleKet(this)">
+                                                                <option value="manual" <?= $ketMode === 'manual' ? 'selected' : '' ?>>
+                                                                    Manual</option>
+                                                                <option value="hitung" <?= $ketMode === 'hitung' ? 'selected' : '' ?>>
+                                                                    Hitung Penurunan</option>
+                                                            </select>
+                                                            <textarea name="pjn[<?= $idx ?>][ket_manual]" rows="1"
+                                                                class="form-control-custom lp-textarea-ket pjn-ket-manual"
+                                                                style="<?= $ketMode === 'hitung' ? 'display:none;' : '' ?>"
+                                                                oninput="lpAutoGrowTextarea(this)"><?= e($baris['ket_manual'] ?? '') ?></textarea>
+                                                            <div class="pjn-ket-hitung"
+                                                                style="<?= $ketMode === 'hitung' ? '' : 'display:none;' ?>">
+                                                                <label class="text-secondary text-xs mb-1 d-block">Ukur Akhir
+                                                                    (mm)</label>
+                                                                <input type="text" name="pjn[<?= $idx ?>][ukur_akhir]"
+                                                                    class="form-control-custom text-xs"
+                                                                    value="<?= e($baris['ukur_akhir'] ?? '') ?>"
+                                                                    placeholder="Contoh: 708">
+                                                                <small class="text-secondary text-xs d-block mt-1">Hasil: "Tidak
+                                                                    Terjadi Penurunan" + "Tinggi Angkat-Ukur Akhir=Selisih".</small>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td style="text-align:center;">
+                                                        <button type="button" class="btn btn-outline-danger btn-sm py-1"
+                                                            style="font-size:0.7rem;" title="Hapus baris"
+                                                            onclick="pjnHapusBaris(this)">
+                                                            <i class="bi bi-trash"></i>
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            <?php endforeach; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <small class="text-secondary text-xs">
+                                    Kolom Fungsi, Gerakan, Beban, dan Ket bisa multi-baris (tekan Enter). Kolom kosong tercetak
+                                    "-" di Word.
+                                    Pilih "Hitung Penurunan" pada Ket untuk baris statis: angka pertama diambil dari Tinggi
+                                    Angkat, angka kedua dari Ukur Akhir.
+                                </small>
+                            </div>
+                            <script>
+                                (function () {
+                                    if (typeof window.lpAutoGrowTextarea !== 'function') {
+                                        window.lpAutoGrowTextarea = function (el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; };
+                                    }
+                                    document.querySelectorAll('#pjn-tabel-body textarea').forEach(window.lpAutoGrowTextarea);
+
+                                    function renumber() {
+                                        document.querySelectorAll('#pjn-tabel-body .pjn-baris').forEach(function (tr, idx) {
+                                            tr.querySelector('.pjn-nomor').textContent = idx + 1;
+                                            tr.querySelectorAll('[name^="pjn["]').forEach(function (el) {
+                                                el.name = el.name.replace(/^pjn\[\d+\]/, 'pjn[' + idx + ']');
+                                            });
+                                        });
+                                    }
+                                    window.pjnToggleKet = function (sel) {
+                                        var td = sel.closest('td');
+                                        var hitung = sel.value === 'hitung';
+                                        td.querySelector('.pjn-ket-manual').style.display = hitung ? 'none' : '';
+                                        td.querySelector('.pjn-ket-hitung').style.display = hitung ? '' : 'none';
+                                    };
+                                    window.pjnTambahBaris = function () {
+                                        var tbody = document.getElementById('pjn-tabel-body');
+                                        var semua = tbody.querySelectorAll('.pjn-baris');
+                                        var acuan = semua[semua.length - 1];
+                                        if (!acuan) return;
+                                        var baru = acuan.cloneNode(true);
+                                        baru.querySelectorAll('input[type=text]').forEach(function (el) { el.value = ''; });
+                                        baru.querySelectorAll('textarea').forEach(function (el) {
+                                            el.value = ''; el.removeAttribute('style'); window.lpAutoGrowTextarea(el);
+                                        });
+                                        baru.querySelector('[name$="[hasil]"]').value = 'Baik';
+                                        var sel = baru.querySelector('select');
+                                        sel.value = 'manual';
+                                        pjnToggleKet(sel);
+                                        tbody.appendChild(baru);
+                                        renumber();
+                                    };
+                                    window.pjnHapusBaris = function (btn) {
+                                        var tbody = document.getElementById('pjn-tabel-body');
+                                        var baris = btn.closest('tr.pjn-baris');
+                                        if (tbody.querySelectorAll('tr.pjn-baris').length <= 1) {
+                                            baris.querySelectorAll('input[type=text], textarea').forEach(function (el) { el.value = ''; });
+                                            return;
+                                        }
+                                        baris.remove();
+                                        renumber();
+                                    };
                                 })();
                             </script>
                         <?php endif; ?>
@@ -3227,7 +3413,7 @@ include "../includes/topbar.php";
 
                         <?php if (!empty($fields_kmp_lp)): ?>
                             <div class="mt-3">
-                                <div class="lp-section-title">Analisis</div>
+                                <div class="lp-section-title">VI. Analisis</div>
 
                                 <div class="lp-subsection">
                                     <div class="lp-subsection-title">A. Analisa Komponen</div>
@@ -3242,8 +3428,14 @@ include "../includes/topbar.php";
                                                 <tbody>
                                                     <tr>
                                                         <td style="width:250px;">Kapasitas Bucket / SWL</td>
-                                                        <td><span id="kmp-tampil-bucket" class="text-secondary">-</span>
-                                                            <small class="text-secondary">(dari Kapasitas Bucket)</small>
+                                                        <td>
+                                                            <div class="d-flex align-items-center gap-2">
+                                                                <input type="text" name="dinamis[kmp_kapasitas_bucket]"
+                                                                    class="form-control-custom text-xs" style="max-width:160px;"
+                                                                    placeholder="Contoh: 3"
+                                                                    value="<?= e($nilai_dinamis_lp['kmp_kapasitas_bucket'] ?? '') ?>">
+                                                                <span class="text-xs">m³</span>
+                                                            </div>
                                                         </td>
                                                     </tr>
                                                     <tr>
@@ -3260,8 +3452,16 @@ include "../includes/topbar.php";
                                                     </tr>
                                                     <tr>
                                                         <td>Working Pressure (P)</td>
-                                                        <td><span id="kmp-tampil-tekanan" class="text-secondary">-</span>
-                                                            <small class="text-secondary">(dari Tekanan Pompa Hidrolik)</small>
+                                                        <td>
+                                                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                                                                <input type="text" name="dinamis[kmp_tekanan_mpa]"
+                                                                    class="form-control-custom text-xs" style="max-width:160px;"
+                                                                    placeholder="Contoh: 18"
+                                                                    value="<?= e($nilai_dinamis_lp['kmp_tekanan_mpa'] ?? '') ?>">
+                                                                <span class="text-xs">MPa</span>
+                                                                <span class="text-secondary text-xs">= <span
+                                                                        id="kmp-tampil-tekanan">-</span></span>
+                                                            </div>
                                                         </td>
                                                     </tr>
                                                     <tr>
@@ -3301,15 +3501,13 @@ include "../includes/topbar.php";
                                     function pot(x, d) { var f = Math.pow(10, d); return Math.floor(x * f + 1e-9) / f; }
 
                                     function hitung() {
-                                        var vol = des(v('dinamis[kapasitas_bucket]') || v('dinamis[wl_kapasitas_bucket]'));
-                                        var mpa = des(v('dinamis[wl_pompa_tekanan]'));
+                                        var vol = des(v('dinamis[kmp_kapasitas_bucket]'));
+                                        var mpa = des(v('dinamis[kmp_tekanan_mpa]'));
                                         var dia = des(v('dinamis[kmp_diameter_torak]'));
                                         var p = (mpa > 0) ? pot(mpa * MPA, 2) : null;
 
-                                        document.getElementById('kmp-tampil-bucket').textContent = vol > 0 ? (vol + ' m³') : '-';
                                         document.getElementById('kmp-tampil-tekanan').textContent =
-                                            p !== null ? (mpa + ' MPa = ' + p.toFixed(2) + ' kg/cm²') : '-';
-
+                                            p !== null ? (p.toFixed(2) + ' kg/cm²') : '-';
                                         var baris = [], swl = null, q = null;
                                         if (vol > 0) {
                                             swl = vol * RHO;
@@ -3337,7 +3535,7 @@ include "../includes/topbar.php";
 
                         <?php if (!empty($fields_akm_lp)): ?>
                             <div class="mt-3">
-                                <div class="lp-section-title">V. ANALISIS</div>
+                                <div class="lp-section-title">VI. ANALISIS</div>
 
                                 <div class="lp-subsection">
                                     <div class="lp-subsection-title">A. Analisa Komponen</div>
@@ -3418,7 +3616,7 @@ include "../includes/topbar.php";
 
                         <?php if (!empty($fields_ck_lp)): ?>
                             <div class="mt-3">
-                                <div class="lp-section-title">Data Checklist Pemeriksaan</div>
+                                <div class="lp-section-title">III. Data Checklist Pemeriksaan</div>
                                 <div class="table-responsive-custom">
                                     <table class="table-custom">
                                         <thead>
@@ -3791,7 +3989,7 @@ include "../includes/topbar.php";
                             ];
                             ?>
                             <div class="mt-3 mb-2">
-                                <div class="lp-section-title">Pengujian yang digunakan</div>
+                                <div class="lp-section-title">II.PEMERIKSAAN DAN PENGUJIAN</div>
                                 <div class="d-flex flex-column gap-2">
                                     <?php foreach ($pengujian_aktif_lp as $keyPengujian): ?>
                                         <div class="d-flex align-items-start gap-2">
@@ -3812,7 +4010,7 @@ include "../includes/topbar.php";
 
                         <?php if ($adaChkBejana): ?>
                             <div class="mt-3">
-                                <div class="lp-section-title">Checklist Pemeriksaan</div>
+                                <div class="lp-section-title">II. Checklist Pemeriksaan</div>
                                 <?php foreach (LP_CHK_BEJANA_GRUP as $judulGrup => $daftarField): ?>
                                     <?php
                                     $adaDiTemplate = array_filter(array_keys($daftarField), fn($k) => array_key_exists($k, $nilai_dinamis_lp));
@@ -3841,7 +4039,7 @@ include "../includes/topbar.php";
 
                         <?php if (!empty($fields_ketel_lp)): ?>
                             <div class="mt-3">
-                                <div class="lp-section-title">Pemeriksaan Visual</div>
+                                <div class="lp-section-title">III. Pemeriksaan Visual</div>
                                 <div class="table-responsive-custom">
                                     <table class="table-custom">
                                         <thead>
@@ -3923,7 +4121,7 @@ include "../includes/topbar.php";
 
                         <?php if (!empty($fields_visual_lp)): ?>
                             <div class="mt-3">
-                                <div class="lp-section-title">Pemeriksaan Visual</div>
+                                <div class="lp-section-title">III. Pemeriksaan Visual</div>
                                 <div class="table-responsive-custom">
                                     <table class="table-custom">
                                         <thead>
@@ -3991,7 +4189,7 @@ include "../includes/topbar.php";
 
                         <?php if (!empty($fields_dimensi_lp)): ?>
                             <div class="mt-3">
-                                <div class="lp-section-title">Pemeriksaan Dimensi</div>
+                                <div class="lp-section-title">IV. Pemeriksaan Dimensi</div>
                                 <div class="table-responsive-custom">
                                     <table class="table-custom">
                                         <thead>
@@ -4052,7 +4250,7 @@ include "../includes/topbar.php";
                             }
                             ?>
                             <div class="mt-3">
-                                <div class="lp-section-title">Perhitungan Thickness Test</div>
+                                <div class="lp-section-title">V. Perhitungan Thickness Test</div>
                                 <div class="d-flex flex-column gap-2">
 
                                     <?php foreach ($fields_thk_lp as $f): ?>
@@ -4102,7 +4300,7 @@ include "../includes/topbar.php";
                             $adaKolomMetodeHasil = (bool) array_filter($fields_hasil_lp, fn($h) => $h['field_metode']);  // <<< BARU
                             ?>
                             <div class="mt-3">
-                                <div class="lp-section-title">Data Hasil Pengujian / Pemeriksaan</div>
+                                <div class="lp-section-title">III. Data Hasil Pengujian / Pemeriksaan</div>
                                 <div class="table-responsive-custom">
                                     <table class="table-custom">
                                         <thead>
@@ -4209,75 +4407,83 @@ include "../includes/topbar.php";
                             </div>
                         <?php endif; ?>
 
-                        <?php if (!empty($fields_arus_nominal_lp)): ?>
-                            <div class="mt-3">
-                                <div class="lp-section-title">Perhitungan Arus Nominal (In)</div>
-                                <div class="d-flex flex-column gap-2">
-                                    <?php foreach ($fields_arus_nominal_lp as $f): ?>
-                                        <div class="d-flex align-items-center gap-2">
-                                            <label
-                                                class="form-label fw-semibold mb-0 text-xs lp-field-label"><?= e($f['label']) ?></label>
-                                            <input type="text" name="dinamis[<?= e($f['field']) ?>]"
-                                                class="form-control-custom text-xs" style="flex:1 1 auto;"
-                                                value="<?= e($nilai_dinamis_lp[$f['field']] ?? '') ?>">
-                                        </div>
-                                    <?php endforeach; ?>
-                                </div>
-                            </div>
-                        <?php endif; ?>
 
-                        <?php if (!empty($fields_kabel_lp)): ?>
+                        <?php if (!empty($fields_arus_nominal_lp) || !empty($fields_kabel_lp) || !empty($fields_proteksi_nominal_lp) || !empty($fields_rst_lp)): ?>
                             <div class="mt-3">
-                                <div class="lp-section-title">Jenis dan Ukuran Kabel yang Digunakan</div>
-                                <div class="d-flex flex-column gap-2">
-                                    <?php foreach ($fields_kabel_lp as $f): ?>
-                                        <div class="d-flex align-items-center gap-2">
-                                            <label
-                                                class="form-label fw-semibold mb-0 text-xs lp-field-label"><?= e($f['label']) ?></label>
-                                            <div class="d-flex align-items-center gap-1" style="flex:1 1 auto;">
-                                                <input type="text" name="dinamis[<?= e($f['field']) ?>]"
-                                                    class="form-control-custom text-xs" style="flex:1 1 auto;"
-                                                    value="<?= e($nilai_dinamis_lp[$f['field']] ?? '') ?>"
-                                                    <?= $f['field'] === 'kabel_ukuran' ? 'placeholder="Contoh: 8 x 185"' : '' ?>
-                                                    <?= $f['field'] === 'kabel_kha_satuan' ? 'placeholder="Contoh: 637"' : '' ?>>
-                                            </div>
-                                        </div>
-                                    <?php endforeach; ?>
-                                </div>
-                            </div>
-                        <?php endif; ?>
+                                <div class="lp-section-title">IV. ANALISIS</div>
 
-                        <?php if (!empty($fields_proteksi_nominal_lp)): ?> <!-- <<< BLOK BARU -->
-                            <div class="mt-3">
-                                <div class="lp-section-title">Perhitungan Pembatas Arus atau Rating Proteksi Utama</div>
-                                <div class="d-flex flex-column gap-2">
-                                    <?php foreach ($fields_proteksi_nominal_lp as $f): ?>
-                                        <div class="d-flex align-items-center gap-2">
-                                            <label
-                                                class="form-label fw-semibold mb-0 text-xs lp-field-label"><?= e($f['label']) ?></label>
-                                            <input type="text" name="dinamis[<?= e($f['field']) ?>]"
-                                                class="form-control-custom text-xs" style="flex:1 1 auto;"
-                                                value="<?= e($nilai_dinamis_lp[$f['field']] ?? '') ?>">
+                                <?php if (!empty($fields_arus_nominal_lp)): ?>
+                                    <div class="lp-subsection">
+                                        <div class="lp-subsection-title">A. Perhitungan Arus Nominal (In)</div>
+                                        <div class="lp-subsection-body">
+                                            <?php foreach ($fields_arus_nominal_lp as $f): ?>
+                                                <div class="d-flex align-items-center gap-2">
+                                                    <label
+                                                        class="form-label fw-semibold mb-0 text-xs lp-field-label"><?= e($f['label']) ?></label>
+                                                    <input type="text" name="dinamis[<?= e($f['field']) ?>]"
+                                                        class="form-control-custom text-xs" style="flex:1 1 auto;"
+                                                        value="<?= e($nilai_dinamis_lp[$f['field']] ?? '') ?>">
+                                                </div>
+                                            <?php endforeach; ?>
                                         </div>
-                                    <?php endforeach; ?>
-                                </div>
-                            </div>
-                        <?php endif; ?>
+                                    </div>
+                                <?php endif; ?>
 
-                        <?php if (!empty($fields_rst_lp)): ?>
-                            <div class="mt-3">
-                                <div class="lp-section-title">Perhitungan Keseimbangan Beban RST</div>
-                                <div class="d-flex flex-column gap-2">
-                                    <?php foreach ($fields_rst_lp as $f): ?>
-                                        <div class="d-flex align-items-center gap-2">
-                                            <label
-                                                class="form-label fw-semibold mb-0 text-xs lp-field-label"><?= e($f['label']) ?></label>
-                                            <input type="text" name="dinamis[<?= e($f['field']) ?>]"
-                                                class="form-control-custom text-xs" style="flex:1 1 auto;"
-                                                value="<?= e($nilai_dinamis_lp[$f['field']] ?? '') ?>">
+                                <?php if (!empty($fields_kabel_lp)): ?>
+                                    <div class="lp-subsection">
+                                        <div class="lp-subsection-title">B. Jenis dan Ukuran Kabel yang Digunakan</div>
+                                        <div class="lp-subsection-body">
+                                            <?php foreach ($fields_kabel_lp as $f): ?>
+                                                <div class="d-flex align-items-center gap-2">
+                                                    <label
+                                                        class="form-label fw-semibold mb-0 text-xs lp-field-label"><?= e($f['label']) ?></label>
+                                                    <div class="d-flex align-items-center gap-1" style="flex:1 1 auto;">
+                                                        <input type="text" name="dinamis[<?= e($f['field']) ?>]"
+                                                            class="form-control-custom text-xs" style="flex:1 1 auto;"
+                                                            value="<?= e($nilai_dinamis_lp[$f['field']] ?? '') ?>"
+                                                            <?= $f['field'] === 'kabel_ukuran' ? 'placeholder="Contoh: 8 x 185"' : '' ?>
+                                                            <?= $f['field'] === 'kabel_kha_satuan' ? 'placeholder="Contoh: 637"' : '' ?>>
+                                                    </div>
+                                                </div>
+                                            <?php endforeach; ?>
                                         </div>
-                                    <?php endforeach; ?>
-                                </div>
+                                    </div>
+                                <?php endif; ?>
+
+                                <?php if (!empty($fields_proteksi_nominal_lp)): ?>
+                                    <div class="lp-subsection">
+                                        <div class="lp-subsection-title">C. Perhitungan Pembatas Arus atau Rating Proteksi Utama
+                                        </div>
+                                        <div class="lp-subsection-body">
+                                            <?php foreach ($fields_proteksi_nominal_lp as $f): ?>
+                                                <div class="d-flex align-items-center gap-2">
+                                                    <label
+                                                        class="form-label fw-semibold mb-0 text-xs lp-field-label"><?= e($f['label']) ?></label>
+                                                    <input type="text" name="dinamis[<?= e($f['field']) ?>]"
+                                                        class="form-control-custom text-xs" style="flex:1 1 auto;"
+                                                        value="<?= e($nilai_dinamis_lp[$f['field']] ?? '') ?>">
+                                                </div>
+                                            <?php endforeach; ?>
+                                        </div>
+                                    </div>
+                                <?php endif; ?>
+
+                                <?php if (!empty($fields_rst_lp)): ?>
+                                    <div class="lp-subsection">
+                                        <div class="lp-subsection-title">D. Perhitungan Keseimbangan Beban RST</div>
+                                        <div class="lp-subsection-body">
+                                            <?php foreach ($fields_rst_lp as $f): ?>
+                                                <div class="d-flex align-items-center gap-2">
+                                                    <label
+                                                        class="form-label fw-semibold mb-0 text-xs lp-field-label"><?= e($f['label']) ?></label>
+                                                    <input type="text" name="dinamis[<?= e($f['field']) ?>]"
+                                                        class="form-control-custom text-xs" style="flex:1 1 auto;"
+                                                        value="<?= e($nilai_dinamis_lp[$f['field']] ?? '') ?>">
+                                                </div>
+                                            <?php endforeach; ?>
+                                        </div>
+                                    </div>
+                                <?php endif; ?>
                             </div>
                         <?php endif; ?>
 
@@ -4504,10 +4710,10 @@ include "../includes/topbar.php";
 
                                     var status = angka <= 5 ? 'Memenuhi' : 'Tidak Memenuhi';
                                     return 'Didapatkan hasil pengujian ' + status + '.'/* ', dikarenakan sesuai dengan Permenaker No. 2 '
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            + 'tahun 1989 pasal 54 bahwa nilai maksimal pembumian tidak boleh lebih dari 5 ohm.'
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            + (angka <= 5
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                ? ' (nilai tahanan ' + angka + ' Ω).'
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                : ' (nilai tahanan ' + angka + ' Ω melebihi batas maksimal).'); */
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            + 'tahun 1989 pasal 54 bahwa nilai maksimal pembumian tidak boleh lebih dari 5 ohm.'
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            + (angka <= 5
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                ? ' (nilai tahanan ' + angka + ' Ω).'
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                : ' (nilai tahanan ' + angka + ' Ω melebihi batas maksimal).'); */
                                 }
 
                                 function pasangAutoSaran(btn) {

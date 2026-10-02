@@ -309,6 +309,10 @@ const LP_PLACEHOLDER_FIELD = [
 
     'thk_material' => 'Contoh: Baja Carbon',
     'thk_tekanan_desain' => 'Contoh: 12 (dipakai khusus utk Thickness Test)',
+
+    'kmp_kapasitas_bucket' => 'Contoh: 3',
+    'kmp_tekanan_mpa' => 'Contoh: 18',
+    'kmp_diameter_torak' => 'Contoh: 5.1',
 ];
 
 // Angka murni -> otomatis ditambah satuan
@@ -638,6 +642,79 @@ function lp_siapkan_baris_puj(array $inputPuj): array
             'beban' => $beban !== '' ? $beban : '-',
             'kecepatan' => $kecepatan !== '' ? $kecepatan : '-',
             'gerakan' => lp_gabung_gerakan($gerakanBersih),
+            'hasil' => $hasil !== '' ? $hasil : '-',
+            'ket' => $ket,
+        ];
+    }
+    return $rows;
+}
+
+// ===== PENGUJIAN (model tabel No/Fungsi/Tinggi/Kecepatan/Gerakan/Beban/Hasil/Ket) — prefix pjn_ =====
+// TERPISAH dari puj_ (V. PENGUJIAN lama).
+const LP_ANCHOR_PJN = 'pjn_no';
+const LP_PJN_FIELD_SEMUA = [
+    'pjn_no',
+    'pjn_fungsi',
+    'pjn_tinggi_angkat',
+    'pjn_kecepatan',
+    'pjn_gerakan',
+    'pjn_beban',
+    'pjn_hasil',
+    'pjn_ket',
+];
+const LP_PJN_SATUAN_PENURUNAN = 'mm';   // kosongkan ('') kalau tidak mau ada satuan setelah selisih
+
+/**
+ * Ket mode "Hitung": "Tidak Terjadi Penurunan" + baris "711-708=3".
+ * 711 diambil dari kolom Tinggi Angkat (baris yang sama), 708 dari input Ukur Akhir.
+ */
+function lp_hitung_ket_pjn(string $tinggiMentah, string $ukurAkhirMentah): string
+{
+    $teks = 'Tidak Terjadi Penurunan';
+    $tinggi = lp_ke_angka(preg_replace('/[^\d.,\-]/', '', $tinggiMentah));
+    $ukur = lp_ke_angka(preg_replace('/[^\d.,\-]/', '', $ukurAkhirMentah));
+    if ($tinggi === null || $ukur === null) {
+        return $teks;
+    }
+    $fmt = fn($n) => (floor($n) == $n) ? number_format($n, 0, ',', '') : lp_format_angka_koma($n, 2);
+    $selisih = $tinggi - $ukur;
+    return $teks . "\n" . $fmt($tinggi) . '-' . $fmt($ukur) . '=' . $fmt($selisih)
+        . (LP_PJN_SATUAN_PENURUNAN !== '' ? ' ' . LP_PJN_SATUAN_PENURUNAN : '');
+}
+
+/** Siapkan baris PENGUJIAN dari $_POST['pjn']; baris yang benar-benar kosong dibuang. */
+function lp_siapkan_baris_pjn(array $inputPjn): array
+{
+    $rows = [];
+    foreach ($inputPjn as $b) {
+        $fungsi = trim((string) ($b['fungsi'] ?? ''));
+        $tinggi = trim((string) ($b['tinggi_angkat'] ?? ''));
+        $kec = trim((string) ($b['kecepatan'] ?? ''));
+        $gerakan = trim((string) ($b['gerakan'] ?? ''));
+        $beban = trim((string) ($b['beban'] ?? ''));
+        $hasil = trim((string) ($b['hasil'] ?? ''));
+        $mode = ($b['ket_mode'] ?? 'manual') === 'hitung' ? 'hitung' : 'manual';
+        $ketManual = trim((string) ($b['ket_manual'] ?? ''));
+        $ukurAkhir = trim((string) ($b['ukur_akhir'] ?? ''));
+
+        // "hasil" sengaja tidak dihitung: default-nya "Baik", jadi baris kosong tidak ikut tercetak
+        if (
+            $fungsi === '' && $tinggi === '' && $kec === '' && $gerakan === ''
+            && $beban === '' && $ketManual === '' && $ukurAkhir === ''
+        ) {
+            continue;
+        }
+
+        $ket = $mode === 'hitung'
+            ? lp_hitung_ket_pjn($tinggi, $ukurAkhir)
+            : ($ketManual !== '' ? $ketManual : '-');
+
+        $rows[] = [
+            'fungsi' => $fungsi !== '' ? $fungsi : '-',
+            'tinggi_angkat' => $tinggi !== '' ? $tinggi : '-',
+            'kecepatan' => $kec !== '' ? $kec : '-',
+            'gerakan' => $gerakan !== '' ? $gerakan : '-',
+            'beban' => $beban !== '' ? $beban : '-',
             'hasil' => $hasil !== '' ? $hasil : '-',
             'ket' => $ket,
         ];
@@ -1052,7 +1129,7 @@ function lp_data_teknis_semua_field(): array
 }
 
 // ===== ANALISIS: Analisa Komponen (Sistem Hidrolik - Wheel Loader) =====
-const LP_KMP_INPUT_FIELDS = ['kmp_diameter_torak'];
+const LP_KMP_INPUT_FIELDS = ['kmp_kapasitas_bucket', 'kmp_diameter_torak', 'kmp_tekanan_mpa'];
 const LP_KMP_FIELD_OTOMATIS = [
     'kmp_volume',
     'kmp_massa_jenis',
@@ -1112,18 +1189,13 @@ function lp_hitung_komponen_hidrolik(array $d): array
 {
     $hasil = array_fill_keys(LP_KMP_FIELD_OTOMATIS, '');
 
-    $bucketMentah = trim((string) ($d['kapasitas_bucket'] ?? ''));
-    if ($bucketMentah === '') {
-        $bucketMentah = trim((string) ($d['wl_kapasitas_bucket'] ?? ''));
-    }
-    $v = lp_pnd_angka_desimal($bucketMentah);
-    $mpa = lp_pnd_angka_desimal((string) ($d['wl_pompa_tekanan'] ?? ''));
+    // Input manual khusus Analisa Komponen (TIDAK lagi ambil dari Data Teknis)
+    $v = lp_pnd_angka_desimal((string) ($d['kmp_kapasitas_bucket'] ?? ''));
+    $mpa = lp_pnd_angka_desimal((string) ($d['kmp_tekanan_mpa'] ?? ''));
     $dia = lp_pnd_angka_desimal((string) ($d['kmp_diameter_torak'] ?? ''));
 
     $n = LP_KMP_JUMLAH_TORAK;
     $rho = LP_KMP_MASSA_JENIS;
-    $hasil['kmp_jumlah_torak'] = (string) $n;
-    $hasil['kmp_massa_jenis'] = (string) $rho;
 
     // --- SWL ---
     $swlKg = null;
@@ -3500,6 +3572,8 @@ function lp_label_dari_field(string $field): string
         'akm_kapasitas_spesifikasi' => 'Kapasitas Bak / Kapasitas Spesifikasi (m³)',
         'pelaksana' => 'Dilaksanakan Oleh',
         'perusahaan_pemakai' => 'Perusahaan Pemakai',
+        'kmp_kapasitas_bucket' => 'Kapasitas Bucket / SWL (m³)',
+        'kmp_tekanan_mpa' => 'Working Pressure (P) (MPa)',
 
     ];
     return $khusus[$field] ?? ucwords(str_replace('_', ' ', $field));
@@ -5081,7 +5155,8 @@ function lp_generate_docx(
     string $namaTemplate,
     string $namaPerusahaan = '',
     array $ndtRows = [],
-    array $pujRows = []
+    array $pujRows = [],
+    array $pjnRows = []
 ): string {
     if (!is_file($templatePath)) {
         throw new RuntimeException("File template laporan tidak ditemukan.");
@@ -5108,6 +5183,15 @@ function lp_generate_docx(
         $perluTulisUlang = true;
         if (empty($pujRows)) {
             $pujRows = [['tinggi_angkat' => '-', 'beban' => '-', 'kecepatan' => '-', 'gerakan' => '-', 'hasil' => '-', 'ket' => '-']];
+        }
+    }
+
+    if ($xmlKerja !== '' && strpos($xmlKerja, '${' . LP_ANCHOR_PJN . '}') !== false) {
+        $jumlahPjn = !empty($pjnRows) ? count($pjnRows) : 1;
+        $xmlKerja = lp_clone_blok_satu_baris($xmlKerja, LP_ANCHOR_PJN, $jumlahPjn);
+        $perluTulisUlang = true;
+        if (empty($pjnRows)) {
+            $pjnRows = [['fungsi' => '-', 'tinggi_angkat' => '-', 'kecepatan' => '-', 'gerakan' => '-', 'beban' => '-', 'hasil' => '-', 'ket' => '-']];
         }
     }
 
@@ -5272,20 +5356,22 @@ function lp_generate_docx(
         }
     }
 
-    foreach ($pujRows as $i => $row) {
+    foreach ($pjnRows as $i => $row) {
         $baris = $i + 1;
-        $setPuj = function (string $field, string $value) use ($processor, $baris) {
+        $setPjn = function (string $field, string $value) use ($processor, $baris) {
             try {
                 $processor->setValue($field . '#' . $baris, $value);
             } catch (\Throwable $e) {
             }
         };
-        $setPuj('puj_tinggi_angkat', htmlspecialchars($row['tinggi_angkat'], ENT_QUOTES));
-        $setPuj('puj_beban', htmlspecialchars($row['beban'], ENT_QUOTES));
-        $setPuj('puj_kecepatan', htmlspecialchars($row['kecepatan'], ENT_QUOTES));
-        $setPuj('puj_gerakan', lp_nilai_multiline_ke_xml($row['gerakan']));
-        $setPuj('puj_hasil', htmlspecialchars($row['hasil'], ENT_QUOTES));
-        $setPuj('puj_ket', lp_nilai_multiline_ke_xml($row['ket']));
+        $setPjn('pjn_no', (string) $baris);
+        $setPjn('pjn_fungsi', lp_nilai_multiline_ke_xml($row['fungsi']));
+        $setPjn('pjn_tinggi_angkat', htmlspecialchars($row['tinggi_angkat'], ENT_QUOTES));
+        $setPjn('pjn_kecepatan', htmlspecialchars($row['kecepatan'], ENT_QUOTES));
+        $setPjn('pjn_gerakan', lp_nilai_multiline_ke_xml($row['gerakan']));
+        $setPjn('pjn_beban', lp_nilai_multiline_ke_xml($row['beban']));
+        $setPjn('pjn_hasil', htmlspecialchars($row['hasil'], ENT_QUOTES));
+        $setPjn('pjn_ket', lp_nilai_multiline_ke_xml($row['ket']));
     }
 
     // ----- Nama file -----
