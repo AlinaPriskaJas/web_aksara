@@ -17,10 +17,25 @@ if (!defined('BASE_PATH')) {
     define('BASE_PATH', dirname(__DIR__));
 }
 require_once "../includes/functions.php";
+require_once "../includes/drive_helper.php";
+require_once "../includes/laporan_helper.php";      // dipakai untuk penomoran laporan
 require_once "../includes/pemeriksaan_helper.php";
 
 $page_title = "Pemeriksaan";
 $current_user_id = (int) $_SESSION['user_id'];
+
+jp_self_heal($pdo);   // pastikan kolom baru ada
+
+/** Template pertama (urut nama) untuk kombinasi bidang + unit -> kode laporan, atau null. */
+function jpKodeTemplate(PDO $pdo, int $idKategori, int $idJenis): ?string
+{
+    $st = $pdo->prepare("SELECT kode_laporan FROM Template_Laporan
+                         WHERE id_kategori = ? AND id_jenis = ? AND drive_file_id IS NOT NULL
+                         ORDER BY nama ASC LIMIT 1");
+    $st->execute([$idKategori, $idJenis]);
+    $kode = $st->fetchColumn();
+    return $kode ? (string) $kode : null;
+}
 
 // ==========================================
 // [AJAX] Autocomplete perusahaan
@@ -51,6 +66,30 @@ if (($_GET['ajax'] ?? '') === 'unit_objek_by_bidang') {
         $hasil = $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
     echo json_encode($hasil);
+    exit;
+}
+
+// ==========================================
+// [AJAX] Info alat: field yang tampil + nomor laporan berikutnya
+// ==========================================
+if (($_GET['ajax'] ?? '') === 'info_alat') {
+    header('Content-Type: application/json');
+    $idKategori = (int) ($_GET['id_kategori'] ?? 0);
+    $idJenis = (int) ($_GET['id_jenis'] ?? 0);
+    $urut = '';
+    $suffix = '';
+    $kode = ($idKategori > 0 && $idJenis > 0) ? jpKodeTemplate($pdo, $idKategori, $idJenis) : null;
+    if ($kode) {
+        $bagian = explode('/', lp_preview_nomor($pdo, $kode));
+        $urut = $bagian[0];
+        $suffix = '/' . implode('/', array_slice($bagian, 1));
+    }
+    echo json_encode([
+        'fields' => jp_field_tampil_untuk($pdo, $idKategori, $idJenis),
+        'urut' => $urut,
+        'suffix' => $suffix,
+        'ada_template' => $kode !== null,
+    ]);
     exit;
 }
 
@@ -86,19 +125,17 @@ function jpAmbil(PDO $pdo, int $id, int $userId): ?array
     return $row ?: null;
 }
 
-jp_self_heal($pdo);
-
 // ==========================================
 // [AKSI] Tambah pemeriksaan
 // ==========================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'tambah_pemeriksaan') {
     try {
         $namaPerusahaan = trim($_POST['nama_perusahaan'] ?? '');
+        $namaAlat = trim($_POST['nama_alat'] ?? '');
         $klienId = (int) ($_POST['klien_id'] ?? 0);
         $idKategori = (int) ($_POST['id_kategori'] ?? 0);
         $idJenis = (int) ($_POST['id_jenis'] ?? 0);
-        $lokasi = trim($_POST['lokasi'] ?? '');
-        $catatan = trim($_POST['catatan'] ?? '');
+        $noUrut = trim($_POST['no_urut'] ?? '');
         $jenisPemeriksaan = in_array($_POST['jenis_pemeriksaan'] ?? '', ['Pemeriksaan Baru', 'Pemeriksaan Berkala'], true)
             ? $_POST['jenis_pemeriksaan'] : 'Pemeriksaan Berkala';
         $tanggal = $_POST['tanggal_pemeriksaan'] ?? '';
@@ -125,18 +162,67 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'tambah_
             }
         }
 
+        // Nomor laporan rencana (divalidasi: angka & belum dipakai)
+        $nomorRencana = null;
+        $kode = jpKodeTemplate($pdo, $idKategori, $idJenis);
+        if ($kode) {
+            $nomorRencana = lp_generate_nomor($pdo, $kode, $noUrut);
+        }
+
+        // Field template (ad = tunggal, ap = berpasangan), hanya yang ada di whitelist
+        $ad = [];
+        foreach ((array) ($_POST['ad'] ?? []) as $k => $v) {
+            $v = trim((string) $v);
+            if ($v !== '' && in_array($k, JP_FIELD_TAMPIL, true) && !isset(LP_FIELD_PASANGAN[$k])) {
+                $ad[$k] = $v;
+            }
+        }
+        $ap = [];
+        foreach ((array) ($_POST['ap'] ?? []) as $k => $v) {
+            if (!isset(LP_FIELD_PASANGAN[$k]) || !in_array($k, JP_FIELD_TAMPIL, true)) {
+                continue;
+            }
+            $kiri = trim((string) ($v['kiri'] ?? ''));
+            $kanan = trim((string) ($v['kanan'] ?? ''));
+            if ($kiri !== '' || $kanan !== '') {
+                $ap[$k] = ['kiri' => $kiri, 'kanan' => $kanan];
+            }
+        }
+        $dataAlatJson = ($ad || $ap)
+            ? json_encode(['dinamis' => $ad, 'pasangan' => $ap], JSON_UNESCAPED_UNICODE)
+            : null;
+
+        // Kolom lama: dari input lama (fallback) atau turunan field template
+        $turun = jp_turunan_kolom_alat($ad, $ap);
+        $alat = [];
+        foreach (array_keys(JP_FIELD_ALAT) as $k) {
+            $nilai = trim((string) ($_POST['alat'][$k] ?? ''));
+            $alat[$k] = $nilai !== '' ? $nilai : ($turun[$k] ?? null);
+        }
+
         $pdo->prepare("INSERT INTO Proses_Pemeriksaan
-            (klien_id, nama_perusahaan, lokasi, id_kategori, id_jenis, jenis_pemeriksaan, tanggal_pemeriksaan, catatan, status, dibuat_oleh)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'belum', ?)")
+    (klien_id, nama_perusahaan, nama_alat, id_kategori, id_jenis, jenis_pemeriksaan, tanggal_pemeriksaan,
+     nomor_rencana, lokasi, no_unit, no_seri, kapasitas, merk, tipe, tahun_alat, tempat_pembuatan,
+     data_alat_json, status, dibuat_oleh)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'belum', ?)")
             ->execute([
                 $klienId > 0 ? $klienId : null,
                 $namaPerusahaan,
-                $lokasi !== '' ? $lokasi : null,
+                $namaAlat !== '' ? $namaAlat : null,
                 $idKategori,
                 $idJenis,
                 $jenisPemeriksaan,
                 $tanggal,
-                $catatan !== '' ? $catatan : null,
+                $nomorRencana,
+                $alat['lokasi'],
+                $alat['no_unit'],
+                $alat['no_seri'],
+                $alat['kapasitas'],
+                $alat['merk'],
+                $alat['tipe'],
+                $alat['tahun_alat'],
+                $alat['tempat_pembuatan'],
+                $dataAlatJson,
                 $current_user_id,
             ]);
 
@@ -162,7 +248,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'mulai_l
         jpRedirect('selesai');
     }
 
-    // Sudah punya laporan (mis. klik ulang) -> langsung ke mode edit laporan itu
     if (!empty($jp['laporan_id'])) {
         header('Location: pemeriksaan.php?tab=buat&edit_id=' . (int) $jp['laporan_id']);
         exit;
@@ -177,7 +262,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'mulai_l
         'id_jenis' => (int) $jp['id_jenis'],
         'pemeriksaan_id' => $id,
     ];
-    // Kalau hanya ada 1 template untuk kombinasi ini, pilih otomatis
     $stT = $pdo->prepare("SELECT id FROM Template_Laporan WHERE id_kategori = ? AND id_jenis = ? AND drive_file_id IS NOT NULL");
     $stT->execute([(int) $jp['id_kategori'], (int) $jp['id_jenis']]);
     $tpls = $stT->fetchAll(PDO::FETCH_COLUMN);
@@ -208,7 +292,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'selesai
             throw new RuntimeException("Laporan terkait tidak ditemukan.");
         }
 
-        $pdo->prepare("UPDATE Proses_Pemeriksaan SET status = 'selesai' WHERE id = ? AND dibuat_oleh = ?")
+        $pdo->prepare("UPDATE Proses_Pemeriksaan SET status = 'selesai', tanggal_selesai = NOW() WHERE id = ? AND dibuat_oleh = ?")
             ->execute([$id, $current_user_id]);
         jpFlash('success', 'Pemeriksaan ditandai selesai. Laporan tersedia di menu Laporan.');
         jpRedirect('selesai');
@@ -254,7 +338,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['aksi'] ?? '') === 'hapus_p
 // ==========================================
 $stmt = $pdo->prepare("
     SELECT jp.*, k.nama_kategori, j.nama_objek,
-           lp.nomor_laporan, lp.file_laporan, lp.drive_file_id
+           lp.nomor_laporan, lp.file_laporan, lp.drive_file_id,
+           lp.isi_data AS lp_isi_data, lp.tanggal_buat AS lp_tanggal_buat
     FROM Proses_Pemeriksaan jp
     JOIN Kategori_Objek_K3 k ON k.id_kategori = jp.id_kategori
     JOIN Jenis_Objek_K3 j ON j.id_jenis = jp.id_jenis
@@ -282,6 +367,39 @@ function jpBadgeStatus(string $status): string
     }
 }
 
+/** Nomor laporan: nomor asli jika laporan sudah ada, kalau belum nomor rencana. */
+function jpNomor(array $r): string
+{
+    return (string) (($r['nomor_laporan'] ?? '') !== '' ? $r['nomor_laporan'] : ($r['nomor_rencana'] ?? '-')) ?: '-';
+}
+
+/** Lokasi: dari laporan (lokasi_unit) bila sudah ada, fallback data lama. */
+function jpLokasi(array $r): string
+{
+    $isi = json_decode($r['lp_isi_data'] ?? '', true) ?: [];
+    $lok = trim((string) ($isi['lokasi_unit'] ?? ''));
+    if ($lok === '') {
+        $lok = trim((string) ($r['lokasi'] ?? ''));
+    }
+    return $lok !== '' ? $lok : '-';
+}
+
+/** 7 sel data alat: No Unit s/d Tempat Pembuatan. */
+function jpSelAlat(array $r): string
+{
+    $h = '';
+    foreach (['no_unit', 'no_seri', 'kapasitas', 'merk', 'tipe', 'tahun_alat', 'tempat_pembuatan'] as $k) {
+        $v = trim((string) ($r[$k] ?? ''));
+        $h .= '<td>' . e($v !== '' ? $v : '-') . '</td>';
+    }
+    return $h;
+}
+
+function jpTgl(?string $t): string
+{
+    return !empty($t) ? date('d-m-Y', strtotime($t)) : '-';
+}
+
 include "../includes/header.php";
 include "../includes/sidebar.php";
 include "../includes/topbar.php";
@@ -290,8 +408,10 @@ include "../includes/topbar.php";
 <main class="main-content">
 
     <?php if ($flash): ?>
-        <div class="alert alert-<?= $flash['type'] === 'success' ? 'success-custom' : 'danger-custom' ?> align-items-center">
-            <i class="bi <?= $flash['type'] === 'success' ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill' ?> fs-5"></i>
+        <div
+            class="alert alert-<?= $flash['type'] === 'success' ? 'success-custom' : 'danger-custom' ?> align-items-center">
+            <i
+                class="bi <?= $flash['type'] === 'success' ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill' ?> fs-5"></i>
             <div><?= e($flash['msg']) ?></div>
         </div>
     <?php endif; ?>
@@ -324,7 +444,7 @@ include "../includes/topbar.php";
                     <div class="table-toolbar-actions">
                         <div class="search-box-container">
                             <i class="bi bi-search"></i>
-                            <input type="text" class="search-box" placeholder="Cari perusahaan, unit..."
+                            <input type="text" class="search-box" placeholder="Cari perusahaan, unit, alat..."
                                 data-table-search="tabelPemeriksaan" onkeyup="handleTableSearch('tabelPemeriksaan')">
                         </div>
                         <button class="btn-primary-custom" onclick="openModal('modalTambahPemeriksaan')">
@@ -333,15 +453,25 @@ include "../includes/topbar.php";
                     </div>
                 </div>
                 <div class="table-responsive-custom">
-                    <table class="table-custom" id="tabelPemeriksaan">
+                    <table class="table-custom" id="tabelPemeriksaan" data-freeze-cols="3">
                         <thead>
                             <tr>
                                 <th>No</th>
-                                <th>Perusahaan</th>
+                                <th>Nomor Laporan</th>
+                                <th>Nama Perusahaan</th>
                                 <th>Bidang</th>
                                 <th>Unit</th>
                                 <th>Jenis Pemeriksaan</th>
-                                <th>Tanggal</th>
+                                <th>Nama Alat</th>
+                                <th>Lokasi</th>
+                                <th>Tanggal Pemeriksaan</th>
+                                <th>No Unit</th>
+                                <th>No Seri</th>
+                                <th>Kapasitas</th>
+                                <th>Merk</th>
+                                <th>Tipe</th>
+                                <th>Tahun Alat</th>
+                                <th>Tempat Pembuatan Alat</th>
                                 <th>Status</th>
                                 <th class="col-aksi" style="text-align:center;">Tindakan</th>
                             </tr>
@@ -349,25 +479,25 @@ include "../includes/topbar.php";
                         <tbody>
                             <?php if (empty($semua)): ?>
                                 <tr>
-                                    <td colspan="8" class="text-center py-4 text-muted">
+                                    <td colspan="18" class="text-center py-4 text-muted">
                                         <i class="bi bi-clipboard-x d-block mb-2" style="font-size:2rem;"></i>
                                         Belum ada data pemeriksaan. Klik "Tambah Pemeriksaan" untuk memulai.
                                     </td>
                                 </tr>
                             <?php endif; ?>
-                            <?php $no = 1; foreach ($semua as $r): ?>
+                            <?php $no = 1;
+                            foreach ($semua as $r): ?>
                                 <tr>
                                     <td><?= $no++ ?></td>
-                                    <td>
-                                        <strong><?= e($r['nama_perusahaan']) ?></strong>
-                                        <?php if (!empty($r['lokasi'])): ?>
-                                            <br><small class="text-secondary"><?= e($r['lokasi']) ?></small>
-                                        <?php endif; ?>
-                                    </td>
+                                    <td><strong><?= e(jpNomor($r)) ?></strong></td>
+                                    <td><?= nl2br(e(wordwrap($r['nama_perusahaan'], 40, "\n", false))) ?></td>
                                     <td><?= e($r['nama_kategori']) ?></td>
                                     <td><?= e($r['nama_objek']) ?></td>
                                     <td><?= e($r['jenis_pemeriksaan']) ?></td>
-                                    <td><?= date('d-m-Y', strtotime($r['tanggal_pemeriksaan'])) ?></td>
+                                    <td><?= e($r['nama_alat'] ?: '-') ?></td>
+                                    <td><?= e(jpLokasi($r)) ?></td>
+                                    <td><?= jpTgl($r['tanggal_pemeriksaan']) ?></td>
+                                    <?= jpSelAlat($r) ?>
                                     <td><?= jpBadgeStatus($r['status']) ?></td>
                                     <td class="col-aksi" style="text-align:center;">
                                         <div class="table-actions">
@@ -419,54 +549,66 @@ include "../includes/topbar.php";
                     <div class="table-toolbar-actions">
                         <div class="search-box-container">
                             <i class="bi bi-search"></i>
-                            <input type="text" class="search-box" placeholder="Cari..."
-                                data-table-search="tabelProses" onkeyup="handleTableSearch('tabelProses')">
+                            <input type="text" class="search-box" placeholder="Cari..." data-table-search="tabelProses"
+                                onkeyup="handleTableSearch('tabelProses')">
                         </div>
                     </div>
                 </div>
                 <div class="table-responsive-custom">
-                    <table class="table-custom" id="tabelProses">
+                    <table class="table-custom" id="tabelProses" data-freeze-cols="3">
                         <thead>
                             <tr>
                                 <th>No</th>
-                                <th>Perusahaan</th>
-                                <th>Bidang / Unit</th>
+                                <th>No Laporan</th>
+                                <th>Nama Perusahaan</th>
+                                <th>Bidang</th>
+                                <th>Unit</th>
                                 <th>Jenis Pemeriksaan</th>
-                                <th>Tanggal</th>
-                                <th>Laporan</th>
+                                <th>Nama Alat</th>
+                                <th>Lokasi</th>
+                                <th>Tanggal Pemeriksaan</th>
+                                <th>No Unit</th>
+                                <th>No Seri</th>
+                                <th>Kapasitas</th>
+                                <th>Merk</th>
+                                <th>Tipe</th>
+                                <th>Tahun Alat</th>
+                                <th>Tempat Pembuatan Alat</th>
                                 <th class="col-aksi" style="text-align:center;">Tindakan</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php if (empty($listProses)): ?>
                                 <tr>
-                                    <td colspan="7" class="text-center py-4 text-muted">
+                                    <td colspan="17" class="text-center py-4 text-muted">
                                         <i class="bi bi-hourglass d-block mb-2" style="font-size:2rem;"></i>
                                         Tidak ada laporan yang sedang diproses.
                                     </td>
                                 </tr>
                             <?php endif; ?>
-                            <?php $no = 1; foreach ($listProses as $r): ?>
+                            <?php $no = 1;
+                            foreach ($listProses as $r): ?>
                                 <?php $adaLaporan = !empty($r['laporan_id']); ?>
                                 <tr>
                                     <td><?= $no++ ?></td>
-                                    <td><strong><?= e($r['nama_perusahaan']) ?></strong></td>
-                                    <td>
-                                        <div><?= e($r['nama_objek']) ?></div>
-                                        <small class="text-secondary"><?= e($r['nama_kategori']) ?></small>
-                                    </td>
-                                    <td><?= e($r['jenis_pemeriksaan']) ?></td>
-                                    <td><?= date('d-m-Y', strtotime($r['tanggal_pemeriksaan'])) ?></td>
                                     <td>
                                         <?php if ($adaLaporan): ?>
-                                            <span class="badge-success"><?= e($r['nomor_laporan']) ?></span>
+                                            <span class="badge-success"><?= e(jpNomor($r)) ?></span>
                                         <?php else: ?>
-                                            <span class="text-secondary" style="font-size:0.78rem;">Belum disimpan</span>
+                                            <strong><?= e(jpNomor($r)) ?></strong><br>
+                                            <small class="text-secondary" style="font-size:0.7rem;">Belum disimpan</small>
                                         <?php endif; ?>
                                     </td>
+                                    <td><?= nl2br(e(wordwrap($r['nama_perusahaan'], 40, "\n", false))) ?></td>
+                                    <td><?= e($r['nama_kategori']) ?></td>
+                                    <td><?= e($r['nama_objek']) ?></td>
+                                    <td><?= e($r['jenis_pemeriksaan']) ?></td>
+                                    <td><?= e($r['nama_alat'] ?: '-') ?></td>
+                                    <td><?= e(jpLokasi($r)) ?></td>
+                                    <td><?= jpTgl($r['tanggal_pemeriksaan']) ?></td>
+                                    <?= jpSelAlat($r) ?>
                                     <td class="col-aksi" style="text-align:center;">
                                         <div class="table-actions">
-                                            <!-- Lanjutkan: ke form (baru) atau edit laporan yang sudah tersimpan -->
                                             <form method="POST" action="upload.php" class="d-inline">
                                                 <input type="hidden" name="aksi" value="mulai_laporan">
                                                 <input type="hidden" name="pemeriksaan_id" value="<?= (int) $r['id'] ?>">
@@ -528,37 +670,52 @@ include "../includes/topbar.php";
                     </div>
                 </div>
                 <div class="table-responsive-custom">
-                    <table class="table-custom" id="tabelSelesai">
+                    <table class="table-custom" id="tabelSelesai" data-freeze-cols="3">
                         <thead>
                             <tr>
                                 <th>No</th>
                                 <th>Nomor Laporan</th>
-                                <th>Perusahaan</th>
+                                <th>Nama Perusahaan</th>
                                 <th>Bidang</th>
                                 <th>Unit</th>
                                 <th>Jenis Pemeriksaan</th>
-                                <th>Tanggal</th>
+                                <th>Nama Alat</th>
+                                <th>Lokasi</th>
+                                <th>Tanggal Pemeriksaan</th>
+                                <th>Beres Laporan</th>
+                                <th>No Unit</th>
+                                <th>No Seri</th>
+                                <th>Kapasitas</th>
+                                <th>Merk</th>
+                                <th>Tipe</th>
+                                <th>Tahun Alat</th>
+                                <th>Tempat Pembuatan Alat</th>
                                 <th class="col-aksi" style="text-align:center;">Aksi</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php if (empty($listSelesai)): ?>
                                 <tr>
-                                    <td colspan="8" class="text-center py-4 text-muted">
+                                    <td colspan="18" class="text-center py-4 text-muted">
                                         <i class="bi bi-folder-x d-block mb-2" style="font-size:2rem;"></i>
                                         Belum ada laporan yang selesai.
                                     </td>
                                 </tr>
                             <?php endif; ?>
-                            <?php $no = 1; foreach ($listSelesai as $r): ?>
+                            <?php $no = 1;
+                            foreach ($listSelesai as $r): ?>
                                 <tr>
                                     <td><?= $no++ ?></td>
-                                    <td><strong><?= e($r['nomor_laporan'] ?? '-') ?></strong></td>
-                                    <td><?= e($r['nama_perusahaan']) ?></td>
+                                    <td><strong><?= e(jpNomor($r)) ?></strong></td>
+                                    <td><?= nl2br(e(wordwrap($r['nama_perusahaan'], 40, "\n", false))) ?></td>
                                     <td><?= e($r['nama_kategori']) ?></td>
                                     <td><?= e($r['nama_objek']) ?></td>
                                     <td><?= e($r['jenis_pemeriksaan']) ?></td>
-                                    <td><?= date('d-m-Y', strtotime($r['tanggal_pemeriksaan'])) ?></td>
+                                    <td><?= e($r['nama_alat'] ?: '-') ?></td>
+                                    <td><?= e(jpLokasi($r)) ?></td>
+                                    <td><?= jpTgl($r['tanggal_pemeriksaan']) ?></td>
+                                    <td><?= jpTgl($r['lp_tanggal_buat'] ?? $r['tanggal_selesai']) ?></td>
+                                    <?= jpSelAlat($r) ?>
                                     <td class="col-aksi" style="text-align:center;">
                                         <div class="table-actions">
                                             <?php if (!empty($r['file_laporan'])): ?>
@@ -593,7 +750,7 @@ include "../includes/topbar.php";
 
 <!-- ===== MODAL: Tambah Pemeriksaan ===== -->
 <div class="arp-modal-overlay" id="modalTambahPemeriksaan" onclick="closeModalOutside(event,'modalTambahPemeriksaan')">
-    <div class="arp-modal-box" style="max-width:650px;">
+    <<div class="arp-modal-box" style="max-width:780px;">
         <div class="arp-modal-header">
             <div>
                 <h5 class="fw-bold mb-0">Tambah Pemeriksaan</h5>
@@ -606,12 +763,21 @@ include "../includes/topbar.php";
                 <input type="hidden" name="aksi" value="tambah_pemeriksaan">
                 <input type="hidden" name="klien_id" id="jp-klien-id">
 
-                <div>
-                    <label class="form-label fw-semibold mb-2">Nama Perusahaan *</label>
-                    <input type="text" name="nama_perusahaan" id="jp-cari-perusahaan" class="form-control-custom"
-                        autocomplete="off" placeholder="Ketik nama perusahaan..." required>
+                <!-- Perusahaan (kiri) | Nama Alat (kanan) -->
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold mb-2">Nama Perusahaan *</label>
+                        <input type="text" name="nama_perusahaan" id="jp-cari-perusahaan" class="form-control-custom"
+                            autocomplete="off" placeholder="Ketik nama perusahaan..." required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold mb-2">Nama Alat</label>
+                        <input type="text" name="nama_alat" class="form-control-custom"
+                            placeholder="Cth: Forklift Unit 2">
+                    </div>
                 </div>
 
+                <!-- Bidang (kiri) | Unit (kanan) -->
                 <div class="row g-3 mt-1">
                     <div class="col-md-6">
                         <label class="form-label fw-semibold mb-2">Bidang Objek *</label>
@@ -630,29 +796,36 @@ include "../includes/topbar.php";
                     </div>
                 </div>
 
-                <div class="row g-3 mt-1">
-                    <div class="col-md-6">
-                        <label class="form-label fw-semibold mb-2">Jenis Pemeriksaan *</label>
-                        <select name="jenis_pemeriksaan" class="select-custom" required>
-                            <option value="Pemeriksaan Berkala">Pemeriksaan Berkala</option>
-                            <option value="Pemeriksaan Baru">Pemeriksaan Baru</option>
-                        </select>
+                <!-- Selanjutnya memanjang ke bawah -->
+                <div class="mt-3" id="jp-nomor-wrap" style="display:none;">
+                    <label class="form-label fw-semibold mb-2">Nomor Laporan</label>
+                    <div class="d-flex align-items-center gap-2">
+                        <input type="text" name="no_urut" id="jp-no-urut" class="form-control-custom"
+                            style="max-width:110px;" inputmode="numeric" pattern="\d*">
+                        <div class="form-control-custom field-readonly text-secondary" id="jp-no-suffix"
+                            style="flex:1 1 auto;"></div>
                     </div>
-                    <div class="col-md-6">
-                        <label class="form-label fw-semibold mb-2">Tanggal Pemeriksaan *</label>
-                        <input type="date" name="tanggal_pemeriksaan" class="form-control-custom"
-                            value="<?= date('Y-m-d') ?>" required>
-                    </div>
+                    <small class="text-secondary text-xs d-block mt-1" id="jp-no-hint">
+                        Terisi otomatis sesuai urutan berikutnya; boleh diubah. Kosongkan untuk otomatis.
+                    </small>
                 </div>
 
                 <div class="mt-3">
-                    <label class="form-label fw-semibold mb-2">Lokasi</label>
-                    <input type="text" name="lokasi" class="form-control-custom" placeholder="Opsional">
+                    <label class="form-label fw-semibold mb-2">Jenis Pemeriksaan *</label>
+                    <select name="jenis_pemeriksaan" class="select-custom" required>
+                        <option value="Pemeriksaan Berkala">Pemeriksaan Berkala</option>
+                        <option value="Pemeriksaan Baru">Pemeriksaan Baru</option>
+                    </select>
                 </div>
+
                 <div class="mt-3">
-                    <label class="form-label fw-semibold mb-2">Catatan</label>
-                    <textarea name="catatan" class="textarea-custom" placeholder="Opsional"></textarea>
+                    <label class="form-label fw-semibold mb-2">Tanggal Pemeriksaan *</label>
+                    <input type="date" name="tanggal_pemeriksaan" class="form-control-custom"
+                        value="<?= date('Y-m-d') ?>" required>
                 </div>
+
+                <!-- Data alat: muncul setelah bidang + unit dipilih -->
+                <div id="jp-alat-wrap" style="display:none;"></div>
 
                 <div class="d-flex justify-content-end gap-2 mt-4">
                     <button type="button" class="btn-secondary-custom"
@@ -662,7 +835,7 @@ include "../includes/topbar.php";
                 </div>
             </form>
         </div>
-    </div>
+</div>
 </div>
 
 <script>
@@ -672,12 +845,114 @@ include "../includes/topbar.php";
         initTablePagination('tabelSelesai', 10);
     });
 
-    // Unit objek dependen bidang
+    // Bidang -> Unit -> (field alat + nomor laporan)
     (function () {
         var selK = document.getElementById('jp-kategori');
         var selJ = document.getElementById('jp-jenis');
+        var alatWrap = document.getElementById('jp-alat-wrap');
+        var nomorWrap = document.getElementById('jp-nomor-wrap');
+        var urutInp = document.getElementById('jp-no-urut');
+        var suffixEl = document.getElementById('jp-no-suffix');
+        var hintEl = document.getElementById('jp-no-hint');
+        var defaultHint = hintEl.textContent;
+
+        function resetInfo() {
+            alatWrap.innerHTML = '';
+            alatWrap.style.display = 'none';
+            nomorWrap.style.display = 'none';
+            urutInp.value = '';
+            suffixEl.textContent = '';
+        }
+
+        function muatInfo() {
+            resetInfo();
+            if (!selK.value || !selJ.value) return;
+            fetch('upload.php?ajax=info_alat&id_kategori=' + encodeURIComponent(selK.value)
+                + '&id_jenis=' + encodeURIComponent(selJ.value))
+                .then(function (r) { return r.json(); })
+                .then(function (info) {
+                    // Nomor laporan
+                    nomorWrap.style.display = '';
+                    if (info.ada_template) {
+                        urutInp.disabled = false;
+                        urutInp.value = info.urut;
+                        urutInp.placeholder = info.urut;
+                        suffixEl.textContent = info.suffix;
+                        hintEl.textContent = defaultHint;
+                    } else {
+                        urutInp.disabled = true;
+                        suffixEl.textContent = '';
+                        hintEl.textContent = 'Belum ada template untuk unit ini; nomor ditentukan saat laporan dibuat.';
+                    }
+                    // Field alat: tampilan seperti Data Umum
+                    function buatLabel(teks, cls) {
+                        var lb = document.createElement('label');
+                        lb.className = cls || 'form-label fw-semibold mb-2';
+                        lb.textContent = teks;
+                        return lb;
+                    }
+                    function buatInput(name, ph) {
+                        var inp = document.createElement('input');
+                        inp.type = 'text';
+                        inp.name = name;
+                        inp.className = 'form-control-custom';
+                        inp.placeholder = ph || '';
+                        inp.style.cssText = 'width:100%;min-width:0;box-sizing:border-box;';
+                        return inp;
+                    }
+                    info.fields.forEach(function (f) {
+                        var box = document.createElement('div');
+                        box.className = 'mt-3';
+
+                        var inline = (f.type === 'pair' && !f.row_label);
+                        if (!inline) {
+                            box.appendChild(buatLabel(f.label));
+                        }
+
+                        if (f.type === 'pair') {
+                            var row = document.createElement('div');
+                            var sempit = window.innerWidth < 576;
+                            row.style.cssText = 'display:grid;align-items:center;gap:8px;width:100%;';
+
+                            if (f.row_label) {
+                                row.style.gridTemplateColumns = sempit ? '1fr' : 'minmax(0,1fr) minmax(0,1fr)';
+                                row.appendChild(buatInput('ap[' + f.key + '][kiri]', f.kiri));
+                                row.appendChild(buatInput('ap[' + f.key + '][kanan]', f.kanan));
+                            } else {
+                                // Label kiri | input | label kanan | input  (Merk [..] Model [..])
+                                row.style.gridTemplateColumns = sempit ? '1fr' : 'auto minmax(0,1fr) auto minmax(0,1fr)';
+                                var lbKiri = buatLabel(f.label, 'form-label fw-semibold mb-0 text-secondary');
+                                var lbKanan = buatLabel(f.kanan, 'form-label fw-semibold mb-0 text-secondary');
+                                lbKiri.style.whiteSpace = 'nowrap';
+                                lbKanan.style.whiteSpace = 'nowrap';
+                                row.appendChild(lbKiri);
+                                row.appendChild(buatInput('ap[' + f.key + '][kiri]', f.kiri));
+                                row.appendChild(lbKanan);
+                                row.appendChild(buatInput('ap[' + f.key + '][kanan]', f.kanan));
+                            }
+                            box.appendChild(row);
+                        } else if (f.type === 'single' && f.multiline) {
+                            var ta = document.createElement('textarea');
+                            ta.name = 'ad[' + f.key + ']';
+                            ta.rows = 2;
+                            ta.className = 'form-control-custom';
+                            ta.placeholder = f.hint || '';
+                            box.appendChild(ta);
+                        } else {
+                            var nm = f.type === 'legacy' ? 'alat[' + f.key + ']' : 'ad[' + f.key + ']';
+                            var inp = buatInput(nm, f.hint || 'Opsional');
+                            inp.style.cssText = '';
+                            box.appendChild(inp);
+                        }
+                        alatWrap.appendChild(box);
+                    });
+                    alatWrap.style.display = info.fields.length ? '' : 'none';
+                });
+        }
+
         selK.addEventListener('change', function () {
             var id = this.value;
+            resetInfo();
             selJ.innerHTML = '<option value="">Memuat...</option>';
             selJ.disabled = true;
             if (!id) {
@@ -697,6 +972,7 @@ include "../includes/topbar.php";
                     selJ.disabled = false;
                 });
         });
+        selJ.addEventListener('change', muatInfo);
     })();
 
     // Autocomplete perusahaan
